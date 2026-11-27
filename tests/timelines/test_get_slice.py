@@ -482,9 +482,10 @@ class TestSegmentLineAssembly:
         """Two slices of one range hold the same events: the second is refused.
 
         This is a simple repeat, the same [0, 40) section played twice. Event
-        IDs are unique across a timeline tree and a collision is refused at
-        a join, nothing renamed: the second slice, holding the first's event
-        IDs, does not join the line, which keeps its one segment.
+        IDs are unique among a root timeline and its descendants and a
+        collision is refused at a join, nothing renamed: the second slice,
+        holding the first's event IDs, does not join the line, which keeps its
+        one segment.
         """
         source = ContinuousLogicalTimeline(
             length=Fraction(40),
@@ -513,7 +514,7 @@ class TestSegmentLineAssembly:
         assert str(refusal.value) == (
             f"Event id '{first_beat}' is already held by an event of timeline "
             f"'{first.id}', so it cannot join timeline '{second.id}': event ids "
-            "are unique across a timeline tree"
+            "are unique among a root timeline and its descendants"
         )
         assert sl.length.value == Fraction(40)
         assert sl.n_segments == 1

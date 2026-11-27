@@ -462,7 +462,7 @@ class TestAddEventsAxisAndIds:
             )
         assert str(refused.value) == (
             "Event id 'n1' is given to 2 events joining timeline 'dpt_1'; event "
-            "ids are unique across a timeline tree"
+            "ids are unique among a root timeline and its descendants"
         )
         assert len(timeline.events) == 0
 

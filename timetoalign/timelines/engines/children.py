@@ -46,6 +46,7 @@ from timetoalign.maps import (
     MeasureNumberMap,
 )
 from timetoalign.storage.events import BOX_EVENT_TYPE
+from timetoalign.storage.registry import SEGMENT_KIND
 
 from ..manifest import spell
 from .regions import _resolve_boundary_names
@@ -57,7 +58,7 @@ if TYPE_CHECKING:
 else:
     _Host = object
 
-SEGMENT_EVENT_TYPE = "Segment"
+SEGMENT_EVENT_TYPE = SEGMENT_KIND
 TraversalOrder = Literal["sorted", "depth_first", "breadth_first"]
 
 _MEASURE_VIEWS = (FloatingMeasureMap, MeasureNumberMap, MeasureBeatMap)
@@ -386,11 +387,14 @@ class ChildrenMixin(_Host):
             child: The timeline to validate.
             offset: The proposed start coordinate.
 
+        A child has its parent's number type too, and one parent: its
+        events lie on its root's axis, which a second parent would change.
+
         Raises:
             TypeError: If child is not a Timeline.
-            ValueError: If units don't match, the timeline already is a child
-                of this timeline, or the offset is negative, which is not
-                supported yet.
+            ValueError: If units or number types don't match, the timeline
+                already is a child of this timeline or of another one, or the
+                offset is negative, which is not supported yet.
         """
         if not isinstance(child, Timeline):
             raise TypeError(f"Child must be a Timeline, got {type(child).__name__}")
@@ -403,8 +407,24 @@ class ChildrenMixin(_Host):
                 f"For cross-domain relationships, use TimelineGroup instead."
             )
 
+        if child.number_type is not self._number_type:
+            raise ValueError(
+                f"Child {quote_id(child.id)} has the number type "
+                f"'{child.number_type.name}', its parent {quote_id(self._id)} has "
+                f"'{self._number_type.name}': a child has its parent's unit and "
+                "number type. Events of another number type reach a timeline only "
+                "as Projections through a C-Map (add_projections)."
+            )
+
         if any(existing is child for existing in self._children.values()):
             raise ValueError(f"Child '{child.id}' is already a child of this timeline")
+
+        if child._parent is not None:
+            raise ValueError(
+                f"Timeline {quote_id(child.id)} is a child of "
+                f"{quote_id(child._parent.id)} already: a timeline has one parent "
+                "(it may be a member of many groups)"
+            )
 
         offset_coord = self.get_coordinate_at(offset, format="coordinate")
         if offset_coord.value < 0:
@@ -648,20 +668,19 @@ class ChildrenMixin(_Host):
             None if child.length is None else offset_coord.value + child.length.value
         )
         # The whole subtree joins this manifest: an id held here raises
-        # before anything changes; so does an event id this tree holds.
+        # before anything changes; so does an event id this family holds.
         self._refuse_held(child._subtree_entries())
-        # A child that roots its own tree brings its rows into this one; a
-        # child already in another tree (a timeline in two parents) keeps
-        # them there, where it reads them.
-        joining = child._tree_store.timeline_ids[:1] == (child.id,)
-        if joining:
-            self._tree_store.refuse_shared_events(child._tree_store)
+        # The child roots its own family (it has no parent), whose rows join
+        # this one's, shifted onto this family's root.
+        family = self._registry._family
+        joining = child._registry._family
+        family.refuse_joining(joining)
         # The child's Segment row, named by the child's ID, is an event of
-        # this timeline: its ID is refused here too, where the tree holds it.
+        # this timeline: its ID is refused here too, where either family
+        # holds it.
         segment_id = pa.array([child.id], pa.string())
-        self._tree_store.refuse_held_ids(self._id, segment_id)
-        if joining:
-            child._tree_store.refuse_held_ids(self._id, segment_id)
+        family.refuse_held_ids(self._id, segment_id)
+        joining.refuse_held_ids(self._id, segment_id)
         # One Jump per position of the root's axis, over the root's tree.
         _, start = self._root_start()
         self._refuse_repeated_jumps(
@@ -673,17 +692,14 @@ class ChildrenMixin(_Host):
             offset_coord.value if child_end is None else child_end, allow_expansion
         )
 
-        # Store child reference; the child's subtree's rows move into this
-        # tree's store.
+        # Store child reference; the child's family's rows join this
+        # family's, shifted once onto its root.
         self._children[child.id] = child
         self._child_offsets[child.id] = offset_coord
         child._parent = self._timeline
-        if joining:
-            moved = child._tree_store
-            self._tree_store.attach(moved)
-            for timeline in (child, *(t for _, t in child._iter_descendants())):
-                if timeline._tree_store is moved:
-                    timeline._tree_store = self._tree_store
+        family.attach(joining, self._id, offset_coord.value)
+        for timeline in (child, *(t for _, t in child._iter_descendants())):
+            timeline._registry = self._registry
 
         if plain_segment:
             child._locked = False
@@ -1422,11 +1438,11 @@ class ChildrenMixin(_Host):
         with or without events. An event ID met twice is taken once, from
         the first row, which is this timeline's own before any child's.
 
-        A copy for a timeline joining this one's tree (a child cut from a
-        region) is a new event of the tree, whose event IDs are unique: it
+        A copy for a timeline joining this one's family (a child cut from a
+        region) is a new event of the family, whose event IDs are unique: it
         is minted an ID of its own (``add_events``' minting), the event it
-        copies keeping its own, and the tree's store records which event it
-        copies (``TreeStore.record_copies``). A child cut earlier from an
+        copies keeping its own, and the family's registry records which
+        event it copies. A child cut earlier from an
         overlapping region holds such copies: a row recorded as a copy of an
         event taken is not taken again, so each event is copied once, from
         the event itself. A descendant's own event is taken whatever it
@@ -1438,7 +1454,7 @@ class ChildrenMixin(_Host):
             end: The cut's end, likewise.
             copy_events: Whether the events are copied; an area is stated
                 either way.
-            in_this_tree: Whether *target* joins this timeline's tree, so
+            in_this_tree: Whether *target* joins this timeline's family, so
                 that the copies take IDs of their own.
 
         Raises:
@@ -1448,7 +1464,7 @@ class ChildrenMixin(_Host):
         rows: list[dict[str, Any]] = []
         origins: list[str | None] = []
         if copy_events:
-            store = self._tree_store
+            store = self._registry._family
             taken: set[str] = set()
             for event in self.get_events(min_coord=start, max_coord=end):
                 # The timeline's own row comes first and is the one taken.
@@ -1473,7 +1489,7 @@ class ChildrenMixin(_Host):
                 for copy, origin in zip(minted, origins, strict=True)
                 if origin is not None
             ]
-            target._tree_store.record_copies(
+            target._registry._family.record_copies(
                 target.id,
                 [copy for copy, _ in copied],
                 [origin for _, origin in copied],

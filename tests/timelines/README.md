@@ -2650,16 +2650,12 @@ a lane deciding otherwise would differ:
   at 4 in the first case; a lone child ending at 4 inside a parent of length 8
   at 4 (formerly left out, its end then on no child).
 
-- **A timeline placed in two parents is answered through the tree
-  queried.** `add_child` still accepts a timeline that already has a
-  parent; it then sits in both parents' children while naming the second
-  as its parent. `CH` (length 2, holding `G` of length 1 at 0) placed in
-  `P1` (length 8) at 1 and then in `P2` (length 8) at 3: `P1` at 2 names
-  `P1` 2, `CH` 1, `G` 1, and `P2` at `7/2` names `P2` `7/2`, `CH` `1/2`,
-  `G` `1/2`, each stamp equal to its table row. A stamp that found the way
-  from `CH` up through its parent reference left `P1`'s tree at `P2` and
-  failed; one walking down the queried tree cannot. Whether `add_child` should refuse such a timeline is not
-  decided here.
+- **A timeline has one parent.** `add_child` refuses a timeline that has a
+  parent already, naming both, and changes nothing: `CH` (length 2, holding
+  `G` of length 1 at 0) placed in `P1` (length 8) at 1, then in `P2`: the
+  second is refused, `P2` holds no child, `CH`'s parent is `P1`, and `P1` at
+  2 still names `P1` 2, `CH` 1, `G` 1 in stamp and table row alike. Events
+  lie on their root's axis, which a second parent would make two.
 
 | Test | Validates |
 |------|-----------|
@@ -2678,7 +2674,7 @@ a lane deciding otherwise would differ:
 | `TestExactTableContainment` | The two exact-axis cases |
 | `test_lanes_agree_at_every_position` | Stamp, table and bundle agree on three axes, values included |
 | `TestZeroLengthChild` | A zero-length child is held at its offset and takes no end away |
-| `test_a_timeline_in_two_parents_is_answered_through_the_tree_queried` | The stamp and table of each parent follow that parent's own offsets |
+| `test_a_timeline_with_a_parent_is_refused_a_second_one` | A second parent is refused, naming both; the first answers as before |
 
 ### `test_fraction_generation.py` - Exact Logical Coordinate Generation
 
@@ -2891,7 +2887,8 @@ store.
    - an ID already held by an event of the timeline is refused naming the ID
      and the timeline, and so is one given twice in one call (`Event id 'n1'
      is given to 2 events joining timeline 'dpt_1'; event ids are unique
-     across a timeline tree`, the tree store's one check); nothing is added
+     among a root timeline and its descendants`, the registry's one check);
+     nothing is added
      either time, so the refusal is atomic;
    - two calls without IDs mint two distinct `note` IDs, never the same ID
      twice (a per-call counter minted the first ID twice);
@@ -5621,27 +5618,23 @@ holding one event ID are refused, naming the ID, the number of events
 holding it and the timeline (`Event id 'x' is given to 2 events joining
 timeline 'flat'`), with `ValueError`.
 
-Stores of one unit and two number types make one timeline
-(`TestStoresOfTwoNumberTypes`): a store holding a `fraction` quarters table
-(`a` on `[1/3, 2/3)`) and then a `float` one (a Beat `b` at `0.75`) gives,
-with `flatten=True`, a `fraction` timeline `t` of length `3/4` holding
-`a` at `1/3` and `b` at `3/4` (the double `0.75` as its exact ratio),
-and with `group_by="event_type"` a `fraction` timeline whose children
-`Beat` and `Note` hold `b` at `3/4` and `a` at `1/3`. Both joins cast the
-second table's rows to the first's number type before the join (which
-itself converts nothing, `tests/storage/README.md`). Without `flatten` or
-`group_by` no rows are joined: each store becomes a child on its own
-store's axis, so the child `thirds` is a `fraction` timeline holding `a` at
-`1/3` and the child `decimals` a `float` timeline whose rows declare
-`float` and hold `b`'s cell as it was stored (`{value: 0.75, numerator: 3,
-denominator: 4}`), and the tree's map gives each child the number type the child
-declares (`fraction`, `float`); the parent, holding only the children's
-`Segment` rows, keeps the first store's (`fraction`). Before, every child
-declared the first store's type while `decimals` held float rows. A
-timeline's rows given on another axis than the timeline's are refused
-(`replace` of the tree store: `the rows of timeline 'clt_x' lie on its
-axis, quarters in fraction; these lie on quarters in float`): no path of
-the library gives them so any more.
+Stores of one unit and two number types make no timeline
+(`TestStoresOfTwoNumberTypes`): a child has its parent's number type, and
+the rows of one timeline lie on its axis, so the factory never casts a
+store to make it fit. A store holding a `fraction` quarters table (`a` on
+`[1/3, 2/3)`) and a `float` one (a Beat `b` at `0.75`) is refused with
+`flatten=True`, with `group_by="event_type"` and as one child per store,
+each time naming the store and both axes (`The store 'decimals' lies on
+quarters in float, but the timeline made of the stores on quarters in
+fraction: the stores of one timeline share its unit and number type. Cast
+the store first (EventData.to_number_type), or make a timeline of it
+alone.`). The cast the message names is the way: the `float` store cast
+to `fraction` first (`to_number_type`) makes, with `flatten=True`, a
+`fraction` timeline `t` of length `3/4` holding `a` at `1/3` and `b` at
+`3/4` (the double `0.75` as its exact ratio). A timeline's rows given on
+another axis than the timeline's are refused by its family's registry
+(`the rows of timeline 'clt_x' lie on its axis, quarters in fraction;
+these lie on quarters in float`), nothing added.
 
 A timeline made from an `EventData` holds its events in an `EventData` of
 its own, over the same table (tables are immutable, so sharing one costs

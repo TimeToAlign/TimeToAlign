@@ -1056,7 +1056,7 @@ The tests pin, with exact `midi_number` values and no ranges:
   which preserves the concrete EventData class)
   receives note events with bare-int pitch across **multiple**
   `add_events` calls — each routing through `_add_events_unchecked` →
-  `from_dicts` → the tree store's `add`.  After each call the timeline's
+  `from_dicts` → the family registry's `add`.  After each call the timeline's
   `events.get_pitch_field()` / `get_field(EnharmonicPitch)` resolve with
   the exact accumulated `midi_number` values, proving "a pitch view
   survives ingestion into a timeline" across batches.

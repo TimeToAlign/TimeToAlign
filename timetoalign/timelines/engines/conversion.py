@@ -35,6 +35,7 @@ from timetoalign.core.retrieval import (
 from timetoalign.core.time import shift_number
 from timetoalign.core.timestamp import TimeIntervalStamp, ambiguous_unit_maps
 from timetoalign.maps import ConversionMap, OutputNumberTypeError
+from timetoalign.storage.registry import SEGMENT_KIND
 
 if TYPE_CHECKING:
     from ..base import Timeline
@@ -42,7 +43,7 @@ if TYPE_CHECKING:
 else:
     _Host = object
 
-SEGMENT_EVENT_TYPE = "Segment"
+SEGMENT_EVENT_TYPE = SEGMENT_KIND
 
 
 class ConversionMapsMixin(_Host):

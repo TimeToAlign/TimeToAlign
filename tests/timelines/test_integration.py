@@ -298,10 +298,14 @@ class TestScoreLoaderIntegration:
             NumberType.float,
         )
 
-        # Create parent timeline and add notes as child
+        # Create parent timeline and add notes as child: a child has its
+        # parent's number type, the notes' float.
         max_coord = 2.0  # Based on note end coordinates
         parent = ContinuousLogicalTimeline(
-            length=max_coord * 2, unit=TimeUnit.quarters, uid="score_parent"
+            length=max_coord * 2,
+            unit=TimeUnit.quarters,
+            number_type=NumberType.float,
+            uid="score_parent",
         )
 
         # Create child timeline from note data

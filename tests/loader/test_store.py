@@ -256,18 +256,20 @@ class TestEventDataConcat:
         # Original unchanged
         assert len(store_with_instants) == 3
 
-    def test_concat_of_another_unit_keeps_each_rows_axis(
+    def test_concat_of_another_unit_is_refused(
         self, store_with_instants: EventData
     ) -> None:
-        """concat() of another unit keys each row by its axis."""
+        """concat() of another unit is refused: a table lies on one axis."""
         other = EventData.from_dicts(
             [{"id": "s", "event_type": "Beat", "instant": 1.0}], TimeUnit.seconds
         )
-        combined = store_with_instants.concat(other)
-        assert combined.table.column("timeline_id").to_pylist()[-2:] == [
-            "<ticks int>",
-            "<seconds float>",
-        ]
+        with pytest.raises(ValueError) as refusal:
+            store_with_instants.concat(other)
+        assert str(refusal.value) == (
+            "a table lies on one axis: this one on ticks in int, the one joining on "
+            "seconds in float; cast it first (to_number_type) or keep the tables "
+            "apart"
+        )
         assert len(store_with_instants) == 3
 
 

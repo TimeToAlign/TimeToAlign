@@ -1626,13 +1626,8 @@ def _declared(data: EventData) -> dict[str, str]:
     }
 
 
-def _ids_of_type(data: EventData, number_type: NumberType) -> list[str]:
-    """The ids of the rows of *data* read in *number_type*."""
-    return data.filter(include_number_types={number_type}).column_values("id")
-
-
 class TestJoiningKeepsNumberTypes:
-    """Rows of another number type join as they are; the cast is on request."""
+    """A table lies on one axis: a join of another is refused; the cast is on request."""
 
     @staticmethod
     def _thirds() -> EventData:
@@ -1671,39 +1666,44 @@ class TestJoiningKeepsNumberTypes:
             number_type,
         )
 
-    def test_floats_joining_a_fraction_table_stay_floats(self):
+    def test_a_table_of_another_number_type_is_refused(self):
         thirds, decimals = self._thirds(), self._decimals()
 
-        joined = thirds.concat(decimals)
+        with pytest.raises(ValueError) as refusal:
+            thirds.concat(decimals)
+
+        assert str(refusal.value) == (
+            "a table lies on one axis: this one on quarters in fraction, the one "
+            "joining on quarters in float; cast it first (to_number_type) or keep "
+            "the tables apart"
+        )
+        assert len(thirds) == 1 and len(decimals) == 2
+
+    def test_tables_of_one_axis_join_as_they_stand(self):
+        first = self._thirds()
+        second = EventData.from_dicts(
+            [{"id": "d", "event_type": "Note", "start": Fraction(1, 7), "end": 1}],
+            TimeUnit.quarters,
+            NumberType.fraction,
+        )
+
+        joined = first.concat(second)
 
         assert joined.number_type is NumberType.fraction
         assert _row_cells(joined, "start", "end", "duration") == [
-            *_row_cells(thirds, "start", "end", "duration"),
-            *_row_cells(decimals, "start", "end", "duration"),
+            *_row_cells(first, "start", "end", "duration"),
+            *_row_cells(second, "start", "end", "duration"),
         ]
-        assert joined.table.column("timeline_id").to_pylist() == [
-            "<quarters fraction>",
-            "<quarters float>",
-            "<quarters float>",
-        ]
-        assert _ids_of_type(joined, NumberType.fraction) == ["a"]
-        assert _ids_of_type(joined, NumberType.float) == ["b", "c"]
-        assert len(thirds) == 1 and len(decimals) == 2
+        assert "timeline_id" not in joined.table.column_names
 
     def test_the_cast_to_fraction_takes_floats_as_their_exact_ratios(self):
-        cast = self._thirds().concat(self._decimals()).to_number_type("fraction")
+        cast = self._decimals().to_number_type("fraction")
 
         assert cast.number_type is NumberType.fraction
         assert _declared(cast) == dict.fromkeys(
             ("start", "end", "duration"), "fraction"
         )
         assert _row_cells(cast, "start", "end", "duration") == [
-            (
-                "a",
-                (0.3333333333333333, 1, 3),
-                (0.6666666666666666, 2, 3),
-                (0.3333333333333333, 1, 3),
-            ),
             (
                 "b",
                 (0.1, 3602879701896397, 36028797018963968),
@@ -1712,30 +1712,23 @@ class TestJoiningKeepsNumberTypes:
             ),
             ("c", (0.5, 1, 2), None, None),
         ]
-        assert _ids_of_type(cast, NumberType.fraction) == ["a", "b", "c"]
-        assert cast.column_values("end")[1] == Fraction(0.1) + Fraction(0.2)
+        assert cast.column_values("end")[0] == Fraction(0.1) + Fraction(0.2)
 
     def test_the_cast_to_float_takes_ratios_as_the_nearest_floats(self):
-        joined = self._decimals().concat(self._thirds())
-        assert _ids_of_type(joined, NumberType.fraction) == ["a"]
-
-        cast = joined.to_number_type(NumberType.float)
+        cast = self._thirds().to_number_type(NumberType.float)
 
         assert cast.number_type is NumberType.float
         assert _declared(cast) == dict.fromkeys(("start", "end", "duration"), "float")
-        assert _row_cells(cast, "start", "end", "duration")[2] == (
-            "a",
-            (0.3333333333333333, 6004799503160661, 18014398509481984),
-            (0.6666666666666666, 6004799503160661, 9007199254740992),
-            (0.3333333333333333, 6004799503160661, 18014398509481984),
-        )
-        assert _row_cells(cast, "start")[:2] == [
-            ("b", (0.1, 3602879701896397, 36028797018963968)),
-            ("c", (0.5, 1, 2)),
+        assert _row_cells(cast, "start", "end", "duration") == [
+            (
+                "a",
+                (0.3333333333333333, 6004799503160661, 18014398509481984),
+                (0.6666666666666666, 6004799503160661, 9007199254740992),
+                (0.3333333333333333, 6004799503160661, 18014398509481984),
+            )
         ]
 
     def test_the_cast_to_int_takes_the_nearest_integers_ties_to_even(self):
-        receiving = self._numbers(NumberType.int, ("x", 10, 11))
         ratios = self._numbers(
             NumberType.fraction,
             ("y", Fraction(5, 2), Fraction(7, 2)),
@@ -1743,74 +1736,51 @@ class TestJoiningKeepsNumberTypes:
         )
         decimals = self._numbers(NumberType.float, ("w", 2.5, 3.5))
 
-        joined = receiving.concat(ratios).concat(decimals)
+        cast = [table.to_number_type("int") for table in (ratios, decimals)]
 
-        assert _row_cells(joined, "start") == [
-            ("x", (10.0, 10, 1)),
-            ("y", (2.5, 5, 2)),
-            ("z", (1.5, 3, 2)),
-            ("w", (2.5, 5, 2)),
-        ]
+        assert all(table.number_type is NumberType.int for table in cast)
+        assert all(
+            _declared(table) == dict.fromkeys(("start", "end", "duration"), "int")
+            for table in cast
+        )
         assert [
-            _ids_of_type(joined, number_type)
-            for number_type in (NumberType.int, NumberType.fraction, NumberType.float)
-        ] == [["x"], ["y", "z"], ["w"]]
-        cast = joined.to_number_type("int")
-        assert cast.number_type is NumberType.int
-        assert _declared(cast) == dict.fromkeys(("start", "end", "duration"), "int")
-        assert _row_cells(cast, "start", "end", "duration") == [
-            ("x", (10.0, 10, 1), (11.0, 11, 1), (1.0, 1, 1)),
+            row
+            for table in cast
+            for row in _row_cells(table, "start", "end", "duration")
+        ] == [
             ("y", (2.0, 2, 1), (3.0, 3, 1), (1.0, 1, 1)),
             ("z", (2.0, 2, 1), (5.0, 5, 1), (3.0, 3, 1)),
             ("w", (2.0, 2, 1), (3.0, 3, 1), (1.0, 1, 1)),
         ]
 
     def test_the_cast_to_fraction_takes_integers_as_they_stand(self):
-        receiving = self._numbers(
-            NumberType.fraction, ("y", Fraction(5, 2), Fraction(7, 2))
-        )
-        joined = receiving.concat(self._numbers(NumberType.int, ("x", 10, 11)))
+        cast = self._numbers(NumberType.int, ("x", 10, 11)).to_number_type("fraction")
 
-        assert _ids_of_type(joined, NumberType.int) == ["x"]
-        cast = joined.to_number_type("fraction")
         assert _row_cells(cast, "start", "end", "duration") == [
-            ("y", (2.5, 5, 2), (3.5, 7, 2), (1.0, 1, 1)),
             ("x", (10.0, 10, 1), (11.0, 11, 1), (1.0, 1, 1)),
         ]
         assert _declared(cast) == dict.fromkeys(
             ("start", "end", "duration"), "fraction"
         )
 
-    def test_another_unit_joins_on_its_own_axis(self):
+    def test_a_table_of_another_unit_is_refused(self):
         receiving = self._thirds()
         seconds = EventData.from_dicts(
             [{"id": "s", "event_type": "Note", "start": 1.0, "end": 2.0}],
             TimeUnit.seconds,
         )
 
-        joined = receiving.concat(seconds)
-
-        assert joined.unit is TimeUnit.quarters
-        assert joined.table.column("timeline_id").to_pylist() == [
-            "<quarters fraction>",
-            "<seconds float>",
-        ]
-        assert _row_cells(joined, "start")[1] == ("s", (1.0, 1, 1))
-        assert len(receiving) == 1
-
-    def test_a_partial_cast_of_a_table_spanning_timelines_is_refused(self):
-        joined = self._thirds().concat(self._decimals())
-
         with pytest.raises(ValueError) as refusal:
-            joined.to_number_type("fraction", columns=["start"])
+            receiving.concat(seconds)
 
         assert str(refusal.value) == (
-            "a table spanning timelines reads every coordinate column in its rows' "
-            "number types, so it casts all of them; ['end', 'duration'] would be "
-            "left out"
+            "a table lies on one axis: this one on quarters in fraction, the one "
+            "joining on seconds in float; cast it first (to_number_type) or keep "
+            "the tables apart"
         )
+        assert len(receiving) == 1
 
-    def test_a_partial_cast_of_a_table_standing_alone_casts_the_columns_named(self):
+    def test_a_partial_cast_casts_the_columns_named(self):
         cast = self._decimals().to_number_type("fraction", columns=["start"])
 
         assert cast.number_type is NumberType.float
@@ -1820,12 +1790,6 @@ class TestJoiningKeepsNumberTypes:
             "duration": "float",
         }
         assert cast.column_values("start")[0] == Fraction(0.1)
-
-    def test_a_number_type_filter_on_a_table_standing_alone_is_all_or_nothing(self):
-        decimals = self._decimals()
-
-        assert _ids_of_type(decimals, NumberType.float) == ["b", "c"]
-        assert _ids_of_type(decimals, NumberType.fraction) == []
 
 
 class TestFilterBounds:

@@ -121,24 +121,45 @@ def create_timeline_from_event_data(
         number_type=effective_number_type,
         uid=uid,
     )
-    # The rows join the timeline's tree store (the table is immutable):
+    # The rows join the timeline's registry (the table is immutable):
     # adding events to the timeline leaves the source and every other
     # timeline made from the source as they are.
     timeline._replace_events(source)
     return timeline
 
 
-def _merged(merged: EventData, data: EventData) -> EventData:
-    """*merged* joined by *data*'s rows, written in *merged*'s number type.
+def _refuse_another_axis(
+    name: str, data: EventData, unit: TimeUnit, number_type: NumberType
+) -> None:
+    """Refuse the store *name* unless its rows lie on *unit* in *number_type*.
 
-    The stores of one timeline share its unit and number type: rows of
-    another number type are cast to *merged*'s
-    (:meth:`~timetoalign.storage.EventData.to_number_type`).
+    The stores one timeline (or one family) is made of share its unit and
+    number type; rows are never cast to make them fit.
 
     Raises:
-        ValueError: If *data* has another unit.
+        ValueError: Naming the store and both axes.
     """
-    return merged.concat(data._onto(merged.unit, merged.number_type))
+    if (data.unit, data.number_type) != (unit, number_type):
+        raise ValueError(
+            f"The store {name!r} lies on {data.unit} in {data.number_type.name}, "
+            f"but the timeline made of the stores on {unit} in {number_type.name}: "
+            "the stores of one timeline share its unit and number type. Cast the "
+            "store first (EventData.to_number_type), or make a timeline of it "
+            "alone."
+        )
+
+
+def _merged(data_to_use: Sequence[tuple[str, EventData]]) -> EventData:
+    """The rows of every store of *data_to_use* in one table, in order.
+
+    Raises:
+        ValueError: If a store lies on another unit or number type than the
+            first.
+    """
+    first = data_to_use[0][1]
+    for name, data in data_to_use[1:]:
+        _refuse_another_axis(name, data, first.unit, first.number_type)
+    return first.concat(*(data for _, data in data_to_use[1:]))
 
 
 def _infer_timeline_class_and_number_type(
@@ -227,9 +248,7 @@ def _create_grouped_timeline(
         Timeline with children for each unique group value.
     """
     # Merge all data first
-    merged_data = data_to_use[0][1]
-    for _, data in data_to_use[1:]:
-        merged_data = _merged(merged_data, data)
+    merged_data = _merged(data_to_use)
 
     # Check that group_by field exists
     table = merged_data.table
@@ -419,9 +438,7 @@ def create_timeline_from_bundle(
     # the single-data optimisation still fires because len(data_to_use)==1.
     if single:
         # Merge all events into single timeline
-        merged_data = first_data
-        for _, data in data_to_use[1:]:
-            merged_data = _merged(merged_data, data)
+        merged_data = _merged(data_to_use)
         # Create timeline with corrected number_type
         coord_range = merged_data.coordinate_range()
         length = coord_range[1] if coord_range else 0
@@ -441,7 +458,10 @@ def create_timeline_from_bundle(
 
     else:
         assert minter is not None  # built above
-        # Multiple data: create parent with children at offset 0
+        # Multiple data: create parent with children at offset 0, every
+        # child on the parent's axis.
+        for name, data in data_to_use:
+            _refuse_another_axis(name, data, first_data.unit, effective_number_type)
         # Parent length = max of all child lengths
         max_length: float | Fraction = 0.0
         for _, data in data_to_use:
@@ -456,7 +476,7 @@ def create_timeline_from_bundle(
             uid=uid,
         )
 
-        # Add each data as a child at offset 0, on its own data's axis
+        # Add each data as a child at offset 0, on the parent's axis
         for name, data in data_to_use:
             child_coord_range = data.coordinate_range()
             child_length = child_coord_range[1] if child_coord_range else 0
@@ -464,9 +484,7 @@ def create_timeline_from_bundle(
             child = timeline_class(
                 length=child_length,
                 unit=data.unit,
-                number_type=_infer_timeline_class_and_number_type(
-                    data.unit, data.number_type
-                )[1],
+                number_type=effective_number_type,
                 uid=mint_timeline_id(data.unit, minter),
                 name=name,
             )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Sequence
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -52,12 +52,16 @@ from timetoalign.storage.events import (
     PROJECTION_EVENT_TYPE,
     SHAPE_FIELDS,
     _build_extra_field_schema,
+    _column_refusal,
     _event_rows,
     box_rows_on_the_axis,
+    joined_tables,
     mint_event_ids,
     projection_ids,
     refuse_shared_projection_ids,
 )
+from timetoalign.storage.registry import SEGMENT_KIND, EventRegistry, number_cells
+from timetoalign.storage.schema import get_base_field_names
 
 from .children import placed_on
 
@@ -67,7 +71,7 @@ if TYPE_CHECKING:
 else:
     _Host = object
 
-SEGMENT_EVENT_TYPE = "Segment"
+SEGMENT_EVENT_TYPE = SEGMENT_KIND
 
 #: The keys a Projection row may hold a value under: its ID, its type, its
 #: position and the event it stands for.
@@ -274,31 +278,6 @@ def _held_match(held: pa.Table, rows: pa.Table, *, with_id: bool) -> pa.Array:
     return joined.column("match").combine_chunks()
 
 
-def _null_columns_typed_as(data: EventData, sources: list[pa.Schema]) -> EventData:
-    """*data* with each column holding only nulls typed as in *sources*.
-
-    Rows rebuilt into a table (:meth:`EventData.from_dicts`) carry their
-    further columns' types in their values alone, so a column holding no
-    value (``mn_onset`` from a loader that states none) would come out as
-    strings. Such a column takes the field (type and metadata) it has in
-    the first of *sources* holding it, the tables the rows were read from.
-    """
-    table = data.table
-    changed = False
-    for schema in sources:
-        for field in schema:
-            index = table.schema.get_field_index(field.name)
-            if (
-                index < 0
-                or table.schema.field(index).type == field.type
-                or table.column(index).null_count != len(table)
-            ):
-                continue
-            table = table.set_column(index, field, pa.nulls(len(table), field.type))
-            changed = True
-    return data._derived(table) if changed else data
-
-
 def _held_by(row: dict[str, Any], child_id: str) -> dict[str, Any]:
     """*row*, an event a child reported, tagged with the timeline holding it.
 
@@ -313,21 +292,21 @@ def _held_by(row: dict[str, Any], child_id: str) -> dict[str, Any]:
     return row
 
 
-def tree_projection_ids(
+def family_projection_ids(
     roots: Sequence[Any], *, skip: Any = None
 ) -> tuple[pa.Array, pa.Array]:
-    """The Projection IDs every timeline of the trees of *roots* holds.
+    """The Projection IDs every timeline of the families of *roots* holds.
 
-    Read column-wise, never as Python objects: the trees of a manifest hold
-    one Projections table between them.
+    Read column-wise, never as Python objects: the families of a manifest
+    hold one Projections table between them.
 
     Args:
-        roots: Root timelines, each tree once.
+        roots: Root timelines, each family once.
         skip: A timeline whose Projections are left out, or None.
 
     Returns:
         The IDs and, row for row, the ID of the timeline holding each, the
-        trees in the order given, each root before its descendants.
+        families in the order given, each root before its descendants.
     """
     ids: list[pa.Array] = []
     holders: list[pa.Array] = []
@@ -366,43 +345,67 @@ class EventsMixin(_Host):
 
     @property
     def events(self) -> EventData:
-        """The underlying EventData (read-only access)."""
+        """This timeline's own events, positions in its own coordinates (read-only).
+
+        Derived from its family's registry (:attr:`registry`), which holds
+        each event's position on the root's axis: the two differ by the
+        offsets of this timeline's ancestors.
+        """
         return self._events
 
     @property
-    def _events(self) -> EventData:
-        """This timeline's own rows, as its tree's table holds them.
+    def registry(self) -> EventRegistry:
+        """The registry rows of this timeline's events and its descendants'.
 
-        The root of the timeline's tree holds the events of every timeline
-        of the tree (``_tree_store``), whose table is their concatenation;
-        these are this timeline's rows, copied by nothing, its axis declared
-        in the field metadata. Rows change only through the store
-        (:meth:`_append_events`, :meth:`_replace_events`).
+        A view of its family's registry: one row per event (its ``Segment``
+        rows, recording where each child lies, among them), positions on
+        the axis of the family's root, read when asked.
+
+        Examples:
+            >>> from timetoalign.timelines import ContinuousLogicalTimeline
+            >>> score = ContinuousLogicalTimeline(length=4, unit="quarters", uid="clt_s")
+            >>> score.add_events([{"id": "b1", "event_type": "Beat", "start": 1}])
+            ['b1']
+            >>> score.registry.table.column("id").to_pylist()
+            ['b1']
         """
-        return self._tree_store.events_of(self._id)
+        timelines = [self._id, *(child_id for child_id, _ in self._iter_descendants())]
+        return self._registry.filter(timelines=timelines)
+
+    @property
+    def _events(self) -> EventData:
+        """This timeline's own rows, in its own coordinates.
+
+        Held by the registry of the timeline's family (``_registry``); rows
+        change only through it (:meth:`_append_events`,
+        :meth:`_replace_events`).
+        """
+        return self._registry._family.events_of(self._id)
 
     def _append_events(self, data: EventData, *, checked: bool = False) -> None:
-        """Add the rows of *data* to this timeline's, in its tree's store.
+        """Add the rows of *data* to this timeline's, in its family's registry.
 
         Args:
             data: The rows.
-            checked: Their event IDs were refused already where the tree
-                holds them (``TreeStore.refuse_held_ids``).
+            checked: Their event IDs were refused already where the family
+                holds them.
 
         Raises:
-            ValueError: If an event ID of *data* is held in the tree or twice
-                in *data*, or *data* has another unit; nothing is added then.
+            ValueError: If an event ID of *data* is held in the family or
+                twice in *data*, or *data* lies on another axis; nothing is
+                added then.
         """
-        self._tree_store.add(self._id, data, checked=checked)
+        self._registry._family.add(self._id, data, checked=checked)
 
     def _replace_events(self, data: EventData) -> None:
-        """Make the rows of *data* this timeline's, in its tree's store.
+        """Make the rows of *data* this timeline's, in its family's registry.
 
         Raises:
             ValueError: If an event ID of *data* is held by another timeline
-                of the tree or twice in *data*; nothing changes then.
+                of the family or twice in *data*, or *data* lies on another
+                axis; nothing changes then.
         """
-        self._tree_store.replace(self._id, data)
+        self._registry._family.replace(self._id, data)
 
     def _ensure_capacity(
         self,
@@ -525,7 +528,7 @@ class EventsMixin(_Host):
 
         Raises:
             ValueError: If an ID, given or minted, is already held by an
-                event of this timeline's tree or given twice, a Projection row holds a key a Projection does
+                event of this timeline's family or given twice, a Projection row holds a key a Projection does
                 not have or names an event of this timeline, a Box's shape is
                 off the timeline's axis (or its row's ``unit``,
                 ``number_type`` or ``timeline_id`` names another), a number of
@@ -711,7 +714,7 @@ class EventsMixin(_Host):
         source states, read as a table (:meth:`EventData.from_arrays
         <timetoalign.storage.EventData.from_arrays>`), never row by row: as
         :meth:`_add_stated_events` adds a manifest's event rows, no ID is
-        minted, an ID the tree holds is refused, and a Box is checked
+        minted, an ID the family holds is refused, and a Box is checked
         against its shape as :meth:`add_events` checks it. The length
         follows :meth:`add_events`' rule (:meth:`_fit_length`): an unlocked
         timeline grows to hold a row ending past it, a locked one refuses
@@ -732,7 +735,7 @@ class EventsMixin(_Host):
         Raises:
             ValueError: If a row states another axis than the timeline's (a
                 Box with the message :meth:`add_events` gives), a Box
-                contradicts its shape, an ID is held in the tree or twice
+                contradicts its shape, an ID is held in the family or twice
                 (a Projection's by a Projection of other content), or a row
                 ends past the length of a locked timeline; nothing is added
                 then.
@@ -797,7 +800,7 @@ class EventsMixin(_Host):
         )
         if event_type == BOX_EVENT_TYPE:
             self._refuse_boxes_off_their_shapes(added, rows.column("id").to_pylist())
-        self._tree_store.refuse_held_ids(self._id, added.table)
+        self._registry._family.refuse_held_ids(self._id, added.table)
         self._fit_length(added)
         self._append_events(added, checked=True)
 
@@ -999,7 +1002,7 @@ class EventsMixin(_Host):
         Returns:
             The IDs and, row for row, the ID of the timeline holding each.
         """
-        return tree_projection_ids(self._manifest_roots(), skip=self)
+        return family_projection_ids(self._manifest_roots(), skip=self)
 
     def _rows_with_ids(
         self, rows: list[dict[str, Any]], seed: int | None
@@ -1011,8 +1014,8 @@ class EventsMixin(_Host):
         ``IdMinter(seed)``, or without a seed from the content minter of
         this timeline's ID, the number of events it holds and the event
         types of the rows without an ID. An ID, given or minted, already
-        held by an event of this timeline's tree (event IDs are unique
-        across a tree), or held by two rows, is refused.
+        held by an event of this timeline's family (event IDs are unique
+        among a root and its descendants), or held by two rows, is refused.
         A Projection's ID is unique in the timeline's manifest
         (:meth:`_manifest_projection_ids`): a Projection ID another timeline
         of the manifest holds as a Projection is refused, naming the first
@@ -1067,8 +1070,8 @@ class EventsMixin(_Host):
                     [holders.take(hits), pa.array([self._id] * len(hits), pa.string())]
                 ),
             )
-        # Event IDs are unique across the timeline's tree.
-        self._tree_store.refuse_held_ids(self._id, ids)
+        # Event IDs are unique across the timeline's family.
+        self._registry._family.refuse_held_ids(self._id, ids)
         return rows
 
     def _resolve_row_coordinates(self, row: dict[str, Any]) -> dict[str, Any]:
@@ -1240,7 +1243,6 @@ class EventsMixin(_Host):
         include_children: bool = True,
         min_coord: CoordinateSpec | None = None,
         max_coord: CoordinateSpec | None = None,
-        include_number_types: Collection[NumberType | str] | None = None,
         **field_filters: Any,
     ) -> EventData:
         """Filter and retrieve events.
@@ -1271,11 +1273,6 @@ class EventsMixin(_Host):
                 (converted via inverse C-Map).
             max_coord: Maximum coordinate (exclusive). Same conversion
                 rules as min_coord.
-            include_number_types: Keep the events of the timelines read in
-                one of these number types only (this timeline's own, and
-                each child's by ``source_timeline``), resolved from the
-                tree's map of timelines to their axes, never from a cell.
-                ``None`` keeps every number type.
             **field_filters: Additional field equality filters. Each
                 kwarg name is a field name, and the value is the
                 required value (or a list of values for OR logic).
@@ -1305,38 +1302,11 @@ class EventsMixin(_Host):
         # key, an exact bound exactly (``compare_number_column``).
         min_value = None if min_coord is None else self._query_position(min_coord)
         max_value = None if max_coord is None else self._query_position(max_coord)
-        # Start with own events, always excluding segment events
         result = self._events
-        sources = [result.schema]
-        segment_data = result.filter(event_type=SEGMENT_EVENT_TYPE)
-        if len(segment_data) > 0:
-            result = _null_columns_typed_as(
-                self._rebuilt(
-                    row for row in result if row.get("event_type") != SEGMENT_EVENT_TYPE
-                ),
-                sources,
-            )
-
-        # Include children's events with offset-adjusted coordinates
         if include_children and self._children:
-            all_rows: list[dict[str, Any]] = list(result)
-            for child_id, child in self._children.items():
-                child_offset = self._child_offsets[child_id].value
-                child_events = child.get_events(
-                    include_children=True,  # recurse
-                )
-                sources.append(child_events.schema)
-                for event in child_events:
-                    row = dict(event)
-                    # Adjust coordinates to root space
-                    for coord_key in ("start", "end"):
-                        val = row.get(coord_key)
-                        if val is not None:
-                            row[coord_key] = shift_coordinate(
-                                val, child_offset, subtract=False
-                            )
-                    all_rows.append(_held_by(row, child_id))
-            result = _null_columns_typed_as(self._rebuilt(all_rows), sources)
+            result = self._rebuilt(self._family_rows())
+        elif self._holds_segment_rows():
+            result = self._rebuilt(self._own_rows())
 
         if temporal_type is not None:
             result = result.filter(temporal_type=temporal_type)
@@ -1351,50 +1321,94 @@ class EventsMixin(_Host):
         if field_filters:
             result = result.filter(**field_filters)
 
-        if include_number_types is not None:
-            result = self._of_number_types(result, include_number_types)
-
         if result is self._events:
             # Never the timeline's own table: rows added to the result would
             # land on the timeline past every check of ``add_events``.
             result = result._derived(result.table)
         return result
 
-    def _of_number_types(
-        self, events: EventData, number_types: Collection[NumberType | str]
-    ) -> EventData:
-        """The rows of *events* whose timelines read them in *number_types*.
-
-        Each row's timeline is this one, or the one ``source_timeline``
-        names; its number type is the tree's map's entry for it.
-        """
-        wanted = {NumberType(number_type) for number_type in number_types}
-        kept = [
-            timeline_id
-            for timeline_id, (_, number_type) in self._tree_store.axes.items()
-            if number_type in wanted
-        ]
-        table = events.table
-        holders = pc.fill_null(
-            (
-                table.column("source_timeline")
-                if "source_timeline" in table.column_names
-                else pa.nulls(table.num_rows, pa.string())
-            ),
-            pa.scalar(self._id),
+    def _holds_segment_rows(self) -> bool:
+        """Whether this timeline's own rows record a child (``Segment`` rows)."""
+        table = self._events.table
+        return bool(
+            len(table)
+            and pc.any(
+                pc.equal(table.column("event_type"), pa.scalar(SEGMENT_EVENT_TYPE))
+            ).as_py()
         )
-        mask = pc.is_in(holders, value_set=pa.array(kept, pa.string()))
-        assert isinstance(mask, (pa.BooleanArray, pa.ChunkedArray))
-        return events._derived(table.filter(mask))
 
-    def _rebuilt(self, rows: Iterable[dict[str, Any]]) -> EventData:
-        """An EventData of *rows*, read from this timeline's tables or its children's.
+    def _own_rows(self) -> pa.Table:
+        """This timeline's own rows but its ``Segment`` rows, as held."""
+        table = self._events.table
+        if not len(table):
+            return table
+        return table.filter(
+            _filled(
+                pc.not_equal(table.column("event_type"), pa.scalar(SEGMENT_EVENT_TYPE)),
+                pa.scalar(True),
+            )
+        )
 
-        The rows' cells are in lowest terms already (held cells, shifted by
-        the exact engine), so the table is held without being reduced again.
+    def _family_rows(self) -> pa.Table:
+        """The rows :meth:`get_events` gives over the children, column-wise.
+
+        This timeline's own rows (``Segment`` rows left out, no
+        ``source_timeline``), then each child's, recursively, their
+        ``start`` and ``end`` shifted by the child's offset (exact on an
+        exact axis, one double addition per level on a float one) and
+        ``source_timeline`` naming the child where a deeper level named
+        none. Columns joined by the one rule of
+        :meth:`EventData.concat <timetoalign.storage.EventData.concat>`.
         """
-        table = EventData._rows_table(list(rows), self._unit, self._number_type)
-        return EventData._of_reduced(table, self._unit, self._number_type)
+        tables = [self._own_rows()]
+        for child_id, child in self._children.items():
+            offset = self._child_offsets[child_id].value
+            rows = child._family_rows() if child._children else child._own_rows()
+            for name in ("start", "end"):
+                if name not in rows.column_names or not len(rows):
+                    continue
+                index = rows.schema.get_field_index(name)
+                rows = rows.set_column(
+                    index,
+                    rows.schema.field(index).with_type(RATIONAL_STRUCT_TYPE),
+                    combine_number_columns(
+                        number_cells(rows.column(index)),
+                        offset,
+                        "add",
+                        self._number_type,
+                    ),
+                )
+            held_by = pa.array(np.full(len(rows), child_id, dtype=object), pa.string())
+            if "source_timeline" in rows.column_names:
+                index = rows.schema.get_field_index("source_timeline")
+                rows = rows.set_column(
+                    index,
+                    pa.field("source_timeline", pa.string()),
+                    pc.coalesce(
+                        pc.cast(rows.column(index).combine_chunks(), pa.string()),
+                        held_by,
+                    ),
+                )
+            else:
+                rows = rows.append_column(
+                    pa.field("source_timeline", pa.string()), held_by
+                )
+            tables.append(rows)
+        return joined_tables(tables, _column_refusal)
+
+    def _rebuilt(self, table: pa.Table) -> EventData:
+        """An EventData of rows read from this timeline's tables or its children's.
+
+        The base columns first, then the further ones by name, as a table of
+        rows read anew holds them; the cells are in lowest terms already
+        (held cells, shifted by the exact engine), so the table is held
+        without being reduced again.
+        """
+        base = [name for name in get_base_field_names() if name in table.column_names]
+        further = sorted(name for name in table.column_names if name not in base)
+        return EventData._of_reduced(
+            table.select([*base, *further]), self._unit, self._number_type
+        )
 
     def _get_exact_coordinate_value(
         self, timeline_id: str, axis: float

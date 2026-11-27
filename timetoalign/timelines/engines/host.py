@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, overload
 
 if TYPE_CHECKING:
     import logging
-    from collections.abc import Callable, Collection, Iterable, Sequence
+    from collections.abc import Callable, Collection, Iterable, Iterator, Sequence
     from fractions import Fraction
 
     import pandas as pd
@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     )
     from timetoalign.maps import ConversionMap
     from timetoalign.storage import EventData
-    from timetoalign.storage.tree import TreeStore
+    from timetoalign.storage.registry import EventRegistry
 
     from ..base import Timeline
     from ..flowcontrol import FlowControlRegistry, FlowControlView, Jump
@@ -65,7 +65,7 @@ class TimelineHost(Protocol):
     _length: Coordinate | None
     _locked: bool
     _meta: dict[str, Any]
-    _tree_store: TreeStore
+    _registry: EventRegistry
     _children: dict[str, Timeline]
     _child_offsets: dict[str, Coordinate]
     _conversion_maps: dict[str, ConversionMap[Any]]
@@ -106,6 +106,10 @@ class TimelineHost(Protocol):
 
     def _is_segment_line_instance(self) -> bool:
         """Whether this timeline is a SegmentLine (the dictionary's flag)."""
+        ...
+
+    def _iter_descendants(self) -> Iterator[tuple[str, Timeline]]:
+        """Yield ``(id, timeline)`` for every descendant, depth-first."""
         ...
 
     def _root_start(self) -> tuple[Timeline, Fraction]:
@@ -169,7 +173,7 @@ class TimelineHost(Protocol):
 
     @property
     def _events(self) -> EventData:
-        """This timeline's own rows, as its tree's table holds them."""
+        """This timeline's own rows, in its own coordinates."""
         ...
 
     def _append_events(self, data: EventData, *, checked: bool = False) -> None:
@@ -203,7 +207,6 @@ class TimelineHost(Protocol):
         include_children: bool = True,
         min_coord: CoordinateSpec | None = None,
         max_coord: CoordinateSpec | None = None,
-        include_number_types: Collection[NumberType | str] | None = None,
         **field_filters: Any,
     ) -> EventData:
         """Filter and retrieve events."""

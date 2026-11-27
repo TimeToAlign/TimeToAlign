@@ -316,14 +316,14 @@ class TestIdsAcrossTheManifest:
         assert part.add_events([{"event_type": "Projection", "start": 7}], seed=7) == [
             shared
         ]
-        # Event IDs are unique across a timeline tree: the join is refused,
+        # Event IDs are unique among a root and its descendants: the join is refused,
         # naming both holders, and nothing is renamed.
         with pytest.raises(ValueError) as raised:
             parent.add_child(part, 0)
         assert str(raised.value) == (
             f"Event id '{shared}' is already held by an event of timeline 'dpt_1', "
-            "so it cannot join timeline 'part': event ids are unique across a "
-            "timeline tree"
+            "so it cannot join timeline 'part': event ids are unique among a root "
+            "timeline and its descendants"
         )
         assert parent.n_children == 0
         assert part._parent is None

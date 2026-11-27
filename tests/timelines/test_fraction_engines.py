@@ -259,7 +259,7 @@ class TestBoundariesInTheAxisType:
         assert _typed(timeline.get_child_offset(child.id).value) == _typed(1 * step)
         assert _typed(child.length.value) == _typed(2 * step)
         # The copies are new events of the tree: IDs of their own (event IDs
-        # are unique across a tree), the starts of n1 and n2.
+        # are unique among a root and its descendants), the starts of n1 and n2.
         copies = _local_starts(child)
         assert [start for _, start in copies] == [
             start for _, start in _expected_part(["n1", "n2"], step)

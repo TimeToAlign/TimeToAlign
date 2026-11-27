@@ -59,7 +59,7 @@ from timetoalign.maps import (
 )
 from timetoalign.storage import EventData
 from timetoalign.storage.events import BOX_EVENT_TYPE, SHAPE_FIELDS
-from timetoalign.storage.tree import TreeStore
+from timetoalign.storage.registry import SEGMENT_KIND, EventRegistry
 
 from .engines import (
     ChildrenMixin,
@@ -113,7 +113,7 @@ module_logger = logging.getLogger(__name__)
 # region Constants
 
 # Event type name for segment events in the EventData
-SEGMENT_EVENT_TYPE = "Segment"
+SEGMENT_EVENT_TYPE = SEGMENT_KIND
 
 # Traversal order options for iterating children
 TraversalOrder = Literal["sorted", "depth_first", "breadth_first"]
@@ -393,9 +393,10 @@ class Timeline(
         self._name = name
         self._meta = dict(meta) if meta else {}
 
-        # Event storage: the root of a tree holds the events of the whole
-        # tree; this timeline reads its own rows through ``_events``.
-        self._tree_store = TreeStore(
+        # Event storage: the registry of the timeline's family (its root and
+        # every descendant); this timeline reads its own rows through
+        # ``_events``.
+        self._registry = EventRegistry(
             self._id, self._event_data_class.empty(self._unit, self._number_type)
         )
 
@@ -1149,14 +1150,15 @@ class Timeline(
         validate_id(new_id)
         old_id = self._id
         # Refused before the parent's children or rows change.
-        self._tree_store.refuse_rename(
+        family = self._registry._family
+        family.refuse_rename(
             old_id,
             new_id,
             parent=self._parent._id if self._parent is not None else None,
         )
         if self._parent is not None and new_id != old_id:
             self._parent._rename_child(old_id, new_id)
-        self._tree_store.rename(old_id, new_id)
+        family.rename(old_id, new_id)
         self._id = new_id
         self._rename_references(old_id, new_id)
 

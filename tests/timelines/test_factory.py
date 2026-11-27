@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -332,16 +332,20 @@ class TestCreateTimelineFromStore:
 
 
 class TestStoresOfTwoNumberTypes:
-    """Stores of one unit and two number types make one timeline.
+    """Stores of one unit and two number types make no timeline.
 
-    Merged (``flatten``, ``group_by``), the first table's number type is the
-    timeline's and the other table's rows are cast to it (a float as its
-    double's exact ratio); each store a child, each child keeps its own.
+    A child has its parent's number type and a timeline's rows lie on its
+    axis: the factory refuses a store of another number type, merged
+    (``flatten``, ``group_by``) or as a child, and never casts it.
     """
 
     @pytest.fixture
     def store(self) -> DictStore:
-        thirds = EventData.from_dicts(
+        return DictStore({"thirds": self._thirds(), "decimals": self._decimals()})
+
+    @staticmethod
+    def _thirds() -> EventData:
+        return EventData.from_dicts(
             [
                 {
                     "id": "a",
@@ -353,19 +357,48 @@ class TestStoresOfTwoNumberTypes:
             TimeUnit.quarters,
             NumberType.fraction,
         )
-        decimals = EventData.from_dicts(
+
+    @staticmethod
+    def _decimals() -> EventData:
+        return EventData.from_dicts(
             [{"id": "b", "event_type": "Beat", "instant": 0.75}],
             TimeUnit.quarters,
             NumberType.float,
         )
-        return DictStore({"thirds": thirds, "decimals": decimals})
 
     @staticmethod
     def _starts(timeline: Timeline) -> list[tuple[str, Fraction]]:
         events = timeline.get_events()
         return list(zip(events.column_values("id"), events.column_values("start")))
 
-    def test_flattened(self, store: DictStore) -> None:
+    REFUSAL = (
+        "The store 'decimals' lies on quarters in float, but the timeline made of "
+        "the stores on quarters in fraction: the stores of one timeline share its "
+        "unit and number type. Cast the store first (EventData.to_number_type), or "
+        "make a timeline of it alone."
+    )
+
+    @pytest.mark.parametrize(
+        "options",
+        [{"flatten": True}, {"group_by": "event_type"}, {}],
+        ids=["flattened", "grouped", "a-child-per-store"],
+    )
+    def test_a_store_of_another_number_type_is_refused(
+        self, store: DictStore, options: dict[str, Any]
+    ) -> None:
+        with pytest.raises(ValueError) as refusal:
+            create_timeline(store, uid="t", **options)
+
+        assert str(refusal.value) == self.REFUSAL
+
+    def test_the_store_cast_first_joins(self) -> None:
+        store = DictStore(
+            {
+                "thirds": self._thirds(),
+                "decimals": self._decimals().to_number_type("fraction"),
+            }
+        )
+
         timeline = create_timeline(store, uid="t", flatten=True)
 
         assert timeline.number_type is NumberType.fraction
@@ -375,31 +408,6 @@ class TestStoresOfTwoNumberTypes:
             ("b", Fraction(3, 4)),
         ]
         assert timeline.length.value == Fraction(3, 4)
-
-    def test_grouped(self, store: DictStore) -> None:
-        timeline = create_timeline(store, uid="t", group_by="event_type")
-
-        assert timeline.number_type is NumberType.fraction
-        assert _child_names(timeline) == ["Beat", "Note"]
-        assert self._starts(_child_named(timeline, "Beat")) == [("b", Fraction(3, 4))]
-        assert self._starts(_child_named(timeline, "Note")) == [("a", Fraction(1, 3))]
-
-    def test_each_child_on_its_own_stores_axis(self, store: DictStore) -> None:
-        timeline = create_timeline(store, uid="t")
-
-        assert timeline.number_type is NumberType.fraction
-        thirds = _child_named(timeline, "thirds")
-        decimals = _child_named(timeline, "decimals")
-        assert thirds.number_type is NumberType.fraction
-        assert decimals.number_type is NumberType.float
-        assert self._starts(thirds) == [("a", Fraction(1, 3))]
-        assert decimals.events.number_type is NumberType.float
-        assert decimals.events.table.column("start").to_pylist() == [
-            {"value": 0.75, "numerator": 3, "denominator": 4}
-        ]
-        axes = timeline._tree_store.axes
-        assert axes[thirds.id] == (TimeUnit.quarters, NumberType.fraction)
-        assert axes[decimals.id] == (TimeUnit.quarters, NumberType.float)
 
     def test_rows_on_another_axis_are_refused(self, store: DictStore) -> None:
         timeline = ContinuousLogicalTimeline(

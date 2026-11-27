@@ -164,7 +164,14 @@ from timetoalign.maps import (
     ShiftMap,
     TableMap,
 )
-from timetoalign.storage import DictStore, EventData, EventStore, SingleStore
+from timetoalign.storage import (
+    DictStore,
+    EventData,
+    EventRegistry,
+    EventStore,
+    Extraction,
+    SingleStore,
+)
 
 _DEFERRED_EXPORTS = {
     # Foundation structure
@@ -368,7 +375,9 @@ __all__ = [
     # IDs
     # Loader - Event-based (Type 2)
     "EventData",
+    "EventRegistry",
     "EventStore",
+    "Extraction",
     "SingleStore",
     "DictStore",
     "Loader",

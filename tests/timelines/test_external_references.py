@@ -96,7 +96,7 @@ def _reference_row(
 def _hierarchy() -> Timeline:
     """A parent/child/grandchild hierarchy, each level with two events.
 
-    Event IDs are unique across a timeline tree: the parent holds ``p1``,
+    Event IDs are unique among a root timeline and its descendants: the parent holds ``p1``,
     ``p2``, the child ``e1``, ``e2``, the grandchild ``g1``, ``g2``.
     """
     parent = _timeline("parent", length=20.0, ids=("p1", "p2"))

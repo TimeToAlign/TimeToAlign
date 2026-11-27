@@ -80,6 +80,7 @@ from timetoalign.core.timestamp import (
     timestamp_table_to_dataframe,
 )
 from timetoalign.storage import EventData
+from timetoalign.storage.registry import EventRegistry
 
 from .engines.tabular import conversion_map_columns
 from .flow.virtual import _member_named
@@ -242,6 +243,17 @@ class _IdScope:
             root = _root(member)
             roots.setdefault(id(root), root)
         return list(roots.values())
+
+    @property
+    def registry(self) -> EventRegistry:
+        """The registry rows of every family the members belong to.
+
+        One view over the registries of the members' roots, each family
+        once, in member order: every event of the members' families, its
+        position on its own root's axis (the row's ``unit`` and
+        ``number_type`` name it).
+        """
+        return EventRegistry.concat(*(root._registry for root in self._member_roots()))
 
     def _rename_member_references(self, old_id: str, new_id: str) -> None:
         """Make the statements of the members' trees and of the scope's own

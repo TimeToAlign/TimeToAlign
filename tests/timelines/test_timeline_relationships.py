@@ -2101,7 +2101,7 @@ class TestCreateChildrenFromRegions:
 
         events = self._own_events(cut)
         assert [(start, end) for _, start, end in events] == [(2, 3), (2, 3)]
-        store = tl._tree_store
+        store = tl._registry._family
         assert [store.origin_of(event_id) for event_id, _, _ in events] == [
             "f2",
             "own",

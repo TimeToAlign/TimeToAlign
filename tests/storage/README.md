@@ -515,58 +515,38 @@ and holds one spelling of each value, whatever way its rows came in.
   written before, whose column carries only the bare `unit` key, still reads
   as before (`float`, `0.3333333333333333`): that branch is the reader's
   fallback, asserted on a table written with the old metadata by hand.
-- **`concat` keeps every row's number type; the cast is on request**
-  (`TestJoiningKeepsNumberTypes`). A join never converts a value: tables of
-  one axis give a table of that axis as they stand (no `timeline_id`
-  column, the inputs unchanged); tables of different axes give a table
-  spanning them, each row keyed by its timeline in the dictionary-encoded
-  column `timeline_id` (a table standing alone that lies on no timeline by
-  its axis, `<quarters fraction>`, `<quarters float>`) and read in that
-  key's unit and number type, which the table maps once per key in memory.
-  What proves it is the cells, read member by member, and the rows each
-  number type selects (`filter(include_number_types=)`), for each
-  direction:
-  - a `fraction` quarters table (`a` at `[1/3, 2/3)`) joined by a `float`
-    one (`b` at `0.1` lasting `0.2`, an instant `c` at `0.5`): every cell of
-    the result equals the cell of the table it came from, member for member
-    (`b`'s start stays the float cell `0.1`, not the fraction
-    `3602879701896397/36028797018963968`), the keys are `<quarters
-    fraction>`, `<quarters float>`, `<quarters float>`, the `fraction` rows
-    are `a`, the `float` rows `b`, `c`, and the two inputs keep 1 and 2 rows;
-  - the old re-expressions are now the cast, `to_number_type`, with the old
-    values: on that join, `to_number_type("fraction")` gives `b`'s start
+- **A table lies on one axis; the cast is on request**
+  (`TestJoiningKeepsNumberTypes`). A join never converts a value, and joins
+  tables of one unit and number type only: a `fraction` quarters table (`a`
+  at `[1/3, 2/3)`) joined by a `float` one (`b` at `0.1` lasting `0.2`, an
+  instant `c` at `0.5`) is refused (`a table lies on one axis: this one on
+  quarters in fraction, the one joining on quarters in float; cast it first
+  (to_number_type) or keep the tables apart`), both tables unchanged; a
+  table of another unit (`seconds`) likewise. Tables of one axis join as
+  they stand (`concat` of two `fraction` tables keeps every cell member for
+  member). The cast, `to_number_type`, on a table standing alone, with its
+  exact values:
+  - the `float` table cast to `fraction` gives `b`'s start
     `3602879701896397/36028797018963968` (`Fraction(0.1)`), its duration
     `3602879701896397/18014398509481984` (`Fraction(0.2)`), its end their
     exact sum `10808639105689191/36028797018963968` (`Fraction(0.1) +
     Fraction(0.2)`, not `Fraction(0.1 + 0.2)`: start and duration are the
     stored pair of an event and the end is derived from them, so a row cast
     onto an exact type ends at its start plus its duration, exactly), `c` an
-    instant at `1/2`, every coordinate field and every row `fraction`; the
-    `float` table joined by the `fraction` one, cast to `float`, gives `a`'s
-    cells `0.3333333333333333` and `0.6666666666666666`, each mirrored by
-    its double's exact ratio (`6004799503160661/18014398509481984`); an
-    `int` table joined by `fraction` rows `[5/2, 7/2)` and `[3/2, 9/2)` and a
-    `float` row `[2.5, 3.5)` keeps them as stated (`5/2`, `3/2`, `2.5`, the
-    rows of each type selected by each type) and, cast to `int`, gives
-    start and duration nearest with ties to the even neighbour and the end
-    their sum: `5/2` → start 2, duration 1, end 3; `3/2` → start 2,
-    duration 3, end 5; `2.5` → start 2, duration 1, end 3, every
-    `denominator` 1; a `fraction` table joined by `int` rows, cast to
-    `fraction`, keeps them as `n/1`. A row already of the target type is
-    kept as it is (`a`, `x`).
-  - a table of another unit joins on its own axis (`<seconds float>`), its
-    cell `1.0` unchanged: the join's single-unit contract is lifted.
-  - `to_number_type(..., columns=[...])` on a table standing alone casts
-    the columns named and declares the type on them only (`start`
-    `fraction`, `end` and `duration` `float`, the table `float`); on a
-    table spanning timelines, whose rows read every coordinate column in
-    their timeline's type, a partial cast is refused naming the columns it
-    would leave out.
-  - `filter(include_number_types=)` on a table standing alone is all or
-    nothing: its declared type keeps every row, another none.
-  The joins the factory makes (`flatten=True`, `group_by=`) cast the stores
-  joining to the first store's number type, as they did; that is proven end
-  to end in `tests/timelines/test_factory.py` (`TestStoresOfTwoNumberTypes`).
+    instant at `1/2`, every coordinate field `fraction`;
+  - the `fraction` table cast to `float` gives `a`'s cells
+    `0.3333333333333333` and `0.6666666666666666`, each mirrored by its
+    double's exact ratio (`6004799503160661/18014398509481984`);
+  - cast to `int`, start and duration are nearest with ties to the even
+    neighbour and the end their sum: the `fraction` rows `[5/2, 7/2)` →
+    start 2, duration 1, end 3, `[3/2, 9/2)` → start 2, duration 3, end 5;
+    the `float` row `[2.5, 3.5)` → start 2, duration 1, end 3, every
+    `denominator` 1; an `int` row cast to `fraction` keeps `n/1`.
+  - `to_number_type(..., columns=[...])` casts the columns named and
+    declares the type on them only (`start` `fraction`, `end` and
+    `duration` `float`, the table `float`).
+  The factory refuses stores of two number types instead of casting them
+  (`tests/timelines/test_factory.py`, `TestStoresOfTwoNumberTypes`).
 - **Bounds of `filter`** (`TestFilterBounds`). An exact bound (`int`,
   `Fraction`) compares exactly on an `int` or `fraction` table; a bound
   written as a float compares as a key with the float side of the cells, so
@@ -610,192 +590,169 @@ and holds one spelling of each value, whatever way its rows came in.
   would not pass on the count alone; the reduction tests above pass
   unmodified, which is what shows the doors still reduce.
 
-### `test_tree_store.py` - The tree store: one table per timeline tree
+### `test_registry.py` - The event registry: root positions, local events, views
 
-**Purpose:** The root of a timeline tree holds the events of itself and every
-descendant (`TreeStore`, `storage/tree.py`), each row lying in its own
-timeline's coordinates, unit and number type; the tree's table is the
-concatenation of every timeline's rows, each row naming its timeline, and a
-timeline reads its own rows as they lie in that table, copying nothing.
+**Purpose:** The events of a family of timelines (a root and every
+descendant, one unit and one number type) are held by the root's
+`EventRegistry` (`storage/registry.py`): one registry row per event, its
+position on the **root's** axis, and per timeline its events in its **own**
+coordinates (`Timeline.events`). Both are read back, and agree, on every
+number type the plan states; everything a ruling refuses is refused before
+anything changes.
 
-**Contract and what proves it** (one tree: a `fraction` quarters root
-`clt_root` of length 8 holding `r1` at `1/2`; a `fraction` child `clt_a` at
-offset 0 holding `a1` at `1/3` and `a2` at `0`, added in that order; a
-`float` child `clt_b` at offset 4 holding `b1` at `0.1`):
+**The family** (`_family()`, used throughout): a `fraction` quarters root
+`clt_root` (length 8) holding the Beat `r1` at `1/2`; a child `clt_a`
+(length 4) holding the Beats `a1` at `1/3` and `a2` at `0`, added in that
+order, which first takes a grandchild `clt_g` (length 2) at offset 1 holding
+the Note `g1` at `1/4` lasting `1/2` with `pitch` 60; `clt_a` then joins the
+root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
+`1/10` joins at 4.
 
-- **One table for the tree, in the order rows came.** The three timelines
-  refer to one store, and the children's own stores are emptied when they
-  are attached (their `timeline_ids` read `()`). The table holds 6 rows: the
-  root's `r1` and the two `Segment` rows recording its children (still
-  among its events), `a1`, `a2`, `b1`. Its `timeline_id` column is
-  dictionary-encoded and reads `clt_root` three times, `clt_a` twice,
-  `clt_b` once: the timelines in the order they joined the tree, the root
-  first, and each timeline's rows in the order they were added, never
-  re-sorted by start. So the IDs read `r1`, `clt_a`, `clt_b`, `a1`, `a2`,
-  `b1` (`a1` before `a2` although it starts later), and `clt_a`'s own rows
-  `a1`, `a2`. A format round trip depends on it: rows read from a file come
-  back in the file's order. Positions stay child-local: `b1`'s start is the
-  float cell `0.1`, not `4.1`.
-- **The map and the row-type mask.** The store maps `clt_root` and `clt_a`
-  to `(quarters, fraction)`, `clt_b` to `(quarters, float)`, once, in
-  memory; no column of the table states a number type. The row-type mask
-  of the tree's one table (`row_type_codes(store.tables[0], store.axes)`)
-  is `[1, 1, 1, 1, 1, 2]` (`NUMBER_TYPE_CODES`: fraction 1, float 2).
-- **A timeline's rows are copied by nothing.** The buffer holding the float
-  side of `clt_b`'s `start` cells is the buffer of one chunk of the tree
-  table's `start` column (same address, same size): the tree's table is
-  built from the timelines' rows without a copy. The rows' `start` field
-  declares `quarters` and `float`, `clt_a`'s `fraction`, and their
-  `EventData` say so (`number_type`); they hold the timeline's own columns,
-  never `timeline_id`. A timeline's rows are the same object until they
-  change; rows added to the root or a child attached to it leave `clt_a`'s
-  object as it was (the identity is the proof that no other timeline's
-  change rebuilds or re-sorts them, so no old copy of the tree is held by
-  a timeline's rows).
-- **Rows change only through the store.** `Timeline._events` and
-  `Timeline.events` are read-only (assigning either raises
-  `AttributeError`); `add_events` on a child adds its rows to the root's
-  table (7 rows after one more event on `clt_a`, which reads `a1`, `a2`,
-  `a3`).
-- **Attaching moves rows.** Before `add_child`, `clt_b`'s rows are in its
-  own store; after it they are in the root's (`clt_b`'s segment row, then
-  `b1`), and its own store holds none.
-- **Timelines typing one column differently share the tree.** A child
-  whose `pitch` is the struct `{midi_number, name}` under a root whose
-  `pitch` is `{midi_number}` is attached, and the tree's table types
-  `pitch` with both members: the root's cell reads `name` null, the child's
-  keeps `C4`; each timeline reads its own rows in its own type (the root's
-  `pitch` still has one member). A child whose `velocity` is a string
-  under a root whose `velocity` is an integer is attached too: the tree
-  then has two tables (`tables`), the root's rows in the first, the
-  child's in a second, each cell as it was written (`80`, `"ff"`), every
-  row of the tree in one of them (3 rows). The store offers no single
-  table or `EventData` of the tree (`table` and `data` are not attributes
-  of it), so no reader can take the first table for the tree and leave
-  the child's row out unnoticed. No cell is rewritten.
-- **A refused child changes nothing.** A child holding an event ID of the
-  tree, and a child holding an event whose ID is the child's own (its
-  `Segment` row, named by its ID, would join the parent), are refused
-  before anything changes: the parent keeps its children, the tree's rows
-  and its store, and the child keeps its parent (none), its store and its
-  rows.
-- **A join keeps each row's type** (the join converts nothing):
-  `clt_a`'s events concatenated with `clt_b`'s key the rows by their
-  timelines (`clt_a`, `clt_a`, `clt_b`), `b1`'s start stays the float cell
-  `0.1` with the ratio side as stored, and the float filter keeps `b1`
-  alone; `to_number_type("fraction")` gives `b1` the exact ratio of the
-  double, `3602879701896397/36028797018963968`, its field declaring
-  `fraction`.
-- **A join is never refused for the number type**, even where a timeline's
-  rows meet a cast of themselves. A cast that changes the type no longer
-  lies on its timeline: it is keyed by its axis. `clt_b`'s rows joined
-  with their own `fraction` cast (both orders: rows first, cast first)
-  give a table of 2 rows, keyed `clt_b` and `<quarters fraction>` (or
-  `<quarters fraction>` and `clt_b`), its map holding `clt_b` as `float`
-  and the key `<quarters fraction>` as `fraction`; the float filter keeps
-  the row of `clt_b`, the fraction filter the cast. `clt_a`'s rows joined
-  with their own `float` cast likewise give `clt_a` twice and the key
-  `<quarters float>` twice, in the order joined, and so does the cast of
-  `clt_a`'s rows read through `get_events` joined with them, the cast
-  first. A table spanning timelines cast to a number type keys the rows
-  whose type changes by their new axis, as a table standing alone does:
-  the table spanning `clt_a` and `clt_b` cast to `float` is keyed
-  `<quarters float>`, `<quarters float>`, `clt_b` (`clt_b`'s rows were
-  `float` already and keep their timeline), its map `<quarters float>`
-  and `clt_b`, both `float`; joined with `clt_a`'s own `fraction` rows,
-  the keys read `<quarters float>`, `<quarters float>`, `clt_b`, `clt_a`,
-  `clt_a`, the map adds `clt_a` as `fraction`, and the fraction filter
-  keeps `a1`, `a2`. A cast to the type the rows have already keeps its
-  timeline (`clt_b`'s rows cast to `float` and joined with themselves are
-  one axis, joined as they stand).
-- **A cast of a spanning table joined again keeps every row's type**
-  (`TestACastJoinedAgainKeepsEachRowsType`). The defect this closes: the
-  cast kept a key whose axis it changed, mapped to the new type, so the
-  rows it named, joined again with the uncast table, were read in the
-  cast's type, and a `fraction` row at `1/10` came back from a cast to
-  `fraction` as `3602879701896397/36028797018963968`. Each key whose axis
-  changes is keyed by its new axis now, so every key of a table names
-  the axis its rows lie on, and the re-join cannot meet a key held on
-  another axis (`concat` asserts it). Two spellings, each joined as
-  `span.to_number_type("float").concat(span)`:
-  - **keys of axes:** a `fraction` table holding `a` at `1/10` joined with
-    a `float` table holding `b` at `0.1` (`span`, keyed `<quarters
-    fraction>`, `<quarters float>`). The cast is keyed `<quarters float>`
-    twice, its map `<quarters float>` alone, `float`. The re-join is keyed
-    `<quarters float>`, `<quarters float>`, `<quarters fraction>`,
-    `<quarters float>`, its map `<quarters float>` `float` and `<quarters
-    fraction>` `fraction`; the fraction filter keeps `a` alone, the float
-    filter `a`, `b`, `b`; cast to `fraction`, the rows read
-    `3602879701896397/36028797018963968` (the cast of `a`, a float now),
-    the same for `b`, `1/10` (`a` as it was), and
-    `3602879701896397/36028797018963968` (`b`).
-  - **keys of timelines:** a `fraction` quarters root `R` holding `a` at
-    `1/10` with a `float` child `C` at offset 0 holding `b` at `0.1`;
-    `span` is `R`'s rows (`a`, the `Segment` row `C` at `0`) joined with
-    `C`'s (`b`), keyed `R`, `R`, `C`. The re-join is keyed `<quarters
-    float>`, `<quarters float>`, `C`, `R`, `R`, `C`, its map `<quarters
-    float>` and `C` `float`, `R` `fraction`; the fraction filter keeps `a`,
-    `C` (`R`'s own rows); cast to `fraction`, the rows read
-    `3602879701896397/36028797018963968` (the cast of `a`), `0/1` (the
-    cast of the `Segment` row), `3602879701896397/36028797018963968`
-    (`b`), `1/10` (`a` as it was), `0/1`, and
-    `3602879701896397/36028797018963968` (`b`).
-- **One rule joins columns, in `concat` and in the tree**
-  (`TestOneRuleJoinsColumns`, `storage.events.unified_type`). The same two
-  timelines gave a tree and were refused by `concat`, which used Arrow's
-  own promotion; both now join by the one rule. A root whose `tag` is the
-  struct `{midi}` and a child whose `tag` is `{midi, name}`:
-  `root.events.concat(a.events)` types `tag` as the tree's table does
-  (`{midi: int64, name: string}`) and holds the same cells
-  (`{midi: 60, name: None}`, `None` for the `Segment` row,
-  `{midi: 60, name: "C4"}`). A table whose `tag` column is
-  dictionary-encoded (`"x"`) joined with one whose `tag` is plain
-  (`"y"`) gives a plain `string` column `["x", "y"]` (Arrow refused it);
-  so does that table joined with a `float` table whose `tag` is plain
-  (`"z"`), the two rows keyed `<quarters fraction>`, `<quarters float>`.
-  A column holding an `int` beside a `string` (a root's `velocity` 80, a
-  child's `"ff"`) has no one type: the tree keeps the child in a table of
-  its own (above), and `concat`, which returns one table, refuses it,
+**Contract and what proves it:**
+
+- **Root storage** (`TestRootPositions`). The root's registry holds 8 rows
+  in the columns of `REGISTRY_SCHEMA` (`id`, `kind`, `location`,
+  `timeline_id`, `unit`, `number_type`, `start`, `duration`, `name`,
+  `extraction_id`, `locator`, `vanished_in`), the timelines in joining
+  order, each timeline's rows in the order they came: IDs `r1`, `clt_a`,
+  `clt_b`, `a1`, `a2`, `clt_g`, `g1`, `b1`; kinds `Beat`, `Segment`,
+  `Segment`, `Beat`, `Beat`, `Segment`, `Note`, `Beat` (a child's place is a
+  `Segment` row of its parent); every `unit` `quarters`, every
+  `number_type` `fraction`. The starts, as exact ratios of the cells, are
+  the root's: `1/2`, `2`, `4`, `7/3` (`2 + 1/3`), `2`, `3`, `13/4` (`1/4 + 1
+  + 2`), `41/10`; durations null but the Segments' lengths `4`, `4`, `2` and
+  `g1`'s `1/2`. Every row names one extraction, the family's tool
+  extraction (parser `timetoalign`, the library's version, no source);
+  `location`, `locator`, `vanished_in` are null.
+- **Local positions derived, exact for int and fraction.** The timelines
+  read their own events locally: `clt_a`'s starts `1/3`, `0`, `1` (its
+  Segment row for `clt_g`), `clt_g`'s `1/4`, `clt_b`'s `1/10`; on a ticks
+  root (`int`) with a child at 7 holding an event at 3, the registry start
+  is `10` (an `int` cell, denominator 1) and the child's own start `3`.
+  Read from a package (`add_rows`): a `fraction` root with a child at 2 and
+  no events takes a registry row `p1` (a Note at `5/2` lasting `1/2`) and
+  the content `{id: p1, pitch: 62}`: the child's events read `p1` at `1/2`,
+  ending at `1`, lasting `1/2`, an `interval` `Note` with `pitch` 62; on the
+  root's axis the row stays at `5/2`. On a ticks root the row at `10` gives
+  the child at 7 the start `3`.
+- **The float case as the plan states it.** On a `float` seconds root with
+  a child at offset `0.2` holding an event at `0.1`, built in code, the
+  registry holds `0.1 + 0.2` in binary64 (`0.30000000000000004`) and the
+  child its own `0.1`: both as computed. A registry row read from a package
+  at `0.3` for that child gives the child `0.3 - 0.2` in binary64
+  (`0.09999999999999998`): what binary64 gives, the root's `0.3` kept.
+- **The child shift is column-wise** (`TestColumnWise`). With the per-row
+  shift of `core/time.py` (`shift_coordinate`, which `get_event` uses)
+  replaced by a function that raises, the root's registry rows and
+  `get_events()` over its children are built all the same and give the
+  starts above (`get_events` names each row's holder in `source_timeline`:
+  null for `r1`, `clt_a` for `a1`, `a2`, `clt_g` for `g1`, `clt_b` for
+  `b1`, its starts `1/2`, `7/3`, `2`, `13/4`, `41/10`).
+- **Views and counts** (`TestViews`). A view reads when asked, so it
+  follows the rows: `clt_a.registry` (itself and its descendants) reads
+  `a1`, `a2`, `clt_g`, `g1`, and after `a3` is added to `clt_a`, the same
+  view object also `a3`. `filter(kinds="Beat")` gives `r1`, `a1`, `a2`,
+  `b1`; chained with `filter(timelines="clt_a")`, `a1`, `a2`;
+  `filter(min_coord=2, max_coord=4)` (the root's axis, start inclusive, end
+  exclusive) `clt_a`, `a1`, `a2`, `clt_g`, `g1`; a bound in seconds is
+  refused when the rows are read, naming the family's unit. `counts()`
+  gives one row per kind, sorted: `Beat` 4, `Note` 1, `Segment` 3 (the
+  total `len(registry)`, 8); `counts("timeline_id")` `clt_a` 3, `clt_b` 1,
+  `clt_g` 1, `clt_root` 3; an unknown or position column is refused
+  (`KeyError`, naming the columns). `EventRegistry.concat` keeps each row
+  once, in its family's order: `concat(clt_a.registry,
+  root.registry.filter(kinds="Note"))` reads `a1`, `a2`, `clt_g`, `g1`. A
+  bundle's registry concatenates its families': with the root and a
+  `seconds` timeline holding `o1`, it reads the 8 rows then `o1`, whose
+  `unit` is `seconds` and `number_type` `float`. `content("Note")` is the
+  Note's own columns keyed by `id`: `id` `g1`, `pitch` 60, no position,
+  type, name or registry column; `content("Beat", ids=["a1"])` the one
+  column `id`, `a1`. `extractions` lists the tool extraction once.
+- **Merge on attach** (`TestMergeOnAttach`). A view of `clt_a` taken
+  before it joins the root reads `a1` at `1/3` and `g1` at `5/4` (its own
+  family's root, `clt_a`); after the join the same view reads them at `7/3`
+  and `13/4`, shifted once onto the new root, and every row of the merged
+  family names the root's tool extraction (the child's tool extraction is
+  dropped, its rows renamed to the root's), `extractions` one. A root of no
+  events taking such a child adopts the child's tool extraction. Rows added
+  to a child after it joined are shifted likewise (`a3` at `2` on `clt_a`
+  is `4` on the root).
+- **Update by locator** (`TestUpdate`). A timeline holds three events of
+  one source file (an `Extraction.of_source` of a file of the bytes `abc`,
+  SHA-256 `ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad`)
+  with the locators `m0`, `m1`, `m2` (`n1` at 0, `n2` at 1, `n3` at 2,
+  pitch 60, 62, 64), the column `locator` moved into the registry rows (the
+  events hold none). A second run over the file (another `Extraction` of
+  the same source) gives `m0` with pitch 61, `m2` at `5/2` and a new `m3`
+  at 3, under IDs of its own (`x0`, `x2`, `x3`): the rows read `n1`, `n2`,
+  `n3`, `x3`: `n1` and `n3` keep their IDs and take the new content (pitch
+  61, start `5/2`) and the new extraction; `n2`, no longer found, is kept,
+  its `vanished_in` the new extraction, its extraction the old; `x3` is
+  added, naming the new extraction. A row of another source keeps its place
+  and is never flagged. `filter(vanished=True)` reads `n2`. Data without a
+  `locator` column is refused (`an update matches rows by their locator:
+  the rows give none (a column 'locator')`).
+- **Extractions.** `Extraction.of_source` reads the file's SHA-256, its
+  `to_row()` / `from_row()` round trip gives an equal extraction, its
+  `parameters` canonical JSON text (`{"a":1,"b":[2]}` for `{"b": [2],
+  "a": 1}`), and two runs over one file with one parser mint one ID. A
+  source without its digest is refused. `extraction_table` has the columns
+  of `EXTRACTION_SCHEMA`.
+- **Lazy content.** A content given as a callable is not called by
+  `add_rows`, is called once when the timeline's events are first read and
+  not again on the second read.
+- **Every refusal, nothing changed after it** (`TestRefusals`):
+  - a child of another number type (`Child 'clt_f' has the number type
+    'float', its parent 'clt_root' has 'fraction': a child has its parent's
+    unit and number type. Events of another number type reach a timeline
+    only as Projections through a C-Map (add_projections).`), the root
+    keeping its two children;
+  - a timeline with a parent, events and all, moved to a second parent
+    (`Timeline 'clt_b' is a child of 'clt_root' already: a timeline has one
+    parent (it may be a member of many groups)`);
+  - a family read from a package (`add_rows`, registered) attached under a
+    parent (`timeline 'clt_p' holds events read from a package, positioned
+    on its own axis: it cannot become a child (that would move every
+    position); attach its copy with new IDs, or relate the two through a
+    group or MatchClaims`); rows added with `registered=False` attach;
+  - rows on another axis than the family's (`the rows of timeline 'clt_a'
+    lie on its axis, quarters in fraction; these lie on quarters in float`);
+  - registry rows naming a timeline the family does not hold (`KeyError`),
+    another axis, an extraction not given, an ID the family holds;
+  - rows taken in through a view (`TypeError`: rows join the registry of
+    one family, not a view of it);
+  - event IDs unique among a root and its descendants, one message naming
+    the ID, its holder and the timeline it would join: `r1` added to
+    `clt_a` (`Event id 'r1' is already held by an event of timeline
+    'clt_root', so it cannot join timeline 'clt_a': event ids are unique
+    among a root timeline and its descendants`), a child holding `r1` or
+    its own ID as an event attached to the root (the root keeps its rows
+    and children, the child its family), two rows given one ID (`Event id
+    'x' is given to 2 events joining timeline 'clt_a'; event ids are unique
+    among a root timeline and its descendants`);
+  - a family asked for a timeline it does not hold (`No timeline 'clt_2' in
+    this family. Available timelines: ['clt_1']`).
+- **One rule joins columns** (`TestOneRuleJoinsColumns`,
+  `storage.events.unified_type`), in `concat` and in a kind's content read
+  over timelines: a root whose `tag` is the struct `{midi}` and a child
+  whose `tag` is `{midi, name}` give, through `root.events.concat(a.events)`
+  and through `root.registry.content("Beat")`, `tag` typed `{midi: int64,
+  name: string}` (the cells `{midi: 60, name: None}`, `None` for the
+  `Segment` row in the join, `{midi: 60, name: "C4"}`), each timeline still
+  reading its own type; a dictionary-encoded `tag` (`"x"`) joined with a
+  plain one (`"y"`) is a plain `string` column `["x", "y"]`; an `int`
+  `velocity` (80) beside a `string` one (`"ff"`) is refused by `concat`,
   naming the column and the types (`the column 'velocity' holds values of
   type int64 in one table and of type string in another, which no one type
-  reads; one table holds one type per column`), never for the number
-  type.
-- **The extremes of a spanning table are read row by row.** A `fraction`
-  table holding a start at `1/2` joined with a `float` table holding a
-  start at `0.7` spans both types; `coordinate_range()` answers
-  `(Fraction(1, 2), 0.7)`, the high end the `float` the row holds (type
-  `float`), never the exact ratio of that double
-  (`3152519739159347/4503599627370496`), which reading every row in the
-  first table's type gave.
-- **The number-type filter resolves from the map.** On the tree's
-  timelines' rows joined (`root.events.concat(a.events, b.events)`)
-  `include_number_types={NumberType.float}` keeps `b1`,
-  `{NumberType.fraction}` every other row; `root.get_events(...)` with the
-  same filter gives `["b1"]` and `["r1", "a1", "a2"]` (its own rows and its
-  children's, each named by `source_timeline`, resolved through the map,
-  never from a cell).
-- **Event IDs are unique across the tree**, with nothing renamed, and one
-  message names the ID, its holder and the timeline it would join:
-  `r1` added to `clt_a` is refused (`Event id 'r1' is already held by an
-  event of timeline 'clt_root', so it cannot join timeline 'clt_a': event
-  ids are unique across a timeline tree`); a child `clt_c` holding `r1`
-  attached to the root is refused with the same message for `clt_c`, and
-  the tree is as it was: two children, 6 rows, `clt_c` holding its row in
-  its own store. Two rows given one ID are refused naming the ID, their
-  number and the timeline (`Event id 'x' is given to 2 events joining
-  timeline 'clt_a'; event ids are unique across a timeline tree`).
-- **A timeline's new ID renames its rows without rewriting one.** After the
-  child `clt_a` takes the ID `clt_x`, the store's timelines read
-  `clt_root`, `clt_x`, `clt_b`, the child reads its two rows, and the
-  store names `clt_x` as the holder of `a1`.
-- **A refused new ID changes nothing.** The child `clt_a` given the ID of
-  another timeline of the tree (`clt_b`, `clt_root`), or of an event of
-  the tree (`r1`, which its parent's `Segment` row would then hold a
-  second time), is refused before its parent changes: the parent's
-  children read `clt_a`, `clt_b` with their offsets 0 and 4, its rows
-  read `r1`, `clt_a`, `clt_b`, the store's timelines `clt_root`, `clt_a`,
-  `clt_b`, and the child keeps its ID. Before, the parent's children
-  were re-keyed (a sibling's entry overwritten) before the store refused.
+  reads; one table holds one type per column`), and so is the content of
+  their kind, while each timeline keeps its own rows.
+- **Rows change only through the registry.** `Timeline._events` and
+  `Timeline.events` are read-only (`AttributeError`).
+- **A timeline's new ID renames its rows** (`TestRename`): after `clt_a`
+  takes `clt_x`, the registry's `timeline_id` reads `clt_x` for its rows
+  and the family names it as the holder of `a1`; a new ID held by another
+  timeline or an event of the family (`clt_b`, `clt_root`, `r1`) is
+  refused before the parent's children or rows change.
 
 ### `test_coordinate_range.py` - `EventData.coordinate_range()`
 

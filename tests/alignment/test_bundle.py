@@ -1490,23 +1490,14 @@ class TestCreateMatchClaims:
 
     @staticmethod
     def _nested() -> tuple[AlignmentBundle, Timeline, Timeline, Timeline]:
-        """``score`` with children ``c`` (0) and ``d`` (4), both holding ``n1``.
-
-        Event IDs are unique across a timeline tree, so two timelines of one
-        tree never hold one ID. Two descendants of ``score`` hold one only
-        where they lie in two trees: ``c`` and ``d`` are each the child of a
-        root of their own first (``c_tree``, ``d_tree``), where their rows
-        stay, and then of ``score``.
-        """
+        """``score`` with children ``c`` (0) holding ``n1`` and ``d`` (4) holding ``n2``, ``n3``."""
         score = ContinuousLogicalTimeline(length=8, uid="score")
         c = ContinuousLogicalTimeline(length=4, uid="c")
         d = ContinuousLogicalTimeline(length=4, uid="d")
-        ContinuousLogicalTimeline(length=4, uid="c_tree").add_child(c, 0)
-        ContinuousLogicalTimeline(length=4, uid="d_tree").add_child(d, 0)
         score.add_child(c, 0)
         score.add_child(d, 4)
         c.add_events([{"id": "n1", "start": 1}])
-        d.add_events([{"id": "n1", "start": 1}, {"id": "n3", "start": 2}])
+        d.add_events([{"id": "n2", "start": 1}, {"id": "n3", "start": 2}])
         audio = ContinuousPhysicalTimeline(length=60.0, uid="audio")
         audio.add_events([{"id": "o1", "start": 1.0}])
         bundle = AlignmentBundle(id="nested")
@@ -1520,64 +1511,49 @@ class TestCreateMatchClaims:
         assert (claim.event_a_id, claim.event_b_id) == ("n3", "o1")
         assert claim.start_anchor.coordinate_a == Coordinate(6, TimeUnit.quarters)
 
-    def test_an_id_two_descendants_hold_names_no_event(self) -> None:
+    def test_two_descendants_never_hold_one_id(self) -> None:
+        """Event IDs are unique among a root and its descendants: an ID names one event."""
         bundle, score, c, audio = self._nested()
-        counts = (len(score.events), len(c.events), len(audio.events))
+        d = score.get_child("d")
         with pytest.raises(ValueError) as raised:
-            bundle.create_match_claims(
-                [
-                    ({"start": 0}, "score", {"start": 2.0}, "audio"),
-                    ("n1", "score", "o1", "audio"),
-                ]
-            )
+            d.add_events([{"id": "n1", "start": 3}])
         assert str(raised.value) == (
-            "The event ID 'n1' is held by 2 events of descendants of timeline "
-            "'score' (on 'c', 'd') and not by the timeline itself, so it names "
-            "no one event: name the timeline holding the event instead."
+            "Event id 'n1' is already held by an event of timeline 'c', so it "
+            "cannot join timeline 'd': event ids are unique among a root timeline "
+            "and its descendants"
         )
-        assert (len(score.events), len(c.events), len(audio.events)) == counts
-        assert len(bundle.match_claim_table) == 0
-        # The advice works: each descendant answers for its own event.
-        on_c, on_d = bundle.create_match_claims(
-            [("n1", "c", "o1", "audio"), ("n1", "d", "o1", "audio")]
+        on_score, on_c = bundle.create_match_claims(
+            [("n1", "score", "o1", "audio"), ("n1", "c", "o1", "audio")]
         )
+        assert on_score.start_anchor.coordinate_a == Coordinate(1, TimeUnit.quarters)
         assert on_c.start_anchor.coordinate_a == Coordinate(1, TimeUnit.quarters)
-        assert on_d.start_anchor.coordinate_a == Coordinate(1, TimeUnit.quarters)
-        assert (on_c.timeline_a_id, on_d.timeline_a_id) == ("c", "d")
+        assert (on_score.timeline_a_id, on_c.timeline_a_id) == ("score", "c")
 
     def test_the_timelines_own_event_answers_for_its_id(self) -> None:
         bundle, score, *_ = self._nested()
-        score.add_events([{"id": "n3", "start": 3}, {"id": "n1", "start": 7}])
-        own_n3, d_n3, own_n1 = bundle.create_match_claims(
+        score.add_events([{"id": "s1", "start": 3}])
+        own, d_n3, score_n3 = bundle.create_match_claims(
             [
-                ("n3", "score", "o1", "audio"),
+                ("s1", "score", "o1", "audio"),
                 ("n3", "d", "o1", "audio"),
-                ("n1", "score", "o1", "audio"),
+                ("n3", "score", "o1", "audio"),
             ]
         )
-        assert own_n3.start_anchor.coordinate_a == Coordinate(3, TimeUnit.quarters)
+        assert own.start_anchor.coordinate_a == Coordinate(3, TimeUnit.quarters)
         assert d_n3.start_anchor.coordinate_a == Coordinate(2, TimeUnit.quarters)
-        assert own_n1.start_anchor.coordinate_a == Coordinate(7, TimeUnit.quarters)
-        assert [claim.event_a_id for claim in (own_n3, d_n3, own_n1)] == [
+        assert score_n3.start_anchor.coordinate_a == Coordinate(6, TimeUnit.quarters)
+        assert [claim.event_a_id for claim in (own, d_n3, score_n3)] == [
+            "s1",
             "n3",
             "n3",
-            "n1",
         ]
 
     @staticmethod
     def _deep() -> tuple[AlignmentBundle, Timeline, Timeline, Timeline, Timeline]:
-        """``score`` ⊃ ``c`` (at 2) ⊃ ``g`` (at 1 in ``c``), and ``audio``.
-
-        ``score``, ``c`` and ``g`` lie in three trees (``c`` and ``g`` each
-        the child of a root of their own first, where their rows stay), so
-        each may hold an event ID another holds: event IDs are unique across
-        a timeline tree.
-        """
+        """``score`` ⊃ ``c`` (at 2) ⊃ ``g`` (at 1 in ``c``), and ``audio``."""
         score = ContinuousLogicalTimeline(length=8, uid="score")
         c = ContinuousLogicalTimeline(length=4, uid="c")
         g = ContinuousLogicalTimeline(length=2, uid="g")
-        ContinuousLogicalTimeline(length=2, uid="g_tree").add_child(g, 0)
-        ContinuousLogicalTimeline(length=4, uid="c_tree").add_child(c, 0)
         c.add_child(g, 1)
         score.add_child(c, 2)
         audio = ContinuousPhysicalTimeline(length=60.0, uid="audio")
@@ -1590,23 +1566,26 @@ class TestCreateMatchClaims:
     def test_the_own_event_answers_beside_a_child_with_descendants(self) -> None:
         bundle, score, c, g, _ = self._deep()
         score.add_events([{"id": "n1", "start": 7}])
-        c.add_events([{"id": "n1", "start": 1}])
+        c.add_events([{"id": "n2", "start": 1}])
         g.add_events([{"id": "x9", "start": 1}])
-        (claim,) = bundle.create_match_claims([("n1", "score", "o1", "audio")])
-        assert (claim.timeline_a_id, claim.event_a_id) == ("score", "n1")
-        assert claim.start_anchor.coordinate_a == Coordinate(7, TimeUnit.quarters)
+        own, of_g = bundle.create_match_claims(
+            [("n1", "score", "o1", "audio"), ("x9", "score", "o1", "audio")]
+        )
+        assert (own.timeline_a_id, own.event_a_id) == ("score", "n1")
+        assert own.start_anchor.coordinate_a == Coordinate(7, TimeUnit.quarters)
+        # g's event at 1 lies at 1 + 1 + 2 on score.
+        assert of_g.start_anchor.coordinate_a == Coordinate(4, TimeUnit.quarters)
 
-    def test_an_id_a_child_and_its_descendant_hold_names_no_event(self) -> None:
+    def test_a_child_and_its_descendant_never_hold_one_id(self) -> None:
         bundle, score, c, g, audio = self._deep()
         c.add_events([{"id": "n1", "start": 1}])
-        g.add_events([{"id": "n1", "start": 1}])
         counts = (len(score.events), len(c.events), len(g.events), len(audio.events))
         with pytest.raises(ValueError) as raised:
-            bundle.create_match_claims([("n1", "score", "o1", "audio")])
+            g.add_events([{"id": "n1", "start": 1}])
         assert str(raised.value) == (
-            "The event ID 'n1' is held by 2 events of descendants of timeline "
-            "'score' (on 'c', 'g') and not by the timeline itself, so it names "
-            "no one event: name the timeline holding the event instead."
+            "Event id 'n1' is already held by an event of timeline 'c', so it "
+            "cannot join timeline 'g': event ids are unique among a root timeline "
+            "and its descendants"
         )
         assert (
             len(score.events),

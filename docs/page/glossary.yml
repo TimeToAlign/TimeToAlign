@@ -657,24 +657,31 @@ Region: |
   timelines and cannot hold events or maps directly.
 
 Resource: |
-  An entry of a TimeToShare manifest's resources, naming a file that holds
-  data for its timelines and lies beside it: its id (any element id no other
+  An entry of a TimeToShare manifest's resources, naming a file, or a folder
+  of Parquet files read as one table, that holds data for its timelines: its
+  id (any element id no other
   element of the manifest holds; an entry the library adds gets a minted
   resource_…, and an entry read keeps its own when written back), its type
   (what its rows are: MatchClaim for the MatchClaim table, Projection for
   the Projections table, Box for the Box table), the ids of the timelines it
-  holds data for, its url relative to the manifest, and optionally its media
-  type, size in bytes and integrity (an Integrity: algorithm and digest). At
-  most one resource has each of the three types. A manifest and the files it
-  names make a package; the manifest reads and draws without them, and names
-  no event. An
-  AlignmentBundle keeps the entries as Resource objects in its resources; its
-  to_file() writes the MatchClaim table when it holds MatchClaims, the
-  Projections table when a timeline holds Projections and the Box table
-  (boxes.parquet) when a timeline holds Boxes, each with its entry,
-  and refuses to write event rows into the manifest beside them; from_file()
-  reads them back. A named file that is absent is not read and its entry is
-  kept.
+  holds data for, its url relative to the manifest (a folder when it ends in
+  /), and optionally its media type, size in bytes and integrity (an
+  Integrity: algorithm and digest; a file's only). A manifest may name
+  several resources of one type, each listing other timelines. A manifest
+  and the files it names make a package; the manifest reads and draws
+  without them, and names no event. An AlignmentBundle keeps the entries as
+  Resource objects in its resources; from_file() reads every resource of the
+  three types: a file whole, a folder keeping the rows of the timelines the
+  resource lists, since the files of a folder may hold the rows of other
+  manifests of a package. Its to_file() writes the MatchClaim table when it
+  holds MatchClaims, the Projections table when a timeline holds Projections
+  and the Box table (boxes.parquet) when a timeline holds Boxes, one table
+  of each type with its entry (the type's first entry names it, the type's
+  other entries are left out), and refuses to write event rows into the
+  manifest beside them. It also refuses to write a bundle one of whose
+  resources of the three types names a folder: the library writes a
+  package's tables as single files and does not yet write into a folder. A
+  named file or folder that is absent is not read and its entry is kept.
 
 raw_quarters: |
   The conventional name for the ShiftMap attached to a score timeline. The

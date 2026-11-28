@@ -706,17 +706,30 @@ equal length) changes one file in a copy of the extracted archive.
   file's `jar:` URI and SHA-256 digest) and, as locators, the note-on
   messages (`track:1 message:1`, `track:1 message:3`, … for MTD0807's
   EDM-corr file, whose second track holds the notes); the loader's
-  `extractions` are these four files' extractions. Quarters reach the
-  timeline only through its attached `TicksToQuarters` C-Map at 480 ticks
-  per quarter (`3840` ticks → `8` quarters).
+  `extractions` are these four files' extractions. Its maps are the ones
+  the MIDI loader attaches and no others: quarters reach the timeline
+  only through the one ticks → quarters C-Map at the file's 480 ticks per
+  quarter (`3840` ticks → `8` quarters; asking for quarters finds one
+  map, so the loader adds no second one beside the MIDI loader's), and
+  seconds through the ticks → seconds C-Map of the file's tempo map:
+  EDM-corr's `1,000,000` µs per quarter gives `3840` ticks → `8.0` s,
+  EDM-orig's `500,000` gives `3839` ticks → `3839/960` s, the float
+  `3.9989583333333334` (the seconds axis is float); each of the four
+  carries a measure map. A loader that kept its own quarters map beside
+  the MIDI loader's would make the quarters lookup refuse to choose.
 * **Each timeline is as long as its file states.** MIDI: the end of track
   in ticks, an int (MTD0807: EDM-orig `3839`, EDM-corr and SCORE `3840`,
-  EDM-alig `1369`; the other themes as listed above); the
+  EDM-alig `1369`; the other themes as listed above), the length the MIDI
+  loader gives its timeline, which it locks (`is_locked`: the file
+  states its extent, so the length is fixed and this loader sets none;
+  the four MIDI timelines are locked, the length unchanged by the lock);
+  the
   MusicXML: the end of its last measure (`9`, `17`, `6`, `17`); the
   excerpt `EndTime − StartTime` from the decimal strings (`2.8`, `4.5`,
   `7.9`, `5.55`, the last the float of `"5.55"`); every CSV, PDF and the
   Sibelius file `None`. A length that is the last note's end and not the
-  end of track (`3839` for EDM-corr) would show the accessor unused.
+  end of track (`3839` for EDM-corr) would show the MIDI loader's length
+  not taken.
 * **Unequal known lengths take part through a child, never stretched.**
   The groups' members of known length that differ are the excerpt and the
   EDM-alig MIDI, and the MusicXML and the SCORE MIDI. In all four themes
@@ -859,11 +872,30 @@ equal length) changes one file in a copy of the extracted archive.
 * **IDs are the minters'.** With `seed=0` the IDs are those a fresh
   `IdMinter(0)` mints in the loader's order: per theme in file-name order
   the excerpt (`cpt`), the 13 file timelines (`dlt cpt cgt dlt cpt cgt clt
-  clt dlt cpt cgt dlt cpt`), the four ticks → quarters C-Maps of the MIDI
-  files (`cmap`, EDM-orig, EDM-corr, SCORE, EDM-alig), the children a
-  longer member takes part through (excerpt/EDM-alig pair first, a
-  `dlt`, then MusicXML/SCORE MIDI, a `clt`), the four groups (`group`);
-  then the tracks (`cpt`); then the claims (`claim`). The notes are the
+  clt dlt cpt cgt dlt cpt`), the children a longer member takes part
+  through (excerpt/EDM-alig pair first, a `dlt`, then MusicXML/SCORE
+  MIDI, a `clt`), the four groups (`group`); then the tracks (`cpt`);
+  then the claims (`claim`). Then, when `create_timelines()` builds them,
+  the maps of each MIDI file's timeline, in the order of `THEME_FILES`
+  (EDM-orig, EDM-corr, SCORE, EDM-alig), six per file, as the MIDI
+  loader's store mints them from the minter it is given: the ticks →
+  quarters C-Map, the ticks → seconds C-Map, the measure map
+  (`measure_map`), the ticks → quarters link of the `ChainMap` reading
+  the measure map, its `MeasureRecordMap` link, and the `ChainMap`
+  (`cmap` but the measure map). `create_timelines()` shows the first
+  three of each file through the timeline (its two C-Maps by unit, its
+  `measure_map`); `create_bundle()` of a fresh loader mints its own ID
+  (`bundle`) after the claims and then builds the timelines, so its
+  manifest holds exactly the 24 map IDs that follow. The maps are the
+  MIDI loader's and only their IDs this loader's: a MIDI loader seeded
+  from its file's content alone would give two MIDI files equal byte for
+  byte (MTD8510 and MTD8522 of `Strauss_Op316` in MTD 1.0.0) maps of one
+  ID, which the bundle refuses to join. Made by copying MTD0807's
+  EDM-orig MIDI file over MTD0808's in a copy of the corpus: both themes
+  load (EDM-orig is not matched against and takes part in no comparison
+  of lengths), `create_bundle()` of the movement joins both timelines
+  (each `3839` ticks long), and their quarters, seconds and measure map
+  IDs are three each, none shared. The notes are the
   MIDI loaders' (each file's timeline is the one its own loader builds):
   each MIDI file's ten notes are those a fresh `IdMinter(seed_from(0,
   <the file's path below MTD/>))` mints (`note`; `data_EDM-corr_MID/

@@ -43,8 +43,11 @@ makes, for the movements or themes selected::
   file the ticks timeline
   :class:`~timetoalign.loader.midi.ScoreMidiLoader` builds of it
   (:class:`~timetoalign.timelines.types.DiscreteLogicalTimeline`,
-  ``dlt_…``, number type int), holding its notes, its quarters a
-  ticks → quarters C-Map away; a quarters
+  ``dlt_…``, number type int), holding its notes, as long as its end of
+  track and locked, its quarters, seconds and bars the C-Maps and measure
+  map the file states (the ticks → quarters C-Map at its resolution, the
+  ticks → seconds C-Map of its tempo map, a measure map of its time
+  signatures); a quarters
   :class:`~timetoalign.timelines.types.ContinuousLogicalTimeline`
   (``clt_…``, number type fraction) per MusicXML file and for the Sibelius
   file; a seconds timeline per CSV note list; a points
@@ -108,7 +111,7 @@ import io
 import json
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
@@ -122,7 +125,7 @@ from typing_extensions import Self
 from timetoalign.alignment.claims import MatchClaim, MatchClaimField
 from timetoalign.core import CHUNK, NumberType, Provenance, TimeUnit
 from timetoalign.core.fields import SemanticField
-from timetoalign.core.ids import CMAP_PREFIX, GROUP_PREFIX, minting_from, seed_from
+from timetoalign.core.ids import GROUP_PREFIX, minting_from, seed_from
 from timetoalign.core.time import express_as
 from timetoalign.display.html import code
 from timetoalign.loader._sources import (
@@ -310,8 +313,11 @@ class _File:
     ``length`` is the file's extent on its axis (``None`` when the file
     states none). A MIDI file's ``midi`` is the
     :class:`~timetoalign.loader.midi.ScoreMidiLoader` that read it, which
-    builds its timeline on ticks; ``ppq`` its ticks per quarter and
-    ``cmap_id`` the ID of its ticks → quarters C-Map.
+    builds its timeline on ticks, as long as its end of track and locked,
+    with the C-Maps the file states; ``length`` is that end of track,
+    ``ppq`` its ticks per quarter, and ``cmap`` its ticks → quarters C-Map
+    as the MIDI loader states it, attached nowhere: it gives the file's
+    extent in quarters and places extents on the ticks.
     """
 
     file: MtdFile
@@ -319,13 +325,7 @@ class _File:
     length: Fraction | float | int | None
     ppq: int | None = None
     midi: ScoreMidiLoader | None = None
-    cmap_id: str | None = None
-
-    @property
-    def cmap(self) -> TicksToQuarters:
-        """A MIDI file's ticks → quarters C-Map, under its ID."""
-        assert self.ppq is not None and self.cmap_id is not None
-        return TicksToQuarters(ppq=self.ppq, uid=self.cmap_id)
+    cmap: TicksToQuarters | None = None
 
     @property
     def to_ticks(self) -> QuartersToTicks:
@@ -334,13 +334,14 @@ class _File:
         It places a value on the ticks and is attached nowhere, so it is
         built under a minter of its own and draws no ID from the loader's.
         """
+        assert self.cmap is not None
         with minting_from(0):
             return self.cmap.inverse()
 
     @property
     def quarters(self) -> Fraction | None:
         """A MIDI file's extent in quarters, through its C-Map."""
-        if self.ppq is None or self.length is None:
+        if self.cmap is None or self.length is None:
             return None
         return Fraction(self.cmap(self.length))
 
@@ -723,10 +724,11 @@ class MtdLoader(AlignmentLoader):
 
         The MIDI files are read by their own loaders (:meth:`_read_midi`),
         which mint their notes' IDs. This loader mints, in this order: the
-        excerpt, the timelines of :data:`THEME_FILES`, the ticks → quarters
-        C-Maps of the MIDI files (in that order), the children through
-        which a longer member takes part (in the order of
+        excerpt, the timelines of :data:`THEME_FILES` (in that order), the
+        children through which a longer member takes part (in the order of
         :data:`_COMPARED`), the groups (in the order of :data:`ENCODINGS`).
+        The maps of the MIDI files' timelines are minted when
+        :meth:`create_timelines` builds them.
         """
         start = _seconds(meta["StartTime"], "StartTime", stem)
         end = _seconds(meta["EndTime"], "EndTime", stem)
@@ -758,15 +760,17 @@ class MtdLoader(AlignmentLoader):
             if file.kind == "MIDI":
                 midi = midis[file.label]
                 files[file.label] = _File(
-                    file, minted(file), midi.end_of_track, midi.ticks_per_beat, midi
+                    file,
+                    minted(file),
+                    midi.end_of_track,
+                    midi.ticks_per_beat,
+                    midi,
+                    _quarters_map(midi),
                 )
             elif file.kind == "MusicXML":
                 files[file.label] = _File(file, minted(file), score_length)
             else:
                 files[file.label] = _File(file, minted(file), None)
-        for label, held in files.items():
-            if held.midi is not None:
-                files[label] = replace(held, cmap_id=self._id_minter.mint(CMAP_PREFIX))
 
         # Exact extents, in quarters or seconds (EDM-alig's quarters are the
         # excerpt's seconds): the excerpt's as META writes its decimals,
@@ -1162,6 +1166,16 @@ class MtdLoader(AlignmentLoader):
         of the excerpt). Call :meth:`create_groups` with the timelines
         returned to group them.
 
+        A MIDI file's timeline is the one its MIDI loader's store builds,
+        as long as the file's end of track and locked. The IDs of its maps
+        (the ticks → quarters and ticks → seconds C-Maps, the measure map,
+        and the ``ChainMap`` reading it with its two links) are drawn from
+        this loader's minter when the timeline is built, six per MIDI
+        file, after every ID ``load`` mints; a second call draws new ones,
+        as a second
+        :meth:`ScoreMidiLoader.create_timeline
+        <timetoalign.loader.midi.MidiLoader.create_timeline>` does.
+
         A timeline derived from another (``dcterms:source``) refuses
         ``to_dict()`` when written alone: its derivation names a timeline
         outside its one-timeline manifest. The same timeline taken from
@@ -1374,13 +1388,17 @@ class MtdLoader(AlignmentLoader):
                 name=name,
             )
         else:
-            # The MIDI loader builds the file's timeline on its ticks; its
-            # quarters are a C-Map away.
-            assert held.ppq is not None
-            timeline = held.midi.create_timeline(uid=held.id)
+            # The MIDI loader's store builds the file's timeline on its
+            # ticks, as long as its end of track and locked, with the C-Maps
+            # (quarters, seconds) and the measure map the file states. Their
+            # IDs come from this loader's minter: two MIDI files of one
+            # selection may be equal byte for byte (MTD8510 and MTD8522),
+            # and their own loaders, seeded from their content, would give
+            # the maps of both one ID, which a bundle refuses.
+            timeline = held.midi.store.create_timeline(
+                uid=held.id, minter=self._id_minter
+            )
             timeline.name = name
-            timeline.length = held.length
-            timeline.add_conversion_map(held.cmap)
         member = file.member(theme.stem)
         timeline.add_statement(
             "lrmoo:R7i_is_exemplified_by",
@@ -1476,6 +1494,20 @@ def _notes(midi: ScoreMidiLoader) -> pa.Table:
     """The Note rows of the events a MIDI loader read, in its order."""
     table = midi.events.table
     return table.filter(pc.equal(table.column("event_type"), pa.scalar("Note")))
+
+
+def _quarters_map(midi: ScoreMidiLoader) -> TicksToQuarters:
+    """The ticks → quarters C-Map a MIDI loader states of its file, unattached.
+
+    The map its timeline carries, built anew under a minter of its own, so
+    that it draws no ID from any loader's minter; the store is built
+    before, outside that minter.
+    """
+    store = midi.store
+    with minting_from(0):
+        cmap = store.get_cmaps()["quarters"]
+    assert isinstance(cmap, TicksToQuarters)
+    return cmap
 
 
 def _span(whole: _File, extent: Fraction) -> Fraction | float | int:

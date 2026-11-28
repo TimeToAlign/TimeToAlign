@@ -12,6 +12,7 @@ the test that changes a file; the validation logic is written down in
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import zipfile
 from fractions import Fraction
@@ -294,6 +295,8 @@ class TestFileTimelines:
             if label.endswith("MIDI")
         )
         assert isinstance(lengths["SCORE MusicXML"], Fraction)
+        midis = [label for label in lengths if label.endswith("MIDI")]
+        assert [by_label(timelines)[label].is_locked for label in midis] == [True] * 4
 
     def test_lengths_of_every_theme(self, archive: Path) -> None:
         timelines = MtdLoader.from_file(archive).create_timelines()
@@ -913,6 +916,25 @@ class TestMidiFilesOnTicks:
         assert cmap(3840) == Fraction(8)
         assert [cmap(tick) for tick in TICKS_0807] == ONSETS_0807
 
+    def test_the_maps_the_midi_loader_states(self, archive: Path) -> None:
+        found = by_label(
+            MtdLoader.from_file(archive, themes=["MTD0807"]).create_timelines()
+        )
+        corr, orig = found["EDM-corr MIDI"], found["EDM-orig MIDI"]
+        assert corr.n_conversion_maps == 2
+        assert [
+            (cmap.source_unit, cmap.target_unit)
+            for cmap in (
+                corr.get_conversion_map("quarters"),
+                corr.get_conversion_map("seconds"),
+            )
+        ] == [(TimeUnit.ticks, TimeUnit.quarters), (TimeUnit.ticks, TimeUnit.seconds)]
+        assert corr.get_conversion_map("seconds")(3840) == 8.0
+        assert orig.get_conversion_map("seconds")(3839) == 3.9989583333333334
+        assert 3.9989583333333334 == float(Fraction(3839, 960))
+        for label in ("EDM-orig MIDI", "EDM-corr MIDI", "SCORE MIDI", "EDM-alig MIDI"):
+            assert found[label].measure_map is not None, label
+
 
 # endregion
 
@@ -1224,19 +1246,21 @@ class TestIds:
         loader = MtdLoader.from_file(archive, themes=["MTD0807"], seed=0)
         files = ["dlt", "cpt", "cgt", "dlt", "cpt", "cgt"]
         files += ["clt", "clt", "dlt", "cpt", "cgt", "dlt", "cpt"]
+        maps = ["cmap", "cmap", "measure_map", "cmap", "cmap", "cmap"]
         expected = minted(
             0,
             "cpt",
             *files,
-            *["cmap"] * 4,
             "dlt",
             "clt",
             *["group"] * 4,
             "cpt",
             *["claim"] * 10,
+            *maps * 4,
         )
-        excerpt_id, file_ids, cmap_ids = expected[0], expected[1:14], expected[14:18]
-        spans, group_ids, track_id = expected[18:20], expected[20:24], expected[24]
+        excerpt_id, file_ids = expected[0], expected[1:14]
+        spans, group_ids, track_id = expected[14:16], expected[16:20], expected[20]
+        claim_ids, map_ids = expected[21:31], expected[31:]
         timelines = loader.create_timelines()
         found = by_label(timelines)
         for label in ("EDM-orig MIDI", "EDM-corr MIDI", "SCORE MIDI", "EDM-alig MIDI"):
@@ -1244,15 +1268,16 @@ class TestIds:
             notes = minted(seed_from(0, below_mtd), *["note"] * 10)
             timeline = found[label]
             assert timeline.get_events().table.column("id").to_pylist() == notes, label
-        assert [
-            found[label].get_conversion_map("quarters").id
-            for label in (
-                "EDM-orig MIDI",
-                "EDM-corr MIDI",
-                "SCORE MIDI",
-                "EDM-alig MIDI",
-            )
-        ] == cmap_ids
+        midi_labels = ("EDM-orig MIDI", "EDM-corr MIDI", "SCORE MIDI", "EDM-alig MIDI")
+        firsts = zip(map_ids[0::6], map_ids[1::6], map_ids[2::6], strict=True)
+        for label, (quarters, seconds, measures) in zip(
+            midi_labels, firsts, strict=True
+        ):
+            timeline = found[label]
+            assert timeline.n_conversion_maps == 2, label
+            assert timeline.get_conversion_map("quarters").id == quarters, label
+            assert timeline.get_conversion_map("seconds").id == seconds, label
+            assert timeline.measure_map.id == measures, label
         assert found["excerpt"].id == excerpt_id
         assert [found[label].id for label in LABELS] == file_ids
         assert [
@@ -1261,7 +1286,41 @@ class TestIds:
         ] == spans
         assert [group.id for group in loader.create_groups(timelines)] == group_ids
         assert timelines[0].id == track_id
-        assert [row["id"] for row in claims_of(loader)] == expected[25:]
+        assert [row["id"] for row in claims_of(loader)] == claim_ids
+
+    def test_seeded_map_ids_in_the_bundle(self, archive: Path) -> None:
+        bundle = MtdLoader.from_file(
+            archive, themes=["MTD0807"], seed=0
+        ).create_bundle()
+        maps = ["cmap", "cmap", "measure_map", "cmap", "cmap", "cmap"]
+        expected = minted(0, *["x"] * 31, "bundle", *maps * 4)
+        assert bundle.id == expected[31]
+        written = json.dumps(bundle.to_dict())
+        held = re.findall(r'"#((?:cmap|measure_map)_[0-9a-z]{13})"', written)
+        assert sorted(set(held)) == sorted(expected[32:])
+
+    def test_equal_midi_files_keep_their_maps_apart(self, folder: Path) -> None:
+        mtd = folder / "MTD"
+        shutil.copyfile(
+            mtd / f"data_EDM-orig_MID/{STEM_0807}.mid",
+            mtd / "data_EDM-orig_MID/MTD0808_Beethoven_Op002No1-01.mid",
+        )
+        bundle = MtdLoader.from_file(folder, movements=[PIANO]).create_bundle()
+        roots = bundle.get_timelines(bundle.timeline_ids)
+        first, second = (
+            by_label(roots, theme)["EDM-orig MIDI"]
+            for theme in ("B689 (MTD 0807)", "B690 (MTD 0808)")
+        )
+        assert [length(first), length(second)] == [3839, 3839]
+        ids = [
+            {
+                timeline.get_conversion_map("quarters").id,
+                timeline.get_conversion_map("seconds").id,
+                timeline.measure_map.id,
+            }
+            for timeline in (first, second)
+        ]
+        assert [len(ids[0]), len(ids[1]), len(ids[0] & ids[1])] == [3, 3, 0]
 
     def test_seeded_ids_do_not_follow_the_folder(
         self, archive: Path, complete_folder: Path

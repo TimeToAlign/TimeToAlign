@@ -5375,7 +5375,7 @@ where it does, on a float axis (`seconds`):
 
 **The Op. 106 manifest.** The timelines and flow control of the sonata as
 its manifest states them (`beethoven_piano_sonatas`,
-`sonata_29_op106/manifest.json`): the root `clt_1` (15833/4) holds the
+`sonata_29_op106.tts.json`): the root `clt_1` (15833/4) holds the
 four movements `clt_2` (1644 at 0), `clt_3` (516 at 1644), `clt_4` (561
 at 2160) and `clt_5` (4949/4 at 2721); `clt_2` states the brackets (a
 Jump at 953/2, `{by: 0, passes: [1]}` and `{to: jump_target_1, passes:

@@ -461,13 +461,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li>one <strong>pre-parsed table</strong> per event type, holding what is particular to events of that type, keyed by their IDs and without positions (the Projection table, a Note table); an event whose content can be read again from its source file is <strong>re-parsed</strong> instead and has no row there;</li>
 <li>the <strong>MatchClaim table</strong>.</li>
 </ul>
-<p>The manifest names the registry and the MatchClaim table in its <code>resources</code>. Several manifests can share their tables in a <strong>package</strong>: a folder whose <code>package.yaml</code> lists the manifests and the tables: the registry a folder of parts (one part of the non-event rows and one part per extraction), the Extraction table one file, and the MatchClaim table and every pre-parsed table a folder <code>tables/&lt;Type&gt;/</code> of the rows of every manifest. An ID combined with the location of a manifest, or of the package, resolves to what it names.</p>
+<p>The manifest names the registry and the MatchClaim table in its <code>resources</code>. Several manifests can share their tables in a <strong>package</strong>: a folder whose <code>package.yaml</code> lists the manifests and the tables: the registry one Parquet file holding every row of every manifest, the Extraction table one file, and the MatchClaim table and every pre-parsed table a folder <code>tables/&lt;Type&gt;/</code> of the rows of every manifest. An ID combined with the location of a manifest, or of the package, resolves to what it names.</p>
 <p>This guide writes a bundle with its tables, resolves IDs through its manifest, builds a package of two bundles with <code>Package</code>, opens one of its manifests, checks the package with TimeToShare’s package check, and writes one bundle into the package again.</p>
 <section id="setup" class="level2">
 <h2 class="anchored" data-anchor-id="setup">Setup</h2>
 <p>Install the library with <code>pip install timetoalign</code>; the TimeToShare package, which defines the format and checks it, comes with it. Every file is written to a temporary directory.</p>
 <p>The helper <code>piece</code> builds the bundle of one piece: a score of four notes, a recording with an onset for each note but the last, a MatchClaim for each note and onset, and one claim giving the last note a position on the recording, where it gets a Projection. Every ID starts with the piece’s key, so that the IDs of two pieces differ. <code>files</code> lists a directory’s files and folders, <code>show</code> prints one key of a YAML file as the file holds it, <code>values_per_file</code> names the values of one column in each file of a table folder, and <code>event_rows</code> reads the event rows of a registry file.</p>
-<div id="d8e006c6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:43.423160Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:43.423001Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.414782Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.414100Z&quot;}}" data-execution_count="1">
+<div id="b19b39a6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:12.124273Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:12.123711Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:14.690447Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:14.689231Z&quot;}}" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fractions <span class="im">import</span> Fraction</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
@@ -568,7 +568,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="two-bundles" class="level2">
 <h2 class="anchored" data-anchor-id="two-bundles">Two bundles</h2>
 <p>Two pieces, each with its score and recording. Their onsets were detected at slightly different times.</p>
-<div id="75833771" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.416437Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.416202Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.475687Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.474997Z&quot;}}" data-execution_count="2">
+<div id="59f8a9c6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:14.695123Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:14.694504Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:15.304533Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:15.303201Z&quot;}}" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>bach <span class="op">=</span> piece(<span class="st">"bach"</span>, [<span class="fl">0.0</span>, <span class="fl">0.9</span>, <span class="fl">1.8</span>])</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>handel <span class="op">=</span> piece(<span class="st">"handel"</span>, [<span class="fl">0.1</span>, <span class="fl">1.1</span>, <span class="fl">2.0</span>])</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>bach</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -594,7 +594,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="write-a-bundle-with-its-tables" class="level2">
 <h2 class="anchored" data-anchor-id="write-a-bundle-with-its-tables">Write a bundle with its tables</h2>
 <p><code>to_file()</code> always writes the Projections and Boxes the bundle holds, with the MatchClaim table. With <code>events=True</code> it also writes every other event type its timelines hold: the registry gets a row for each note and onset, and each type its pre-parsed table, <code>Note.parquet</code> and <code>Onset.parquet</code>. The manifest itself still names no event.</p>
-<div id="4b2f5ad5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.477269Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.477119Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.711102Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.710447Z&quot;}}" data-execution_count="3">
+<div id="f5373b82" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:15.308772Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:15.308418Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:15.967745Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:15.959872Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>single <span class="op">=</span> FILES <span class="op">/</span> <span class="st">"bach"</span></span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>single.mkdir()</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>manifest_path <span class="op">=</span> bach.to_file(single <span class="op">/</span> <span class="st">"bach.yaml"</span>, events<span class="op">=</span><span class="va">True</span>)</span>
@@ -610,7 +610,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The manifest names the registry and the MatchClaim table in its <code>resources</code>: their <code>type</code>, the timelines whose rows they hold for it, and their location relative to the manifest, here files beside it, with their size and SHA-256 digest. The pre-parsed tables and the Extraction table are not named: the registry’s rows point to them.</p>
-<div id="9ad598d0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.712788Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.712645Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.721591Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.720601Z&quot;}}" data-execution_count="4">
+<div id="20e42c03" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:15.971485Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:15.971096Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:15.993393Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:15.992253Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>show(manifest_path, <span class="st">"resources"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>resources:
@@ -637,7 +637,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Each event row states the event’s ID, its type (<code>kind</code>), its timeline and its position, each number written once in the member its number type names (the score’s quarters as a fraction’s numerator and denominator, the recording’s seconds as a float’s <code>value</code>), and the <code>location</code> of the pre-parsed table holding its content. The rows are sorted by extraction, timeline, exact start and ID.</p>
-<div id="412f64e5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.723229Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.723017Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.732066Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.731544Z&quot;}}" data-execution_count="5">
+<div id="0439aba2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:15.997033Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:15.996724Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:16.020414Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:16.019255Z&quot;}}" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>event_rows(single <span class="op">/</span> <span class="st">"registry.parquet"</span>)[:<span class="dv">6</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="5">
 <pre><code>[{'id': 'bach_n1',
@@ -673,7 +673,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The other rows of the registry are its non-event rows: one per element of the manifest (its timelines, groups and resources, the manifest itself), per MatchClaim and per extraction, each with its kind and its location, so that an ID found in the registry leads to the file holding it.</p>
-<div id="946e2efd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.734330Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.734082Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.740641Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.739808Z&quot;}}" data-execution_count="6">
+<div id="a997b991" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:16.023440Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:16.023101Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:16.033577Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:16.032456Z&quot;}}" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="bu">sorted</span>(</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    (row[<span class="st">"kind"</span>], row[<span class="st">"location"</span>])</span>
 <span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> row <span class="kw">in</span> pq.read_table(single <span class="op">/</span> <span class="st">"registry.parquet"</span>).to_pylist()</span>
@@ -691,7 +691,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Every event names the extraction that made it. These events were made in code, so each timeline family (a root and its children) names one extraction of the library itself: no source file, the parser <code>timetoalign</code> and its version, and the ID minter. A loader records the source file it read and its digest instead.</p>
-<div id="0eae2fa5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.742479Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.742341Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.747223Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.746630Z&quot;}}" data-execution_count="7">
+<div id="2c02b498" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:16.037222Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:16.036863Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:16.047777Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:16.046919Z&quot;}}" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>pq.read_table(single <span class="op">/</span> <span class="st">"extractions.parquet"</span>).select(</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    [<span class="st">"id"</span>, <span class="st">"source"</span>, <span class="st">"parser"</span>, <span class="st">"minter"</span>, <span class="st">"id_length"</span>]</span>
 <span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>).to_pylist()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -709,7 +709,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>A pre-parsed table holds the content of each event, keyed by ID, without its position: the Projection table states which event each Projection stands for, here the last note, whose position on the recording the claim states.</p>
-<div id="8fce5f75" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.748789Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.748644Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.753154Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.752535Z&quot;}}" data-execution_count="8">
+<div id="bed80236" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:16.051637Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:16.051147Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:16.059157Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:16.057969Z&quot;}}" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>pq.read_table(single <span class="op">/</span> <span class="st">"projections.parquet"</span>).to_pylist()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="8">
 <pre><code>[{'id': 'projection_2yts5090yg7wv',
@@ -717,7 +717,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p><code>from_file()</code> reads the manifest and its tables, so the bundle read holds the notes and onsets again, beside the recording’s Projection and the MatchClaims; each event’s content is read from its pre-parsed table when its timeline’s events are first read. Written again, without <code>events=</code> (a manifest read with notes and onsets is written with them), it gives the same bytes, file by file.</p>
-<div id="8dcaf0f7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.755739Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.755570Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.826909Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.826239Z&quot;}}" data-execution_count="9">
+<div id="cc4ccad0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:16.062414Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:16.062009Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:16.265249Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:16.263593Z&quot;}}" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>read <span class="op">=</span> AlignmentBundle.from_file(manifest_path)</span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>copy <span class="op">=</span> FILES <span class="op">/</span> <span class="st">"copy"</span></span>
 <span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>copy.mkdir()</span>
@@ -745,7 +745,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="resolve-an-id" class="level2">
 <h2 class="anchored" data-anchor-id="resolve-an-id">Resolve an ID</h2>
 <p><code>resolve(target, id)</code> answers what an ID names, through a manifest (a path or a <code>file:</code> URL) or a package root, always as a list: a timeline, an event as its scalar, a MatchClaim, an extraction. An event’s position is the registry’s, on the axis of its timeline’s root. An ID nothing holds gives the empty list.</p>
-<div id="61986348" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.828520Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.828376Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.908957Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.908222Z&quot;}}" data-execution_count="10">
+<div id="5b0c7b2c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:16.268496Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:16.268125Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:16.479254Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:16.475615Z&quot;}}" data-execution_count="10">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"bach_n3"</span>: resolve(manifest_path, <span class="st">"bach_n3"</span>),</span>
 <span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"bach_recording"</span>: resolve(manifest_path.as_uri(), <span class="st">"bach_recording"</span>),</span>
@@ -760,8 +760,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="build-a-package-of-two-bundles" class="level2">
 <h2 class="anchored" data-anchor-id="build-a-package-of-two-bundles">Build a package of two bundles</h2>
-<p>A <code>Package</code> takes a <code>name</code> (and an <code>id</code>, its IRI where it is published). <code>write_bundle(bundle, url)</code> adds a bundle as the manifest at <code>url</code>, relative to the package’s root. A new package only stages the bundles; <code>to_file()</code> writes them all at once, then <code>package.yaml</code>, then the registry’s part of the non-event rows, into a folder that holds no package yet.</p>
-<div id="dfccfd85" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.910614Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.910469Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.046180Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.045357Z&quot;}}" data-execution_count="11">
+<p>A <code>Package</code> takes a <code>name</code> (and an <code>id</code>, its IRI where it is published). <code>write_bundle(bundle, url)</code> adds a bundle as the manifest at <code>url</code>, relative to the package’s root. A new package only stages the bundles; <code>to_file()</code> writes them all at once, then <code>package.yaml</code>, then the registry’s non-event rows, into a folder that holds no package yet.</p>
+<div id="1da04ba8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:16.484971Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:16.484643Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:17.001980Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:16.998252Z&quot;}}" data-execution_count="11">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>package <span class="op">=</span> Package(name<span class="op">=</span><span class="st">"Two pieces"</span>)</span>
 <span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>package.write_bundle(bach, <span class="st">"bach/manifest.yaml"</span>)</span>
 <span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>package.write_bundle(handel, <span class="st">"handel/manifest.yaml"</span>)</span>
@@ -775,12 +775,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
  'handel/',
  'handel/manifest.yaml',
  'package.yaml',
- 'registry/',
- 'registry/extraction_0zaknjsysrccl.parquet',
- 'registry/extraction_21lz9g19no776.parquet',
- 'registry/extraction_3hp5e1xsjnl1c.parquet',
- 'registry/extraction_3l4t1d05fl0yw.parquet',
- 'registry/non_events.parquet',
+ 'registry.parquet',
  'tables/',
  'tables/MatchClaim/',
  'tables/MatchClaim/part_0qaonzeg62tmx.parquet',
@@ -793,8 +788,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
  'tables/extractions.parquet']</code></pre>
 </div>
 </div>
-<p>A package writes every event type of its bundles, with no <code>events=</code> needed. The registry is the folder <code>registry/</code>: <code>non_events.parquet</code>, the non-event rows, and one part per extraction, named after it. Every other table has one folder under <code>tables/</code> but the Extraction table, one file; each write adds one file per pre-parsed type and one of MatchClaims, named from its content, holding the rows of every bundle it writes. <code>package.yaml</code> lists the manifests and the tables.</p>
-<div id="5ca25ac0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.047609Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.047469Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.050143Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.049578Z&quot;}}" data-execution_count="12">
+<p>A package writes every event type of its bundles, with no <code>events=</code> needed. The registry is one file at the root, <code>registry.parquet</code>, holding every row: the non-event rows first, then the event rows of both pieces. Every other table has one folder under <code>tables/</code> but the Extraction table, one file; each write adds one file per pre-parsed type and one of MatchClaims, named from its content, holding the rows of every bundle it writes. <code>package.yaml</code> lists the manifests and the tables.</p>
+<div id="09c920eb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:17.006273Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:17.005914Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:17.012860Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:17.010392Z&quot;}}" data-execution_count="12">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(package_path.read_text(encoding<span class="op">=</span><span class="st">"utf-8"</span>), end<span class="op">=</span><span class="st">""</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>manifests:
@@ -809,7 +804,7 @@ tables:
   -
     media_type: application/vnd.apache.parquet
     type: Registry
-    url: registry/
+    url: registry.parquet
   -
     media_type: application/vnd.apache.parquet
     type: Extraction
@@ -833,8 +828,8 @@ tables:
 timetoshare: "0.2.0"</code></pre>
 </div>
 </div>
-<p>Each manifest names the registry and the MatchClaim folder, relative to itself, with the timelines whose rows it keeps. A folder has no size and no digest: the rows of other manifests share its files.</p>
-<div id="feb3fe57" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.051811Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.051651Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.060099Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.059497Z&quot;}}" data-execution_count="13">
+<p>Each manifest names the registry and the MatchClaim folder, relative to itself, with the timelines whose rows it keeps. Neither has a size or a digest: the rows of other manifests share them.</p>
+<div id="9412a978" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:17.016539Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:17.016198Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:17.037632Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:17.036157Z&quot;}}" data-execution_count="13">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>show(root <span class="op">/</span> <span class="st">"bach"</span> <span class="op">/</span> <span class="st">"manifest.yaml"</span>, <span class="st">"resources"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>resources:
@@ -843,7 +838,7 @@ timetoshare: "0.2.0"</code></pre>
     media_type: application/vnd.apache.parquet
     timelines: ["#bach_recording", "#bach_score"]
     type: Registry
-    url: "../registry/"
+    url: "../registry.parquet"
   -
     id: "#resource_269fb67rqwojs"
     media_type: application/vnd.apache.parquet
@@ -852,19 +847,20 @@ timetoshare: "0.2.0"</code></pre>
     url: "../tables/MatchClaim/"</code></pre>
 </div>
 </div>
-<p>Each registry part holds the rows of one extraction, here one per score and recording; the one file of notes holds the notes of both scores, and the one file of MatchClaims the claims of both pieces.</p>
-<div id="5888a9a4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.061458Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.061319Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.071139Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.070530Z&quot;}}" data-execution_count="14">
+<p>The registry holds the event rows of the four timelines of both pieces; the one file of notes holds the notes of both scores, and the one file of MatchClaims the claims of both pieces.</p>
+<div id="55b94fa3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:17.040843Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:17.040473Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:17.057270Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:17.055716Z&quot;}}" data-execution_count="14">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"registry"</span>: values_per_file(root <span class="op">/</span> <span class="st">"registry"</span>, <span class="st">"timeline_id"</span>),</span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Note"</span>: values_per_file(root <span class="op">/</span> <span class="st">"tables"</span> <span class="op">/</span> <span class="st">"Note"</span>, <span class="st">"id"</span>),</span>
-<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"MatchClaim"</span>: values_per_file(root <span class="op">/</span> <span class="st">"tables"</span> <span class="op">/</span> <span class="st">"MatchClaim"</span>, <span class="st">"timeline_a_id"</span>),</span>
-<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"registry"</span>: <span class="bu">sorted</span>(</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>        {row[<span class="st">"timeline_id"</span>] <span class="cf">for</span> row <span class="kw">in</span> event_rows(root <span class="op">/</span> <span class="st">"registry.parquet"</span>)}</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Note"</span>: values_per_file(root <span class="op">/</span> <span class="st">"tables"</span> <span class="op">/</span> <span class="st">"Note"</span>, <span class="st">"id"</span>),</span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"MatchClaim"</span>: values_per_file(root <span class="op">/</span> <span class="st">"tables"</span> <span class="op">/</span> <span class="st">"MatchClaim"</span>, <span class="st">"timeline_a_id"</span>),</span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="14">
-<pre><code>{'registry': {'extraction_0zaknjsysrccl.parquet': ['handel_score'],
-  'extraction_21lz9g19no776.parquet': ['bach_score'],
-  'extraction_3hp5e1xsjnl1c.parquet': ['handel_recording'],
-  'extraction_3l4t1d05fl0yw.parquet': ['bach_recording'],
-  'non_events.parquet': []},
+<pre><code>{'registry': ['bach_recording',
+  'bach_score',
+  'handel_recording',
+  'handel_score'],
  'Note': {'part_03lal801h6anl.parquet': ['bach_n1',
    'bach_n2',
    'bach_n3',
@@ -880,7 +876,7 @@ timetoshare: "0.2.0"</code></pre>
 <section id="open-one-manifest-from-the-package" class="level2">
 <h2 class="anchored" data-anchor-id="open-one-manifest-from-the-package">Open one manifest from the package</h2>
 <p><code>Package.from_file()</code> opens the package at its <code>package.yaml</code>; <code>manifests</code> lists the manifests’ URLs and <code>tables</code> the table entries. <code>bundle(url)</code> reads one manifest as an <code>AlignmentBundle</code>, every table filtered to the timelines its resources list, so the Bach bundle holds its own events and claims and none of Handel’s. Its MatchClaims are the ones written; the package’s file orders them by timeline and ID and states each claim’s provenance in its own row, so compare the claims, not the tables.</p>
-<div id="c0090f77" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.072458Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.072317Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.139754Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.139158Z&quot;}}" data-execution_count="15">
+<div id="43e4c9eb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:17.062685Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:17.062341Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:17.243016Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:17.241852Z&quot;}}" data-execution_count="15">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>opened <span class="op">=</span> Package.from_file(package_path)</span>
 <span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>from_package <span class="op">=</span> opened.bundle(<span class="st">"bach/manifest.yaml"</span>)</span>
 <span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>{</span>
@@ -908,7 +904,7 @@ timetoshare: "0.2.0"</code></pre>
 </div>
 </div>
 <p>The claims read answer as before: the third note, at quarter 2, lies at 1.8 seconds on the Bach recording.</p>
-<div id="c0f04dca" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.141083Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.140947Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.151783Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.151170Z&quot;}}" data-execution_count="16">
+<div id="cd924039" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:17.246954Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:17.246606Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:17.279706Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:17.274367Z&quot;}}" data-execution_count="16">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>from_package.get_matchstamp_at(Fraction(<span class="dv">2</span>), <span class="st">"bach_score"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="16">
 <div style="font-family: monospace;"><strong>MatchStamp</strong> <span style="background: #e3f2fd; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">2 timelines, 1 edges</span>
@@ -937,7 +933,7 @@ timetoshare: "0.2.0"</code></pre>
 </div>
 </div>
 <p>Through the package root, <code>resolve</code> finds every row of an ID in the registry: Handel’s first onset, and the manifest itself, with no manifest named.</p>
-<div id="177d5d9f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.154019Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.153771Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.228943Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.228186Z&quot;}}" data-execution_count="17">
+<div id="2e52d786" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:17.283487Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:17.283108Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:17.441890Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:17.440432Z&quot;}}" data-execution_count="17">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"handel_o1"</span>: resolve(root, <span class="st">"handel_o1"</span>),</span>
 <span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"bach"</span>: resolve(root, <span class="st">"bach"</span>),</span>
@@ -951,7 +947,7 @@ timetoshare: "0.2.0"</code></pre>
 <section id="check-the-package" class="level2">
 <h2 class="anchored" data-anchor-id="check-the-package">Check the package</h2>
 <p><code>timetoshare.tables.package_problems()</code> checks a package whole from its <code>package.yaml</code>: every manifest valid, every table file of its type and version, every resource naming a table of the package, every ID held once, every event row naming an extraction and a table holding its content, the non-event rows agreeing with the manifests and tables, and the rows of each manifest checked against it. It returns the list of problems, here none. <code>Package</code> runs the same check after every write and raises its first problem, with every file restored.</p>
-<div id="b2ca4d3f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.230456Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.230311Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.296422Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.295722Z&quot;}}" data-execution_count="18">
+<div id="04e31228" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:17.445270Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:17.444838Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:17.634474Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:17.633171Z&quot;}}" data-execution_count="18">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>package_problems(package_path)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="18">
 <pre><code>[]</code></pre>
@@ -961,7 +957,7 @@ timetoshare: "0.2.0"</code></pre>
 <section id="ids-are-the-packages" class="level2">
 <h2 class="anchored" data-anchor-id="ids-are-the-packages">IDs are the package’s</h2>
 <p>Within a package, an event ID is held once among all events of every type, and a MatchClaim ID once among its MatchClaims; as <code>Package</code> writes a package, a timeline ID is held by one manifest. A bundle colliding with what the package holds is refused before anything is written, naming the ID and both holders. Writing the Bach piece a second time, under another URL, collides at its timelines.</p>
-<div id="8f7a5fd8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.298046Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.297856Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.341126Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.340466Z&quot;}}" data-execution_count="19">
+<div id="ec1a2d36" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:17.640570Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:17.640200Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:17.781856Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:17.779507Z&quot;}}" data-execution_count="19">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
 <span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>    opened.write_bundle(piece(<span class="st">"bach"</span>, [<span class="fl">0.0</span>, <span class="fl">0.9</span>, <span class="fl">1.8</span>]), <span class="st">"bach_again/manifest.yaml"</span>)</span>
 <span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> refusal:</span>
@@ -973,8 +969,8 @@ timetoshare: "0.2.0"</code></pre>
 </section>
 <section id="write-one-bundle-again" class="level2">
 <h2 class="anchored" data-anchor-id="write-one-bundle-again">Write one bundle again</h2>
-<p>The editor adds a conceptual claim to the Bach bundle read from the package: the last note, which the detector missed, relates to the third onset. <code>write_bundle()</code> on a package lying on disk writes at once and replaces the manifest at that URL. The rows of its timelines leave the files holding them: its registry parts are rewritten with its rows, the pre-parsed and MatchClaim files keep the other manifests’ rows alone, and one new file per type holds the bundle’s rows. As with a single MatchClaim table, every claim the package held for the manifest must still be in the bundle, and the bundle may add claims.</p>
-<div id="09cc885f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.342677Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.342536Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.508710Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.508110Z&quot;}}" data-execution_count="20">
+<p>The editor adds a conceptual claim to the Bach bundle read from the package: the last note, which the detector missed, relates to the third onset. <code>write_bundle()</code> on a package lying on disk writes at once and replaces the manifest at that URL. The rows of its timelines leave the files holding them: the registry is rewritten whole with its rows, the pre-parsed and MatchClaim files keep the other manifests’ rows alone, and one new file per type holds the bundle’s rows. As with a single MatchClaim table, every claim the package held for the manifest must still be in the bundle, and the bundle may add claims.</p>
+<div id="bc266528" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:17.785704Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:17.785381Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:18.240280Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:18.238962Z&quot;}}" data-execution_count="20">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>from_package.create_match_claims(</span>
 <span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>    [(<span class="st">"bach_n4"</span>, <span class="st">"bach_score"</span>, <span class="st">"bach_o3"</span>, <span class="st">"bach_recording"</span>)],</span>
 <span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>    synchronous<span class="op">=</span><span class="va">False</span>,</span>
@@ -996,7 +992,7 @@ timetoshare: "0.2.0"</code></pre>
 </div>
 </div>
 <p>The package still checks clean, and each manifest reads its own claims: five for Bach now, four for Handel as before.</p>
-<div id="d748d56f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.510242Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.510096Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.800798Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.799873Z&quot;}}" data-execution_count="21">
+<div id="5f17a61a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:18.243828Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:18.243461Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:18.666554Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:18.665148Z&quot;}}" data-execution_count="21">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"problems"</span>: package_problems(package_path),</span>
 <span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"MatchClaims"</span>: {</span>
@@ -1008,8 +1004,8 @@ timetoshare: "0.2.0"</code></pre>
  'MatchClaims': {'bach/manifest.yaml': 5, 'handel/manifest.yaml': 4}}</code></pre>
 </div>
 </div>
-<p>A bundle read from a package names the package’s folders. <code>to_file()</code> writes a manifest’s tables as single files and refuses to write rows into a folder, which other manifests share; it names <code>Package.write_bundle</code> instead.</p>
-<div id="0b333bfb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.802694Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.802528Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.811983Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.811357Z&quot;}}" data-execution_count="22">
+<p>A bundle read from a package names the package’s tables, which other manifests share. <code>to_file()</code> writes a manifest’s tables as single files beside it and refuses to write into a package’s tables; it names <code>Package.write_bundle</code> instead.</p>
+<div id="10345086" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T09:44:18.670315Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T09:44:18.669973Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T09:44:18.693196Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T09:44:18.692136Z&quot;}}" data-execution_count="22">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>elsewhere <span class="op">=</span> FILES <span class="op">/</span> <span class="st">"elsewhere"</span></span>
 <span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>elsewhere.mkdir()</span>
 <span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
@@ -1017,7 +1013,7 @@ timetoshare: "0.2.0"</code></pre>
 <span id="cb40-5"><a href="#cb40-5" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">NotImplementedError</span> <span class="im">as</span> refusal:</span>
 <span id="cb40-6"><a href="#cb40-6" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(refusal)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>The resource 'resource_1di61dsi9g6ed' names the folder '../registry/' for its Registry rows: AlignmentBundle.to_file writes a manifest's tables as single files beside it and does not write into a folder, whose files other manifests may share; write the bundle into its package with Package.write_bundle.</code></pre>
+<pre><code>The resource 'resource_1di61dsi9g6ed' names the package table '../registry.parquet' for its Registry rows: AlignmentBundle.to_file writes a manifest's tables as single files beside it and does not write into a package's tables, which other manifests may share; write the bundle into its package with Package.write_bundle.</code></pre>
 </div>
 </div>
 </section>

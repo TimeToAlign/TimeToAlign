@@ -393,7 +393,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="the-two-phase-contract" class="level2">
 <h2 class="anchored" data-anchor-id="the-two-phase-contract">The two-phase contract</h2>
-<p><code>loader.load(*sources)</code> ingests files and returns the loader; only <code>loader.create_timeline()</code> builds objects in the musical <button class="glossary" title="">Domain</button>, and it never takes a file path. <code>from_file()</code> is the shorthand for creating a loader and performing the first phase.</p>
+<p><code>loader.load(*sources)</code> ingests files and returns the loader; only <code>loader.create_timeline()</code> builds objects in the musical <button class="glossary" title="One of three temporal categories: Graphical (visual/spatial), Logical (symbolic/musical), or Physical (audio/sound). Each domain has both discrete and continuous timeline variants.">Domain</button>, and it never takes a file path. <code>from_file()</code> is the shorthand for creating a loader and performing the first phase.</p>
 <div id="b09b3d0c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:34:58.682906Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:34:58.682768Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:34:59.075774Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:34:59.075018Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>two_phase_loader <span class="op">=</span> PartituraLoader()</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>two_phase_loader.load(musicxml_path)</span>
@@ -580,7 +580,7 @@ Table&nbsp;1: Parsed table inventory — EventStore contract: True
 </section>
 <section id="what-you-got-for-free" class="level2">
 <h2 class="anchored" data-anchor-id="what-you-got-for-free">What you got for free</h2>
-<p>The loader has already separated each event category into a child timeline and attached the <button class="glossary" title="">ConversionMap</button>s its source states: a reading in floating measures from the measure table and, where the score carries tempo markings, one in seconds.</p>
+<p>The loader has already separated each event category into a child timeline and attached the <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>s its source states: a reading in floating measures from the measure table and, where the score carries tempo markings, one in seconds.</p>
 <div id="22694f73" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:34:59.194823Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:34:59.194677Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:34:59.199440Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:34:59.198858Z&quot;}}" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>child_names <span class="op">=</span> {</span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    child_id: score_timeline.get_child(child_id).name</span>
@@ -612,7 +612,7 @@ Table&nbsp;1: Parsed table inventory — EventStore contract: True
  'floating-measure position': Coordinate(5.0, floating_measures)}</code></pre>
 </div>
 </div>
-<p>Each child is named after one of the four stored categories; its id is minted like any other timeline’s (<code>clt_…</code>), because a category is a label, not an identity. The map reads <code>Coordinate(Fraction(13, 2), quarters)</code> as <code>Coordinate(5.0, floating_measures)</code>, the first beat of the fifth measure the file records. The loader reads no metronome value from this file, so no seconds map is attached. Nor is a ticks map: a score counts in quarters and states no tick resolution, so ticks are a reading you ask for by passing <code>ppq</code> to <code>create_timeline()</code>. Measures are available as the child named <code>measures</code>, but this score loader does not also materialize them as <button class="glossary" title="">Region</button> objects.</p>
+<p>Each child is named after one of the four stored categories; its id is minted like any other timeline’s (<code>clt_…</code>), because a category is a label, not an identity. The map reads <code>Coordinate(Fraction(13, 2), quarters)</code> as <code>Coordinate(5.0, floating_measures)</code>, the first beat of the fifth measure the file records. The loader reads no metronome value from this file, so no seconds map is attached. Nor is a ticks map: a score counts in quarters and states no tick resolution, so ticks are a reading you ask for by passing <code>ppq</code> to <code>create_timeline()</code>. Measures are available as the child named <code>measures</code>, but this score loader does not also materialize them as <button class="glossary" title="A part of a timeline defined by a TimeInterval, identified by its element id and displayed by its name (e.g., “Chorus”, “Verse”). Regions are not timelines and cannot hold events or maps directly.">Region</button> objects.</p>
 </section>
 <section id="querying-every-child" class="level2">
 <h2 class="anchored" data-anchor-id="querying-every-child">Querying every child</h2>
@@ -849,7 +849,7 @@ Table&nbsp;3: First four of 498 Note events
 </tr>
 <tr class="even">
 <td>Alignment</td>
-<td><p><button class="glossary" title="">MatchfileLoader</button></p></td>
+<td><p><button class="glossary" title="Loader for Vienna Match (.match) alignment files. Uses the standard two-step load() → create_*() pattern. A single instance processes all .match files that share the same score, building a shared score timeline on the first file and verifying subsequent files against it. Returns an AlignmentBundle directly via create_alignment_bundle(). Score goes into its own group; performances are standalone timelines; MatchClaims connect score to performances.">MatchfileLoader</button></p></td>
 <td>Score-to-performance correspondences; introduced later</td>
 </tr>
 <tr class="odd">

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     import mido
 
     from timetoalign.loader.midi.store import MidiStore
+    from timetoalign.timelines import Timeline
 
 
 def _read_midi_file(source: Source) -> mido.MidiFile:
@@ -61,6 +62,48 @@ def _end_of_track(mid: mido.MidiFile) -> int:
     )
 
 
+def _stated_meter_and_tempo(mid: mido.MidiFile) -> dict[str, list[tuple[int, ...]]]:
+    """The tempo changes and time signatures *mid* states, by tick.
+
+    Every ``set_tempo`` and ``time_signature`` meta message of any track is
+    read at its absolute tick, the integers as the file states them:
+    ``tempo_events`` holds ``(tick, microseconds_per_quarter)`` pairs,
+    ``time_signatures`` ``(tick, numerator, denominator)`` triples. Both are
+    sorted by tick; of two messages at one tick the later one replaces the
+    earlier, "later" in reading order (tracks in file order, each track's
+    messages in its order), as a sequencer reading the tracks in turn would
+    leave the last one in force.
+
+    Args:
+        mid: The parsed MIDI file.
+
+    Returns:
+        ``{"tempo_events": [...], "time_signatures": [...]}``.
+    """
+    tempi: dict[int, tuple[int, ...]] = {}
+    signatures: dict[int, tuple[int, ...]] = {}
+    for track in mid.tracks:
+        tick = 0
+        for message in track:
+            tick += message.time
+            if message.type == "set_tempo":
+                tempi[tick] = (tick, int(message.tempo))
+            elif message.type == "time_signature":
+                signatures[tick] = (
+                    tick,
+                    int(message.numerator),
+                    int(message.denominator),
+                )
+    return {
+        "tempo_events": [tempi[tick] for tick in sorted(tempi)],
+        "time_signatures": [signatures[tick] for tick in sorted(signatures)],
+    }
+
+
+#: The facts about its time axis each MIDI source's metadata records.
+_AXIS_FACTS = ("ticks_per_beat", "end_of_track", "tempo_events", "time_signatures")
+
+
 class MidiLoader(EventLoader):
     """Abstract base class for MIDI loaders.
 
@@ -68,7 +111,12 @@ class MidiLoader(EventLoader):
     - _load_source(): Parse MIDI file into event rows
     - ticks_per_beat: Property returning PPQ
 
-    Every parse records the file's end of track (:attr:`end_of_track`).
+    Every parse records, in the source's metadata, the facts the file states
+    about its time axis: ``ticks_per_beat`` (the header's resolution),
+    ``end_of_track`` (:attr:`end_of_track`), ``tempo_events`` and
+    ``time_signatures`` (see :func:`_stated_meter_and_tempo`). The timeline
+    :meth:`create_timeline` builds stays on ticks and carries them as its
+    conversion maps and its measure map (:meth:`MidiStore.create_timeline`).
     """
 
     _default_unit: ClassVar[TimeUnit] = TimeUnit.ticks
@@ -272,6 +320,7 @@ class MidiLoader(EventLoader):
             "type": mid.type,
             "ticks_per_beat": mid.ticks_per_beat,
             "end_of_track": self._end_of_track,
+            **_stated_meter_and_tempo(mid),
             "num_tracks": len(mid.tracks),
             "length_seconds": mid.length,
         }
@@ -296,16 +345,109 @@ class MidiLoader(EventLoader):
         fields: dict[str, np.ndarray | pa.Array | pa.ChunkedArray] = dict(columns)
         return metadata, fields
 
+    def _stated_axis(self) -> dict[str, Any]:
+        """The time-axis facts the loaded sources state, for one timeline.
+
+        One source states its own. Several, whose events share one ticks
+        axis, state a fact when every source states it alike; the end of
+        track is the latest. A fact the sources state differently is left
+        out, and one ``UserWarning`` names each: a resolution, tempo map
+        or meter of one file is no fact of the others.
+
+        Returns:
+            The facts of :data:`_AXIS_FACTS` the sources agree on.
+
+        Warns:
+            UserWarning: If the sources state a fact differently.
+        """
+        sources = self._source_metadata
+        if not sources:
+            return {}
+        axis: dict[str, Any] = {}
+        ends = [meta["end_of_track"] for meta in sources if "end_of_track" in meta]
+        if ends:
+            axis["end_of_track"] = max(ends)
+        for key in _AXIS_FACTS:
+            if key == "end_of_track":
+                continue
+            values = [meta.get(key) for meta in sources]
+            if all(value == values[0] for value in values):
+                if values[0] is not None:
+                    axis[key] = values[0]
+                continue
+            warnings.warn(
+                f"{type(self).__name__} holds {len(sources)} sources that state "
+                f"different {key}; the timeline carries none of them",
+                UserWarning,
+                stacklevel=3,
+            )
+        return axis
+
     @property
     def store(self) -> "MidiStore":
         """Return a MidiStore wrapping the loader's events.
 
         The single MidiEventData is split into notes and controls
-        for consistent interface with ScoreStore.
+        for consistent interface with ScoreStore. The store's metadata
+        holds the loader's (:attr:`metadata`) and, at its top level, the
+        time-axis facts the sources state (``ticks_per_beat``,
+        ``end_of_track``, ``tempo_events``, ``time_signatures``), from
+        which it builds the timeline's conversion maps and measure map.
 
         Returns:
             A MidiStore with notes and controls separated.
+
+        Warns:
+            UserWarning: If several sources state a fact of the axis
+                differently (the store then holds none for it).
         """
         from timetoalign.loader.midi.store import MidiStore
 
-        return MidiStore.from_data(self.events, metadata=self.metadata)
+        return MidiStore.from_data(
+            self.events, metadata={**self.metadata, **self._stated_axis()}
+        )
+
+    def create_timeline(
+        self,
+        uid: str | None = None,
+        store_filters: dict[str, dict[str, Any]] | None = None,
+        include_stores: list[str] | None = None,
+        exclude_stores: list[str] | None = None,
+        flatten: bool = False,
+        *,
+        attach_cmaps: bool = True,
+    ) -> Timeline:
+        """Create the ticks timeline of the loaded file, with its stated axis.
+
+        The timeline stays on ticks, the file's own unit, and reaches the
+        units the file states through what it states
+        (:meth:`MidiStore.create_timeline`): quarters at the file's
+        resolution, seconds from its tempo map, and its bars as a measure
+        map. Every ID it mints comes from the loader's minter.
+
+        Args:
+            uid: Unique ID for the parent timeline. Auto-generated if None.
+            store_filters: Per-data filter kwargs to apply before timeline
+                creation.
+            include_stores: Only include these data (default: all non-empty).
+            exclude_stores: Exclude these data from the timeline.
+            flatten: If True, merge all events into a single parent timeline.
+            attach_cmaps: If True (default), attach the conversion maps and
+                the measure map the file states; if False, none.
+
+        Returns:
+            The ticks timeline.
+
+        Warns:
+            UserWarning: If several sources state a fact of the axis
+                differently (see :attr:`store`).
+        """
+        return self.store.create_timeline(
+            uid=uid,
+            store_filters=store_filters,
+            include_stores=include_stores,
+            exclude_stores=exclude_stores,
+            flatten=flatten,
+            attach_cmaps=attach_cmaps,
+            minter=self._id_minter,
+        )

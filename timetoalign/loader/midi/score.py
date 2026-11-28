@@ -22,7 +22,12 @@ from timetoalign.core import NumberType, TimeUnit
 from timetoalign.loader._sources import Source, describe_source
 from timetoalign.loader.base import LoadSourceResult
 
-from .base import MidiLoader, _end_of_track, _read_midi_file
+from .base import (
+    MidiLoader,
+    _end_of_track,
+    _read_midi_file,
+    _stated_meter_and_tempo,
+)
 from .constants import MidiEventType
 from .events import MidiEventData, ScoreMidiEventData
 
@@ -264,7 +269,16 @@ class ScoreMidiLoader(MidiLoader):
         # messages give the velocities partitura's score parse leaves out.
         # Note: partitura can return Score, Part, PartGroup, or list
         mid = _read_midi_file(source)
+        # The axis the file states, read from its messages as the mido
+        # parser reads it: Partitura's divisions are the header's ticks per
+        # quarter, and its score parse keeps no tempo map.
+        self._ticks_per_beat = mid.ticks_per_beat
         self._end_of_track = _end_of_track(mid)
+        axis = {
+            "ticks_per_beat": self._ticks_per_beat,
+            "end_of_track": self._end_of_track,
+            **_stated_meter_and_tempo(mid),
+        }
         with suppressed_backend_warnings():
             score_data = pt.load_score_midi(
                 mid,
@@ -304,27 +318,11 @@ class ScoreMidiLoader(MidiLoader):
 
         if not parts:
             # Empty score
-            return {
-                "format": "midi",
-                "parser": "partitura",
-                "parts": 0,
-                "end_of_track": self._end_of_track,
-            }, {}
-
-        # Get PPQ from the first part (partitura stores this in quarter_map logic usually,
-        # but for MIDI loading, it's often implicit or stored in the score object if available)
-        # We'll try to get it from the first part's quarter_map if simple
-        # NOTE: Partitura's MIDI loader doesn't always expose original PPQ directly on Part.
-        # But for now we can leave it None or check if we can extract it.
-        # Since we are using note_array, we will rely on its units.
+            return {"format": "midi", "parser": "partitura", "parts": 0, **axis}, {}
 
         # Generate note array with all info
         # We use include_staff=True if available in partitura version
-        note_array = note_array_from_part_list(
-            parts,
-            include_staff=True,
-            include_divs_per_quarter=True,  # To get PPQ info
-        )
+        note_array = note_array_from_part_list(parts, include_staff=True)
 
         velocities = self._stated_velocities(
             note_array, _partitura_note_velocities(mid, self._quantization_unit), source
@@ -335,12 +333,7 @@ class ScoreMidiLoader(MidiLoader):
 
         # Iterate over structured array
         for row, velocity in zip(note_array, velocities):
-            # row fields: onset_div, duration_div, pitch, voice, id, staff, divs_pq, ...
-
-            # Update PPQ if we found it
-            if "divs_pq" in row.dtype.names and self._ticks_per_beat is None:
-                self._ticks_per_beat = int(row["divs_pq"])
-
+            # row fields: onset_div, duration_div, pitch, voice, id, staff, ...
             # No "id": a MIDI file states no note IDs. Partitura's numbering
             # serves the velocity join only; the loader mints the IDs.
             event = {
@@ -371,8 +364,7 @@ class ScoreMidiLoader(MidiLoader):
             "parser": "partitura",
             "part_voice_assign_mode": self._part_voice_assign_mode,
             "parts": len(parts),
-            "ticks_per_beat": self._ticks_per_beat,
-            "end_of_track": self._end_of_track,
+            **axis,
         }
 
         if not events:

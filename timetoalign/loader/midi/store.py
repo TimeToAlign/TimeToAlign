@@ -13,14 +13,25 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from fractions import Fraction
 from typing import TYPE_CHECKING, Any
 
+from timetoalign.core.enums import ExtrapolationPolicy, InterpolationKind, TimeUnit
 from timetoalign.core.ids import CMAP_PREFIX, IdMinter
+from timetoalign.core.time import number_to_json
 from timetoalign.loader.midi.events import MidiEventData
 from timetoalign.storage.store import EventStore
 
 if TYPE_CHECKING:
-    from timetoalign.maps import ConversionMap
+    from timetoalign.maps import ConversionMap, TableMap
+    from timetoalign.timelines import MeasureMap, Timeline
+
+#: The tempo of a Standard MIDI File before its first ``set_tempo``, in
+#: microseconds per quarter (120 quarters a minute).
+_SMF_DEFAULT_TEMPO = 500_000
+
+#: The time signature of a Standard MIDI File before its first ``time_signature``.
+_SMF_DEFAULT_TIME_SIGNATURE = "4/4"
 
 # Event types that belong to "notes" category
 NOTE_EVENT_TYPES: frozenset[str] = frozenset({"Note"})
@@ -77,8 +88,6 @@ class MidiStore(EventStore):
         Returns:
             A MidiStore with empty notes and controls data.
         """
-        from timetoalign.core import TimeUnit
-
         return cls(
             notes=MidiEventData.empty(TimeUnit.ticks),
             controls=MidiEventData.empty(TimeUnit.ticks),
@@ -152,77 +161,221 @@ class MidiStore(EventStore):
         result["facts"].update(self.metadata)
         return result
 
-    def get_cmaps(self, *, minter: IdMinter | None = None) -> dict[str, ConversionMap]:
-        """Get ConversionMaps derivable from MIDI store metadata.
+    def create_timeline(
+        self,
+        uid: str | None = None,
+        store_filters: dict[str, dict[str, Any]] | None = None,
+        include_stores: list[str] | None = None,
+        exclude_stores: list[str] | None = None,
+        flatten: bool = False,
+        attach_cmaps: bool = True,
+        *,
+        minter: IdMinter | None = None,
+    ) -> Timeline:
+        """Create the ticks timeline of the MIDI data, with the axis it states.
 
-        Returns C-Maps based on available metadata:
-        - "quarters": ticks -> quarters (if ticks_per_beat available)
-        - "seconds": ticks -> seconds (if tempo events available)
+        The timeline stays on ticks. With *attach_cmaps*, it carries the
+        conversion maps of :meth:`get_cmaps` and the bars of the file as its
+        measure map (:meth:`_measure_map`), which the ticks axis reaches
+        through a ticks → quarters ``LinearMap`` of its own: the timeline
+        writes ``measure_maps`` and the ``ChainMap`` reading them in its
+        manifest. Its length stays what its events give; the measure map
+        may reach beyond it, to the end of track.
 
         Args:
-            minter: The minter of the ticks -> quarters map's ID (a
-                loader's); without one, the map mints its own. The
-                ticks -> seconds map mints its own.
+            uid: Unique ID for the parent timeline. Auto-generated if None.
+            store_filters: Per-data filter kwargs to apply before timeline
+                creation.
+            include_stores: Only include these data (default: all non-empty).
+            exclude_stores: Exclude these data from the timeline.
+            flatten: If True, merge all events into a single parent timeline.
+            attach_cmaps: If True (default), attach the conversion maps and
+                the measure map; if False, none.
+            minter: The minter of every timeline, map and measure map ID the
+                call mints (a loader's); without one, each mints its own.
 
         Returns:
-            Dict mapping target unit name to ConversionMap.
+            The ticks timeline.
+        """
+        from timetoalign.maps.convenience import TicksToQuarters
+        from timetoalign.timelines.factory import create_timeline_from_bundle
+
+        timeline = create_timeline_from_bundle(
+            self,
+            uid=uid,
+            store_filters=store_filters,
+            include_stores=include_stores,
+            exclude_stores=exclude_stores,
+            flatten=flatten,
+            minter=minter,
+        )
+        if not attach_cmaps:
+            return timeline
+        for cmap in self.get_cmaps(minter=minter).values():
+            timeline.add_conversion_map(cmap)
+        measure_map = self._measure_map(minter=minter)
+        if measure_map is not None:
+            # A map of its own: one map id is held once in a manifest.
+            to_quarters = TicksToQuarters(
+                ppq=self.metadata["ticks_per_beat"],
+                uid=None if minter is None else minter.mint(CMAP_PREFIX),
+            )
+            timeline.add_measure_map(measure_map, to_quarters=to_quarters)
+        return timeline
+
+    def get_cmaps(self, *, minter: IdMinter | None = None) -> dict[str, ConversionMap]:
+        """Get the ConversionMaps the MIDI file states about its ticks axis.
+
+        - ``"quarters"``: ticks → quarters, ``TicksToQuarters`` at the file's
+          resolution (``ticks_per_beat``), exact.
+        - ``"seconds"``: ticks → seconds from the tempo map, a linear
+          ``TableMap`` (:meth:`_tempo_map`); it needs the resolution and the
+          end of track (``end_of_track``).
+
+        Args:
+            minter: The minter of the maps' IDs (a loader's); without one,
+                each map mints its own.
+
+        Returns:
+            Dict mapping target unit name to ConversionMap; empty without a
+            resolution.
 
         Examples:
-            >>> store = midi_loader.load("performance.mid")
-            >>> cmaps = store.get_cmaps()
-            >>> quarters_map = cmaps.get("quarters")
-            >>> if quarters_map:
-            ...     quarters = quarters_map(960)  # Fraction(2, 1) at 480 PPQ
+            >>> store = loader.store  # a MIDI loader holding a file
+            >>> quarters_map = store.get_cmaps()["quarters"]
+            >>> quarters_map(960)  # at 480 ticks per quarter
+            Fraction(2, 1)
         """
-        from timetoalign.maps import TableMap
         from timetoalign.maps.convenience import TicksToQuarters
 
         cmaps: dict[str, ConversionMap] = {}
-
-        # Get PPQ from metadata
         ppq = self.metadata.get("ticks_per_beat")
         if ppq is None:
             return cmaps
-
-        # Always available if we have PPQ: ticks -> quarters, exact
         cmaps["quarters"] = TicksToQuarters(
             ppq=ppq, uid=None if minter is None else minter.mint(CMAP_PREFIX)
         )
-
-        # Check for tempo events to build ticks -> seconds map
-        # Tempo events would be stored in controls as TempoChange events
-        # with 'tempo_bpm' or similar field
-        # For now, check if we have tempo data in metadata
-        tempo_events = self._extract_tempo_events()
-        if tempo_events:
-            tick_positions = [t for t, _ in tempo_events]
-            tempos_bpm = [bpm for _, bpm in tempo_events]
-            cmaps["seconds"] = TableMap.from_tempo_changes(
-                tick_positions=tick_positions,
-                tempos_bpm=tempos_bpm,
-                ticks_per_quarter=ppq,
-                source_unit="ticks",
-                target_unit="seconds",
-            )
-
+        tempo_map = self._tempo_map(minter=minter)
+        if tempo_map is not None:
+            cmaps["seconds"] = tempo_map
         return cmaps
 
-    def _extract_tempo_events(self) -> list[tuple[int, float]]:
-        """Extract tempo events from controls data or metadata.
+    def _tempo_map(self, *, minter: IdMinter | None = None) -> TableMap | None:
+        """The ticks → seconds map of the file's tempo map, exact.
+
+        The knots are tick 0, every tick of ``tempo_events`` before the end
+        of track, and the end of track; the seconds at each are the exact
+        ``Fraction`` sum over the segments before it of
+        Δticks · µs / (ticks_per_beat · 10⁶), each segment at the tempo of
+        the last ``set_tempo`` at or before its start. Before the first
+        ``set_tempo``, and in a file without one, the tempo is the
+        Standard MIDI File default of 500,000 µs per quarter (120 quarters
+        a minute). A ``set_tempo`` at the end of track governs no tick of
+        the file and gives no knot. Between knots the map interpolates
+        linearly; past the end of track (and before tick 0) it extrapolates
+        linearly with the tempo of the segment it leaves, which is the tempo
+        in force at the end of track.
+
+        Args:
+            minter: The minter of the map's ID; without one, the map mints
+                its own.
 
         Returns:
-            List of (tick_position, bpm) tuples, sorted by tick position.
-            Empty list if no tempo information available.
+            The map, or None without a resolution, an end of track after
+            tick 0 (a file without extent spans no tempo segment) or
+            ``tempo_events`` (which a file states even when empty; a store
+            of several files whose tempo maps differ holds none).
         """
-        # First check metadata for pre-extracted tempo events
-        if "tempo_events" in self.metadata:
-            return self.metadata["tempo_events"]
+        from timetoalign.maps import TableMap
 
-        # TODO: Extract from controls data if TempoChange events are stored there
-        # For now, return empty list - tempo extraction will be added when
-        # MIDI loaders are enhanced to capture set_tempo messages
+        ppq = self.metadata.get("ticks_per_beat")
+        end = self.metadata.get("end_of_track")
+        tempo_events = self.metadata.get("tempo_events")
+        if ppq is None or end is None or end <= 0 or tempo_events is None:
+            return None
+        tempo = _SMF_DEFAULT_TEMPO
+        knots: list[int] = [0]
+        seconds: list[Fraction] = [Fraction(0)]
+        for tick, microseconds in tempo_events:
+            if tick >= end:
+                break
+            if tick > knots[-1]:
+                seconds.append(
+                    seconds[-1] + Fraction((tick - knots[-1]) * tempo, ppq * 10**6)
+                )
+                knots.append(tick)
+            tempo = microseconds
+        seconds.append(seconds[-1] + Fraction((end - knots[-1]) * tempo, ppq * 10**6))
+        knots.append(end)
+        return TableMap(
+            x_values=knots,
+            y_values=seconds,
+            kind=InterpolationKind.linear,
+            extrapolate=ExtrapolationPolicy.extrapolate,
+            source_unit=TimeUnit.ticks,
+            target_unit=TimeUnit.seconds,
+            uid=None if minter is None else minter.mint(CMAP_PREFIX),
+        )
 
-        return []
+    def _measure_map(self, *, minter: IdMinter | None = None) -> MeasureMap | None:
+        """The file's bars, from its time signatures and its end of track.
+
+        Bars run from tick 0, each of its signature's length (numerator · 4
+        / denominator quarters). Every ``time_signature`` message starts a
+        new bar, so a bar it interrupts keeps the length it actually has;
+        bars follow until the end of track, which may cut the last one
+        short, and a bar that would start at the end of track is not
+        counted. Before the first ``time_signature``, and in a file without
+        one, the signature is 4/4, the Standard MIDI File default. Each row
+        states its count (from 1), its signature as the file writes it (6/8
+        stays 6/8) and, where it is cut short, its actual length; an SMF
+        states no printed measure number, so the row states none and the
+        Measure Map default applies.
+
+        Args:
+            minter: The minter of the measure map's ID; without one, the
+                map mints its own from its content.
+
+        Returns:
+            The measure map, or None without a resolution, an end of track
+            after tick 0 or ``time_signatures`` (which a file states even
+            when empty; a store of several files whose signatures differ
+            holds none).
+        """
+        from timetoalign.core.ids import MEASURE_MAP_PREFIX
+        from timetoalign.timelines import MeasureMap
+
+        ppq = self.metadata.get("ticks_per_beat")
+        end = self.metadata.get("end_of_track")
+        signatures = self.metadata.get("time_signatures")
+        if ppq is None or end is None or end <= 0 or signatures is None:
+            return None
+        changes = [
+            (Fraction(tick, ppq), f"{numerator}/{denominator}")
+            for tick, numerator, denominator in signatures
+            if tick < end
+        ]
+        if not changes or changes[0][0] > 0:
+            changes.insert(0, (Fraction(0), _SMF_DEFAULT_TIME_SIGNATURE))
+        stop = Fraction(end, ppq)
+        rows: list[dict[str, Any]] = []
+        for index, (start, signature) in enumerate(changes):
+            until = changes[index + 1][0] if index + 1 < len(changes) else stop
+            numerator, denominator = (int(part) for part in signature.split("/"))
+            nominal = Fraction(4 * numerator, denominator)
+            position = start
+            while position < until:
+                row: dict[str, Any] = {"count": len(rows) + 1}
+                if position == start:
+                    row["time_signature"] = signature
+                actual = min(nominal, until - position)
+                if actual != nominal:
+                    row["actual_length"] = number_to_json(actual)
+                rows.append(row)
+                position += actual
+        return MeasureMap.from_rows(
+            rows, id=None if minter is None else minter.mint(MEASURE_MAP_PREFIX)
+        )
 
     # endregion
 

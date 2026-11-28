@@ -17,6 +17,7 @@ contain those three score-only columns.
 | `test_harmonization.py` | Canonical same-file comparisons between performance and score loaders. |
 | `test_score.py` | Beethoven score loading, empty-file failure, the wider score schema, and the end of track of both parsers. |
 | `test_store.py` | Base and score event-data schemas, nullability, construction, and inheritance. |
+| `test_tempo_and_bars.py` | The tempo map, the bars and the stated facts of synthetic and real files, on all three loaders. |
 | `test_bundle.py` | `MidiStore` splitting, empty stores, extension, mapping protocol, summaries, and timelines. |
 | `conftest.py` | Downloaded MIDI specimen paths and synthetic shared event data. |
 
@@ -144,6 +145,88 @@ track's end (1); the source metadata says 1,441 too. A loader that has read noth
 (1,441, 480 ticks per quarter), answers `None` for both `end_of_track` and `ticks_per_beat` after
 `clear()`, as one that has read nothing, and the file read next (the 2,000 one) answers its own
 2,000 and 480. A value surviving `clear()` would be the previous file's, stated of none.
+
+## Tempo map and bars
+
+A Standard MIDI File states three facts about its time axis besides its end of track: its
+resolution (ticks per quarter, the header), its tempo map (`set_tempo`, microseconds per quarter)
+and its bars (`time_signature`). Every MIDI loader records the last two per source, as the file
+states them: `tempo_events`, `(tick, microseconds per quarter)` pairs, and `time_signatures`,
+`(tick, numerator, denominator)` triples, integers both, sorted by tick, a later message at the
+same tick (in track order, then message order) replacing an earlier one. The timeline a MIDI
+loader creates stays on ticks and reaches the other units through what the file states: the
+exact ticks→quarters `LinearMap`, a ticks→seconds `TableMap` and a measure map. All three
+loaders (`ScoreMidiLoader` with either parser, `PerformanceMidiLoader`) must state the same axis
+for the same file, so every synthetic case runs on all three.
+
+What proves it is the arithmetic of the standard, done by hand on files the test writes with
+mido in `tmp_path`, and the fact that what is read is written back.
+
+**Tempo map.** The seconds at a tick are the sum over the tempo segments before it of
+Δticks · µs / (ppq · 10⁶). The map's knots are tick 0, every tempo change and the end of track,
+its seconds exact `Fraction`s, so the test compares the knots with `==` on `Fraction` literals,
+and a float slipping in anywhere fails on type as well as value.
+
+| File | Knots (tick, seconds) | Checks |
+|---|---|---|
+| ppq 480, 500,000 µs at 0, 250,000 at 960, end 1,920 | (0, 0), (960, 1), (1920, 3/2) | 480 ticks → 1/2 s, 1,440 → 5/4 s (inside the second segment: 1 + 480 · 250000 / 480·10⁶) |
+| ppq 480, no `set_tempo`, end 960 | (0, 0), (960, 1) | the SMF default 500,000 µs per quarter: 960 · 500000 / 480·10⁶ = 1 |
+
+Past the end of track the map extrapolates linearly with the tempo in force there: 2,400 ticks →
+3/2 + 480 · 250000 / 480·10⁶ = 7/4 s on the first file. The public call writes the seconds
+axis's own number type (`float`: 0.5, 1.25, 1.75, each exact in binary); the exact values are
+the anchors, which the manifest writes as `[numerator, denominator]` pairs (`[3, 2]`), and the
+test reads them there, and the timestamp at 1,440 ticks answers `Fraction(5, 4)` seconds when
+asked for a fraction.
+
+**Bars.** Bars run from tick 0, each the length of its signature (numerator · 4 / denominator
+quarters); every time signature message starts a new bar, so a bar it interrupts keeps the length
+it actually has; the last bar may be cut short by the end of track, and a bar that would start at
+the end of track is not counted. A file without `time_signature` has 4/4, the SMF default. The
+measure map counts bars from 1 and states no printed number (an SMF states none, so the Measure
+Map standard's default applies). Expected rows, by hand:
+
+- ppq 480, 4/4 at 0, 3/4 at 1,920, 2/4 at 2,880 (inside the 3/4 bar), end 4,800, that is
+  quarters 0, 4, 6 and 10: four bars, `(count, qstamp, signature, nominal, actual)` =
+  `(1, 0, 4/4, 4, 4)`, `(2, 4, 3/4, 3, 2)`, `(3, 6, 2/4, 2, 2)`, `(4, 8, 2/4, 2, 2)`.
+- ppq 480, no `time_signature`, end 2,640 (5.5 quarters): `(1, 0, 4/4, 4, 4)`,
+  `(2, 4, 4/4, 4, 3/2)`; and a 3/4 at the end of track itself adds no bar.
+- 6/8 and 19/16 stay as written: 6/8 at 0, 19/16 at 1,440, end 3,720 (ppq 480): `(1, 0, 6/8, 3,
+  3)`, `(2, 3, 19/16, 19/4, 19/4)`.
+
+The measure map is read through the timeline (`timeline.measure_map`), whose ticks axis reaches
+it through a ticks→quarters `LinearMap` chained before the `MeasureRecordMap`, so the timeline
+writes `measure_maps` and the `ChainMap` in its manifest (on the bars file above, with the two
+tempi: the chain's `LinearMap` has scalar `[1, 480]`, its `MeasureRecordMap` names the one
+measure-map entry, and the tempo knots are (0, 0), (960, 1), (4800, 3)). `Timeline.from_dict` of the written
+manifest must give an equal measure map, and writing the restored timeline must give the same
+dictionary: nothing the file states is lost on the way.
+
+**Several sources.** A loader holding several files puts their events on one ticks axis, so the
+timeline states a fact of that axis only where every file states it alike; the end of track is
+the latest. Two files at 480 ticks per quarter, both at 250,000 µs from tick 0, ending at 960 and
+1,920, give the knots (0, 0), (1920, 1) and one bar (1,920 ticks are four quarters), without a
+warning. Two files that state 250,000 and 500,000 µs give no seconds map at all (falling back to
+the default tempo would state a tempo neither file states) and exactly one `UserWarning`, whose
+text names the loader, the two sources and `tempo_events`; the facts they share still hold: the
+quarters map (480 ticks → 1 quarter) and the one 4/4 bar, cut to 2 quarters by the end of
+track at 960.
+
+**Real file.** `score/beethoven_op18.mid` (480 ticks per quarter) is checked against values read
+from its bytes, not from the loader: the test scans the file's messages with mido itself and the
+literals below were read off that scan. It states 14 `set_tempo` messages, at ticks 0, 15,360,
+37,440, 37,920, 52,800, 53,280, 191,040, 191,520, 306,240, 306,720, 340,320, 340,560, 430,560
+and 532,800, and its tracks end at 534,240. The tempo map's knot ticks must be these 14 and the
+end of track (15 knots), and on every segment the slope must be exactly the segment's
+microseconds over 480 · 10⁶ (352,941 µs on the first). Its bars, counted by hand from the
+signatures the scan lists (a pickup of 1/4, then 2/2, 3/4, 1/4, 7/8 and 2/16 sections, each
+section a whole number of bars), are 290, every one of its signature's full length. Three
+signatures at one tick (1/4, 2/2, 1/4 at 30,720, quarter 64) leave the last in force: bar 19 is
+`(19, 64, 1/4, 1, 1)`; bar 121 is `(121, 897/2, 2/16, 1/2, 1/2)`; and the 3/4 at its end of track
+(quarter 1,113) adds no bar, so the last is `(290, 1109, 2/2, 4, 4)`. `score/beethoven_mtd.mid` (1/8 at 0, 4/4 at 240, 500,000 µs at 0, end 6,960) gives
+by hand five bars, `(1, 0, 1/8, 1/2, 1/2)`, `(2, 1/2, 4/4, 4, 4)`, `(3, 9/2, …)`,
+`(4, 17/2, …)`, `(5, 25/2, 4/4, 4, 2)`, and a seconds map of two knots, (0, 0) and
+(6960, 29/4).
 
 ## Score loader and stores
 

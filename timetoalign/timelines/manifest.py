@@ -88,7 +88,7 @@ from timetoshare.tables import (
     is_table_resource,
 )
 
-from timetoalign.core import Box, Coordinate, Event, NumberType, Projection, TimeUnit
+from timetoalign.core import Box, Coordinate, Event, NumberType, TimeUnit
 from timetoalign.core.fields import _filled, _null_column, derive_arrow_schema
 from timetoalign.core.ids import (
     RESOURCE_PREFIX,
@@ -117,7 +117,7 @@ from timetoalign.storage.events import (
     _DECLARED_EXTRA_FIELDS,
     _build_extra_field_schema,
 )
-from timetoalign.storage.registry import Extraction
+from timetoalign.storage.registry import Parse
 
 from .statements import (
     STATE_KEYS,
@@ -707,25 +707,24 @@ def resource_path(directory: str | PathLike[str], url: str) -> Path:
 REGISTRY_FILE_NAME = "registry.parquet"
 """The file name of a lone manifest's registry beside it."""
 
-EXTRACTIONS_FILE_NAME = "extractions.parquet"
-"""The file name of a lone manifest's Extraction table beside it."""
-
-PROJECTIONS_FILE_NAME = "projections.parquet"
-"""The file name of a lone manifest's pre-parsed Projection table beside it."""
+PARSES_FILE_NAME = "parses.parquet"
+"""The file name of a lone manifest's Parse table beside it."""
 
 BOXES_FILE_NAME = "boxes.parquet"
 """The file name of a lone manifest's pre-parsed Box table beside it."""
 
 #: The kinds a bundle writes whatever ``events`` says: their rows are part
-#: of what the manifest states (a MatchClaim's side, an image's areas).
+#: of what the manifest states (a MatchClaim's side, an image's areas). A
+#: Projection lies in the registry alone (its row names the event it stands
+#: for), a Box's shape in the pre-parsed Box table.
 ALWAYS_WRITTEN_KINDS = ("Projection", "Box")
 
 #: The event types whose pre-parsed table declares the properties of their
 #: scalar; an event type of no scalar (``Note``, ``Beat``) declares ``id``
-#: alone and holds the columns its rows hold.
+#: alone and holds the columns its rows hold. A Projection holds nothing but
+#: its registry row and has no pre-parsed table.
 _SCALAR_EVENT_TYPES: dict[str, type[Event]] = {
     "Event": Event,
-    "Projection": Projection,
     "Box": Box,
 }
 
@@ -741,13 +740,10 @@ def pre_parsed_file_name(kind: str) -> str:
     """The file name of the pre-parsed table of *kind* beside a lone manifest.
 
     Examples:
-        >>> pre_parsed_file_name("Projection"), pre_parsed_file_name("Box")
-        ('projections.parquet', 'boxes.parquet')
-        >>> pre_parsed_file_name("Note")
-        'Note.parquet'
+        >>> pre_parsed_file_name("Box"), pre_parsed_file_name("Note")
+        ('boxes.parquet', 'Note.parquet')
     """
-    named = {"Projection": PROJECTIONS_FILE_NAME, "Box": BOXES_FILE_NAME}
-    return named.get(kind, f"{kind}.parquet")
+    return BOXES_FILE_NAME if kind == "Box" else f"{kind}.parquet"
 
 
 def _package_type(type_: pa.DataType) -> pa.DataType:
@@ -786,20 +782,19 @@ def _further_type(type_: pa.DataType) -> pa.DataType:
 def pre_parsed_schema(kind: str) -> pa.Schema:
     """The declared columns of the pre-parsed table of *kind*.
 
-    ``id``, then, for an event type with a scalar (``Projection``, ``Box``,
-    ``Event``), every property of the scalar but its ID and its position,
-    in field order, each number as the package number
+    ``id``, then, for an event type with a scalar of a pre-parsed table
+    (``Box``, ``Event``), every property of the scalar but its ID and its
+    position, in field order, each number as the package number
     (:data:`~timetoalign.core.time.PACKAGE_NUMBER_TYPE`); for any other
-    kind (``Note``, ``Beat``), ``id`` alone. For ``Projection`` it is
-    TimeToShare's Projection table (:data:`timetoshare.tables.PROJECTION_SCHEMA`).
-    The positions are the registry's, never a pre-parsed table's. The
+    kind (``Note``, ``Beat``), ``id`` alone. The positions are the
+    registry's, never a pre-parsed table's, and so is the event a
+    Projection stands for: a kind whose events hold nothing but their ID
+    (a Projection always) has no pre-parsed table (:func:`event_tables`). The
     schema's metadata names the kind (``timetoshare:type``) and the format
     version (``timetoshare:version``). A table of the kind may hold further
     columns after these (:func:`event_tables`).
 
     Examples:
-        >>> pre_parsed_schema("Projection").names
-        ['id', 'projection_of']
         >>> pre_parsed_schema("Box").names
         ['id', 'bounding_box', 'quadrilateral']
         >>> pre_parsed_schema("Beat").names
@@ -944,7 +939,7 @@ def _repeated(value: str | None, n: int) -> pa.Array:
 
 def _sorted_rows(rows: pa.Table) -> pa.Table:
     """Event rows of a registry in memory, sorted: by
-    ``extraction_id``, then ``timeline_id`` (by code point), then ``start``
+    ``parse_id``, then ``timeline_id`` (by code point), then ``start``
     by exact value (one timeline lies on one axis, :func:`_start_order`),
     then ``id``."""
     if rows.num_rows < 2:
@@ -952,19 +947,19 @@ def _sorted_rows(rows: pa.Table) -> pa.Table:
     rows = rows.take(
         pc.sort_indices(
             rows,
-            sort_keys=[("extraction_id", "ascending"), ("timeline_id", "ascending")],
+            sort_keys=[("parse_id", "ascending"), ("timeline_id", "ascending")],
         )
     )
     keys = pa.Table.from_arrays(
         [
-            _filled(rows.column("extraction_id"), pa.scalar("")),
+            _filled(rows.column("parse_id"), pa.scalar("")),
             rows.column("timeline_id"),
         ],
-        names=["extraction_id", "timeline_id"],
+        names=["parse_id", "timeline_id"],
     )
-    groups = keys.group_by(
-        ["extraction_id", "timeline_id"], use_threads=False
-    ).aggregate([([], "count_all")])
+    groups = keys.group_by(["parse_id", "timeline_id"], use_threads=False).aggregate(
+        [([], "count_all")]
+    )
     order: list[np.ndarray] = []
     first = 0
     # The groups come in the order the sorted rows hold them.
@@ -979,30 +974,32 @@ def _sorted_rows(rows: pa.Table) -> pa.Table:
 
 @dataclass(frozen=True)
 class EventTables:
-    """What a bundle writes of its events: registry rows, pre-parsed tables, extractions.
+    """What a bundle writes of its events: registry rows, pre-parsed tables, parses.
 
     Attributes:
         rows: The event rows of the registry, in TimeToShare's Registry
             columns (:data:`timetoshare.tables.REGISTRY_SCHEMA`), every
             position on the axis of its timeline's root in the package
-            number form, sorted by ``extraction_id``, ``timeline_id``,
+            number form, sorted by ``parse_id``, ``timeline_id``,
             ``start`` (by exact value) and ``id``; ``location`` null until
             :meth:`located` names the pre-parsed tables.
         pre_parsed: Row for row, whether the event's content is written in
             the pre-parsed table of its kind; an event with nothing to store
-            whose extraction names a source file stays re-parsable.
+            whose parse names a source file stays re-parsable, and an event
+            of a kind whose events hold nothing but their ID (a Projection
+            always) lies in its registry row alone.
         contents: The pre-parsed table of each kind holding a pre-parsed
             row, keyed by ``id``, without positions
             (:func:`pre_parsed_schema`, then the further columns its rows
             hold), its rows in the order of :attr:`rows`.
-        extractions: The extractions the rows name (``extraction_id`` and
+        parses: The parses the rows name (``parse_id`` and
             ``vanished_in``), sorted by ID.
     """
 
     rows: pa.Table
     pre_parsed: pa.Array
     contents: dict[str, pa.Table]
-    extractions: tuple[Extraction, ...]
+    parses: tuple[Parse, ...]
 
     @property
     def timelines(self) -> list[str]:
@@ -1227,36 +1224,36 @@ def joined_parts(
 
 
 def _refuse_repeated_locators(rows: pa.Table) -> None:
-    """Refuse a locator naming two events of one extraction among *rows*.
+    """Refuse a locator naming two events of one parse among *rows*.
 
-    A locator names one event of its extraction's source (the format's
+    A locator names one event of its parse's source (the format's
     ``duplicate_locator``). Each family refuses a repeat among its own
     rows as they join it; rows of two families meet first in a writer,
     which refuses the repeat before anything is written.
 
     Raises:
-        ValueError: Naming the locator, the extraction and the timelines
+        ValueError: Naming the locator, the parse and the timelines
             of its first two events.
     """
     named = pc.and_(
-        rows.column("locator").is_valid(), rows.column("extraction_id").is_valid()
+        rows.column("locator").is_valid(), rows.column("parse_id").is_valid()
     )
     if not pc.any(named).as_py():
         return
-    pairs = rows.select(["extraction_id", "locator", "timeline_id"]).filter(named)
+    pairs = rows.select(["parse_id", "locator", "timeline_id"]).filter(named)
     pairs = pairs.take(
         pc.sort_indices(
             pairs,
-            sort_keys=[("extraction_id", "ascending"), ("locator", "ascending")],
+            sort_keys=[("parse_id", "ascending"), ("locator", "ascending")],
         )
     )
     if pairs.num_rows < 2:
         return
-    extraction = pairs.column("extraction_id").combine_chunks()
+    parse = pairs.column("parse_id").combine_chunks()
     locator = pairs.column("locator").combine_chunks()
     n = pairs.num_rows
     twice = pc.and_(
-        pc.equal(extraction.slice(1), extraction.slice(0, n - 1)),
+        pc.equal(parse.slice(1), parse.slice(0, n - 1)),
         pc.equal(locator.slice(1), locator.slice(0, n - 1)),
     )
     if not pc.any(twice).as_py():
@@ -1264,11 +1261,11 @@ def _refuse_repeated_locators(rows: pa.Table) -> None:
     at = pc.index(twice, True).as_py()
     timelines = pairs.column("timeline_id")
     raise ValueError(
-        f"The locator {locator[at].as_py()!r} of the extraction "
-        f"{quote_id(str(extraction[at].as_py()))} names an event on the timeline "
+        f"The locator {locator[at].as_py()!r} of the parse "
+        f"{quote_id(str(parse[at].as_py()))} names an event on the timeline "
         f"{quote_id(str(timelines[at].as_py()))} and one on "
         f"{quote_id(str(timelines[at + 1].as_py()))}: a locator names one event "
-        f"of its extraction's source; nothing is written."
+        f"of its parse's source; nothing is written."
     )
 
 
@@ -1284,15 +1281,19 @@ def event_tables(registry: EventRegistry, *, events: bool) -> EventTables:
     each in the Registry columns on the axis of its timeline's root, its
     numbers in the package form
     (:func:`~timetoalign.core.time.package_numbers`), sorted by
-    extraction, timeline, exact start and ID (:func:`_sorted_rows`); each kind's content (every column of
+    parse, timeline, exact start and ID (:func:`_sorted_rows`); each kind's content (every column of
     its events but the registry's, its name among them, a column none of a
     timeline's events of the kind holds a value in left out), keyed by
     ``id`` and without positions, as its pre-parsed table, the columns of
     its type declared (:func:`pre_parsed_schema`) and the further ones in
     the order the timelines first hold them (:func:`joined_parts`); and the
-    extractions the rows name. An event with no content to store (every
-    column but ``id`` null) whose extraction names a source file is not
-    written into a pre-parsed table: it stays re-parsable, its ``location``
+    parses the rows name. A Projection's row names the event it stands for
+    (``projection_of``). A kind whose events hold nothing but their ID (no
+    column but ``id`` would be written: a Projection always, an ``Onset``
+    without names) has no pre-parsed table: its events lie in their registry
+    rows alone, ``location`` null. An event with no content to store (every
+    column but ``id`` null) whose parse names a source file is not written
+    into a pre-parsed table either: it stays re-parsable, its ``location``
     null. Nothing passes through a float that is not one.
 
     Args:
@@ -1303,7 +1304,7 @@ def event_tables(registry: EventRegistry, *, events: bool) -> EventTables:
         ValueError: If an event ID names two events (two timelines that
             minted it before they joined one bundle), naming both
             timelines, nothing renamed, since a MatchClaim may name it; if
-            a locator names two events of one extraction on timelines of
+            a locator names two events of one parse on timelines of
             two families, naming the locator and both timelines; or if two
             timelines hold a further column of one name in two types no
             type holds both of exactly, naming the column, both timelines
@@ -1333,7 +1334,7 @@ def event_tables(registry: EventRegistry, *, events: bool) -> EventTables:
             )
         )
     sourced = pa.array(
-        sorted(e.id for e in written.extractions if e.source is not None),
+        sorted(e.id for e in written.parses if e.source is not None),
         pa.string(),
     )
     rows = _sorted_rows(table)
@@ -1341,6 +1342,9 @@ def event_tables(registry: EventRegistry, *, events: bool) -> EventTables:
     stored_ids: list[pa.Array] = []
     for kind, parts in content_parts.items():
         joined = joined_parts(parts, kind, pre_parsed_schema(kind))
+        if joined.column_names == ["id"]:
+            # Nothing but IDs: the events lie in their registry rows alone.
+            continue
         # In the order of the registry's rows, so equal events give equal bytes.
         joined = joined.take(
             pc.sort_indices(
@@ -1351,10 +1355,10 @@ def event_tables(registry: EventRegistry, *, events: bool) -> EventTables:
         )
         ids = joined.column("id").combine_chunks()
         at = pc.index_in(ids, value_set=table.column("id").combine_chunks())
-        extraction = table.column("extraction_id").combine_chunks().take(at)
+        parse = table.column("parse_id").combine_chunks().take(at)
         reparsable = pc.and_(
             _all_null(joined),
-            _filled(pc.is_in(extraction, value_set=sourced), pa.scalar(False)),
+            _filled(pc.is_in(parse, value_set=sourced), pa.scalar(False)),
         )
         stored = pc.invert(reparsable)
         if pc.any(stored).as_py():
@@ -1401,7 +1405,7 @@ def event_tables(registry: EventRegistry, *, events: bool) -> EventTables:
         rows=packaged.replace_schema_metadata({TYPE_METADATA_KEY: "Registry"}),
         pre_parsed=pre_parsed,
         contents=contents,
-        extractions=written.extractions,
+        parses=written.parses,
     )
 
 
@@ -1503,7 +1507,8 @@ def registry_rows_in_memory(rows: pa.Table, what: str) -> pa.Table:
 
     Each ``start`` and ``duration`` is read in the number type its row
     states (:func:`~timetoalign.core.time.numbers_from_package`), both
-    sides filled as memory holds them; every other Registry column as a
+    sides filled as memory holds them; ``projection_of`` as the struct of
+    the event a Projection stands for; every other Registry column as a
     string column (a column a file lacks null). *what* names the registry
     in a message.
 
@@ -1523,6 +1528,10 @@ def registry_rows_in_memory(rows: pa.Table, what: str) -> pa.Table:
                     else column_field.type
                 ),
             )
+            continue
+        if column_field.name == "projection_of":
+            column = rows.column(column_field.name).combine_chunks()
+            columns[column_field.name] = column.cast(column_field.type)
             continue
         column = rows.column(column_field.name).combine_chunks()
         if isinstance(column, pa.DictionaryArray):
@@ -1547,9 +1556,8 @@ def content_in_memory(
     events lie in (a pre-parsed table states no number type: the
     registry's rows do, one per family), every coordinate cell in the
     number type it names, at whatever depth (:func:`_from_package`); a
-    column of a declared field (a Projection's ``projection_of``, a Box's
-    shape) typed and stamped as that field, so its semantic field reads it;
-    every other column as it stands. *what* names the table in a message.
+    column of a declared field (a Box's shape) typed and stamped as that
+    field, so its semantic field reads it; every other column as it stands. *what* names the table in a message.
 
     Raises:
         ValueError: If a number does not hold its value as *number_type*
@@ -2494,7 +2502,7 @@ class ManifestFileMixin:
         canonical YAML, without event rows or external references. An
         :class:`~timetoalign.alignment.AlignmentBundle` holding MatchClaims,
         Projections or Boxes, or with ``events`` any events, writes its
-        tables beside the manifest (its registry, Extraction table,
+        tables beside the manifest (its registry, Parse table,
         pre-parsed tables and MatchClaim table) and names the registry and
         the MatchClaim table in its ``resources``, its events never in the
         manifest: its manifest is written (validated and serialized) once

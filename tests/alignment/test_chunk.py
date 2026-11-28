@@ -578,32 +578,25 @@ class TestASentinelNamesNoEvent:
         assert score.n_events == 0
 
     @pytest.mark.parametrize("sentinel", [NOMATCH, CHUNK])
-    def test_a_projections_table_naming_a_sentinel(
-        self, sentinel: str, tmp_path: Path
-    ) -> None:
-        """The fixture's first row, ``projection_10`` of ``onset_1``, now of a sentinel."""
+    def test_a_registry_naming_a_sentinel(self, sentinel: str, tmp_path: Path) -> None:
+        """The fixture's ``projection_10``, of ``onset_1``, now of a sentinel."""
         package = Path(
             shutil.copytree(fixture_path("manifest.yaml").parent, tmp_path / "tables")
         )
-        table = pq.read_table(package / "projections.parquet")
-        reference = table.column("projection_of").combine_chunks()
-        event_ids = reference.field("event_id").to_pylist()
-        assert table.column("id")[0].as_py() == "projection_10"
-        assert event_ids[0] == "onset_1"
-        changed = pa.StructArray.from_arrays(
-            [reference.field("timeline_id"), pa.array([sentinel] + event_ids[1:])],
-            fields=list(reference.type),
-            mask=reference.is_null(),
-        )
+        table = pq.read_table(package / "registry.parquet")
+        ids = table.column("id").to_pylist()
+        at = ids.index("projection_10")
+        references = table.column("projection_of").to_pylist()
+        assert references[at] == {"timeline_id": "dpt_1", "event_id": "onset_1"}
+        references[at] = {"timeline_id": "dpt_1", "event_id": sentinel}
+        index = table.schema.get_field_index("projection_of")
+        field = table.schema.field(index)
         pq.write_table(
-            table.set_column(
-                table.schema.get_field_index("projection_of"), "projection_of", changed
-            ),
-            package / "projections.parquet",
+            table.set_column(index, field, pa.array(references, field.type)),
+            package / "registry.parquet",
         )
-        bundle = AlignmentBundle.from_file(package / "manifest.yaml")
         with pytest.raises(TableError) as caught:
-            bundle.get_timeline("clt_2").events
+            AlignmentBundle.from_file(package / "manifest.yaml")
         problem = caught.value.problem
         assert (problem.code, problem.row, problem.column, problem.message) == (
             "invalid_projection_of",

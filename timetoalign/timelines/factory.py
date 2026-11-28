@@ -304,12 +304,12 @@ def _create_grouped_timeline(
         if filtered_table.num_rows == 0:
             continue
 
-        # The group's rows, with the extractions that made them.
+        # The group's rows, with the parses that made them.
         group_data = EventData._of_reduced(
             filtered_table,
             merged_data.unit,
             merged_data.number_type,
-            merged_data.extractions,
+            merged_data.parses,
         )
 
         # Create child timeline

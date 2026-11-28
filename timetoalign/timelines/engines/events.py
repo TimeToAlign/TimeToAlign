@@ -61,7 +61,7 @@ from timetoalign.storage.events import (
 from timetoalign.storage.registry import (
     SEGMENT_KIND,
     EventRegistry,
-    Extraction,
+    Parse,
     number_cells,
 )
 from timetoalign.storage.schema import get_base_field_names
@@ -76,7 +76,7 @@ else:
 
 #: The keys a Projection row may hold a value under: its ID, its type, its
 #: position, the event it stands for and, for a Projection read from a source
-#: file, its place there and the extraction that read it (registry columns,
+#: file, its place there and the parse that read it (registry columns,
 #: never repeated content of the event it stands for).
 _PROJECTION_KEYS = frozenset(
     {
@@ -89,7 +89,7 @@ _PROJECTION_KEYS = frozenset(
         "duration",
         "projection_of",
         "locator",
-        "extraction_id",
+        "parse_id",
     }
 )
 
@@ -116,7 +116,7 @@ def _check_projection_row(row: dict[str, Any], timeline_id: str) -> None:
     if extra:
         raise ValueError(
             f"A Projection holds its ID, its position and projection_of (and, "
-            f"read from a source file, its locator and extraction_id), nothing "
+            f"read from a source file, its locator and parse_id), nothing "
             f"else of the event it stands for; the row also gives {extra}"
         )
     reference = row.get("projection_of")
@@ -471,7 +471,7 @@ class EventsMixin(_Host):
         allow_expansion: bool = False,
         *,
         seed: int | None = None,
-        extractions: Iterable[Extraction] = (),
+        parses: Iterable[Parse] = (),
     ) -> list[str]:
         """Add events to the timeline.
 
@@ -501,7 +501,7 @@ class EventsMixin(_Host):
         stands for, as a dict ``{"timeline_id": ..., "event_id": ...}`` or an
         :class:`~timetoalign.core.EventReference` (``None`` where none is
         known); it repeats nothing else of that event. Read from a source
-        file, it names its ``locator`` and ``extraction_id`` as every row
+        file, it names its ``locator`` and ``parse_id`` as every row
         does (below).
 
         A Box (``event_type`` ``"Box"``) is an area of the image the
@@ -521,13 +521,13 @@ class EventsMixin(_Host):
         may be given in place of its row, alone or in the list.
 
         Rows read from a source file name what read them: a row's
-        ``extraction_id`` names an :class:`~timetoalign.storage.Extraction`
-        given in *extractions* (or held by the timeline's family already)
+        ``parse_id`` names an :class:`~timetoalign.storage.Parse`
+        given in *parses* (or held by the timeline's family already)
         and its ``locator`` the event's place in the source. Both go into
         the event's registry row (:attr:`registry`), not into
-        :attr:`events`. The extractions the rows name are held with them;
+        :attr:`events`. The parses the rows name are held with them;
         if the rows are refused, none of them is held. A row naming no
-        extraction names the family's extraction of events made in code.
+        parse names the family's parse of events made in code.
 
         Args:
             rows: Event dictionaries or events (one or a list).
@@ -538,7 +538,7 @@ class EventsMixin(_Host):
                 - start, end: coordinates (for interval events)
             allow_expansion: If True, expand timeline if events exceed length.
             seed: The seed of the minter of the missing IDs.
-            extractions: The extractions the rows' ``extraction_id`` names;
+            parses: The parses the rows' ``parse_id`` names;
                 one the rows do not name is not held.
 
         Returns:
@@ -553,10 +553,10 @@ class EventsMixin(_Host):
                 its shape is one the axis cannot hold exactly, or its start
                 contradicts its shape, a
                 position cannot be converted, the events exceed the length
-                and expansion is not allowed, a row names an extraction
-                neither given nor held, an extraction given is held under
+                and expansion is not allowed, a row names a parse
+                neither given nor held, a parse given is held under
                 its ID with other content, or a locator names two events of
-                one extraction. Nothing is added then.
+                one parse. Nothing is added then.
 
         Examples:
             >>> from timetoalign.timelines import ContinuousPhysicalTimeline
@@ -589,9 +589,9 @@ class EventsMixin(_Host):
         given_ids = [row.get("id") for row in rows]
         rows = self._rows_with_ids(rows, seed)
         added = self._event_data_of(rows)
-        if extractions:
+        if parses:
             # Held with the rows, by the registry, once nothing refuses them.
-            added = added.with_extractions(*extractions)
+            added = added.with_parses(*parses)
         self._refuse_boxes_off_their_shapes(added, given_ids)
 
         # The farthest end, in this timeline's number type: exact on an
@@ -751,7 +751,7 @@ class EventsMixin(_Host):
         allow_expansion: bool = False,
         *,
         seed: int | None = None,
-        extractions: Iterable[Extraction] = (),
+        parses: Iterable[Parse] = (),
     ) -> list[str]:
         """Add Projections to the timeline, reusing those it already holds.
 
@@ -767,11 +767,11 @@ class EventsMixin(_Host):
         by :meth:`add_events`).
 
         A row read from a source file may name its ``locator`` and its
-        ``extraction_id`` (an extraction given in *extractions* or held by
+        ``parse_id`` (a parse given in *parses* or held by
         the timeline's family), as :meth:`add_events` takes them: they go
         into the added Projection's registry row. They do not tell
         Projections apart: a Projection the timeline holds already is
-        returned as it is, its own locator and extraction kept, and of rows
+        returned as it is, its own locator and parse kept, and of rows
         of one call standing for one thing the first row's are kept.
 
         Args:
@@ -781,7 +781,7 @@ class EventsMixin(_Host):
                 added exceeds its length.
             seed: The seed of the minter of the missing IDs, as
                 :meth:`add_events` takes it.
-            extractions: The extractions the rows' ``extraction_id`` names,
+            parses: The parses the rows' ``parse_id`` names,
                 as :meth:`add_events` takes them; one no added row names is
                 not held.
 
@@ -876,7 +876,7 @@ class EventsMixin(_Host):
                 ids.append(len(added))
                 added.append(row)
         minted = (
-            self.add_events(added, allow_expansion, seed=seed, extractions=extractions)
+            self.add_events(added, allow_expansion, seed=seed, parses=parses)
             if added
             else []
         )

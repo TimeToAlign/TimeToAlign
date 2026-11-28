@@ -3181,13 +3181,13 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         (:meth:`EventRegistry.add_rows
         <timetoalign.storage.EventRegistry.add_rows>`), their positions on
         the axis of the root: a family read so never becomes a child. The
-        extractions they name are read from the Extraction table their
+        parses they name are read from the Parse table their
         non-event rows locate; each event's content is read from the pre-parsed
         table its ``location`` names, by ID, when the events of its family
-        are first read (a Projection table checked against the manifest
-        then, ``timetoshare.tables.check_projections``); an event without a
-        location keeps its registry columns alone (it is re-parsable from
-        its source). The length is held as :meth:`Timeline.add_events
+        are first read; an event without a location keeps its registry
+        columns alone (a Projection, with the event it stands for, its
+        ``projection_of``; an event of a kind holding nothing but its ID;
+        an event re-parsable from its source). The length is held as :meth:`Timeline.add_events
         <timetoalign.timelines.Timeline.add_events>` holds it: an unlocked
         timeline grows to a row ending past it, a locked one refuses it.
         Then the MatchClaim table, added as :meth:`add_match_claim_field`
@@ -3213,10 +3213,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             ValueError: If a resource lies elsewhere than on disk relative
                 to the manifest, a registry resource names a folder (a
                 registry is one Parquet file), a table breaks a rule (a
-                ``timetoshare.tables.TableError`` for the registry, the
-                Extraction table and, when its events are read, the
-                Projection table; a number off its row's number type), an
-                event names an extraction the package does not locate or a
+                ``timetoshare.tables.TableError`` for the registry and the
+                Parse table; a number off its row's number type), an
+                event names a parse the package does not locate or a
                 location that does not lie in the package, an event lies on
                 another axis than its timeline's root or ends past a locked
                 timeline, an ID is held twice in a family, or as
@@ -3245,10 +3244,11 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         serializes it before any file is written, and the writing that names
         them. Beside the manifest: the registry (``registry.parquet``, the
         non-event rows of the manifest's elements, its MatchClaims and its
-        extractions, then one event row per event on the axis of its
-        timeline's root), the Extraction table (``extractions.parquet``),
-        one pre-parsed table per kind (``projections.parquet``,
-        ``boxes.parquet``, ``Note.parquet``) and the MatchClaim table
+        parses, then one event row per event on the axis of its
+        timeline's root), the Parse table (``parses.parquet``),
+        one pre-parsed table per kind holding more than IDs
+        (``boxes.parquet``, ``Note.parquet``; a Projection lies in its
+        registry row alone) and the MatchClaim table
         (``match_claims.parquet``). Projections and Boxes are written
         always; with ``events`` (given, or as the file read had events of
         other kinds), every other kind the bundle's timelines hold as well.
@@ -3291,14 +3291,16 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         (:func:`~timetoalign.timelines.manifest.event_tables`): the
         registry, one file of the non-event rows (the manifest's elements, as
         the manifest written names them, its MatchClaims and its
-        extractions, each at its location from the manifest's folder,
+        parses, each at its location from the manifest's folder,
         sorted by location and ID) followed by the event rows (sorted by
-        extraction, timeline, exact start and ID); the Extraction table,
+        parse, timeline, exact start and ID); the Parse table,
         each source written as its path from the manifest's folder where the
         file lies under it, else as its ``file:`` URI; one pre-parsed table
-        per kind, each event's ``location`` naming it (an event with nothing
-        to store whose extraction names a source file stays re-parsable, its
-        ``location`` null). A pre-parsed file the registry replaced located
+        per kind whose events hold more than their IDs, each event's
+        ``location`` naming it (a kind holding nothing but IDs, a Projection
+        always, lies in its registry rows alone, and an event with nothing
+        to store whose parse names a source file stays re-parsable, its
+        ``location`` null in both cases). A pre-parsed file the registry replaced located
         and the new one does not (a kind no longer written) is deleted, so
         no file is left that nothing names. A bundle holding
         MatchClaims writes its MatchClaim table
@@ -3306,9 +3308,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         that a table already lying there must be succeeded). The registry
         and the MatchClaim table lie where the entry read with the manifest
         places them, else beside it (``registry.parquet``,
-        ``match_claims.parquet``); the Extraction and pre-parsed tables lie
-        beside it (``extractions.parquet``, ``projections.parquet``,
-        ``boxes.parquet``, else the kind's name,
+        ``match_claims.parquet``); the Parse and pre-parsed tables lie
+        beside it (``parses.parquet``, ``boxes.parquet``, else the kind's
+        name,
         :func:`~timetoalign.timelines.manifest.pre_parsed_file_name`).
         Each entry keeps its ID (a new entry's is minted,
         :meth:`Resource.of_file <timetoalign.timelines.manifest.Resource.of_file>`)
@@ -3523,7 +3525,7 @@ def resolve(target: str | PathLike[str], id: str) -> list[Any]:
     """Everything an ID names, through a manifest or a package root.
 
     An ID combined with a manifest's persistent location names an element,
-    an event, a MatchClaim or an extraction of its package. *target* is a
+    an event, a MatchClaim or a parse of its package. *target* is a
     manifest file or a package root (the folder of ``package.yaml``), as a
     path or a ``file:`` URL; *id* is bare, or written ``#id``. The
     resolutions are TimeToShare's (``timetoshare.tables.resolve``): through
@@ -3546,7 +3548,7 @@ def resolve(target: str | PathLike[str], id: str) -> list[Any]:
       :class:`~timetoalign.core.Event`), its position on the axis of its
       timeline's root as the registry states it, its content read from its
       pre-parsed table by ID (none for an event only re-parsable);
-    - an extraction: the :class:`~timetoalign.storage.Extraction`, its
+    - a parse: the :class:`~timetoalign.storage.Parse`, its
       source as the library holds a source (the path of a file the package
       names relative to its root, or by a ``file:`` URI).
 

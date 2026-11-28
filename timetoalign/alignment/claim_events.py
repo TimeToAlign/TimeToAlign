@@ -39,11 +39,11 @@ from timetoalign.timelines.statements import _day
 if TYPE_CHECKING:
     from timetoalign.alignment.bundle import AlignmentBundle
     from timetoalign.alignment.claims import MatchClaim, MatchClaimField
-    from timetoalign.storage import Extraction
+    from timetoalign.storage import Parse
 
 #: The keys of a side stating a position that name where a source file
 #: states it: the registry columns of the Projection standing there.
-_SOURCE_KEYS = ("locator", "extraction_id")
+_SOURCE_KEYS = ("locator", "parse_id")
 
 
 def _event_coordinate(raw: Any) -> Any:
@@ -259,7 +259,7 @@ class _Side(NamedTuple):
     where the side states a position a Projection stands at; ``chunk`` the
     placed ``start`` and ``end`` of a CHUNK side (a synchronous claim between
     two positions, where no Projection stands); all ``None`` for the
-    NOMATCH sentinel. ``source`` holds the ``locator`` and ``extraction_id``
+    NOMATCH sentinel. ``source`` holds the ``locator`` and ``parse_id``
     the side states for its Projection (``None`` where it states neither).
     """
 
@@ -286,7 +286,7 @@ def _claims_between_events(
     certainty: float = 1.0,
     provenance: Provenance | None = None,
     earlier: MatchClaimField | None = None,
-    extractions: Iterable[Extraction] = (),
+    parses: Iterable[Parse] = (),
 ) -> list[MatchClaim]:
     """MatchClaims between events, a Projection or CHUNK standing for a side without one.
 
@@ -300,8 +300,8 @@ def _claims_between_events(
     - an event dict stating a position: ``start``, and ``end`` for a span,
       each a number on the timeline's axis or a :class:`Coordinate` in any
       unit one of the timeline's C-Maps converts, and optionally ``name``
-      (the claim's name of the event), ``locator`` and ``extraction_id``
-      (where a source file states the position, and the extraction that
+      (the claim's name of the event), ``locator`` and ``parse_id``
+      (where a source file states the position, and the parse that
       read it: the Projection's registry row, as
       :meth:`Timeline.add_events` takes them). A **Projection** stands for the
       side there (:meth:`Timeline.add_projections`, get-or-add): under the
@@ -327,12 +327,12 @@ def _claims_between_events(
     first claim on a Projection recorded (in *earlier*, else in this call)
     is the one every later claim on it shows. A CHUNK side is no element,
     so its name is the one its pair states. A side's ``locator`` and
-    ``extraction_id`` go into the Projection it adds; a Projection reused
+    ``parse_id`` go into the Projection it adds; a Projection reused
     keeps its own (:meth:`Timeline.add_projections`), and a side naming a
-    held event or a CHUNK side adds none, so they name nothing there. An
-    extraction a side names that is neither in *extractions* nor held by
+    held event or a CHUNK side adds none, so they name nothing there. A
+    parse a side names that is neither in *parses* nor held by
     its timeline's family is refused before anything is added; a locator
-    naming two events of one extraction is refused as
+    naming two events of one parse is refused as
     :meth:`Timeline.add_projections` refuses it, timeline by timeline.
 
     Every pair is resolved and every position placed and checked before any
@@ -356,7 +356,7 @@ def _claims_between_events(
         provenance: How the claims were made and who believes them.
         earlier: MatchClaims already stated, whose names of Projections
             the new claims keep.
-        extractions: The extractions the sides' ``extraction_id`` names
+        parses: The parses the sides' ``parse_id`` names
             (or held by the timelines' families already); one no added
             Projection names is not held.
 
@@ -377,7 +377,7 @@ def _claims_between_events(
             its parent cannot contain), a held event is named with a span
             not its own, a position cannot be placed on its timeline's
             axis, a float start, end or duration is one its timeline
-            cannot store, or a side names an extraction neither given nor
+            cannot store, or a side names a parse neither given nor
             held by its timeline's family.
         TypeError: If a side is neither a string nor a dict.
     """
@@ -471,12 +471,12 @@ def _claims_between_events(
                 [side.projection for side in projecting if side.projection is not None]
             )
         )
-    extractions = tuple(extractions)
-    _refuse_unknown_extractions(projected.values(), extractions)
+    parses = tuple(parses)
+    _refuse_unknown_parses(projected.values(), parses)
     projection_ids = {
         key: iter(
             timeline.add_projections(
-                [side.projection_row for side in projecting], extractions=extractions
+                [side.projection_row for side in projecting], parses=parses
             )
         )
         for key, (timeline, projecting) in projected.items()
@@ -530,37 +530,35 @@ def _claims_between_events(
     return claims
 
 
-def _refuse_unknown_extractions(
-    projected: Iterable[tuple[Any, list[_Side]]], extractions: Sequence[Extraction]
+def _refuse_unknown_parses(
+    projected: Iterable[tuple[Any, list[_Side]]], parses: Sequence[Parse]
 ) -> None:
-    """Refuse a side naming an extraction neither given nor held, before anything is added.
+    """Refuse a side naming a parse neither given nor held, before anything is added.
 
-    A Projection's ``extraction_id`` names an extraction of *extractions* or
+    A Projection's ``parse_id`` names a parse of *parses* or
     one its timeline's family holds (:meth:`Timeline.add_events` refuses any
     other); checked for every timeline first, so that a refusal leaves every
     timeline unchanged, not only those whose Projections come later.
 
     Raises:
-        ValueError: Naming the timeline and the first such extraction ID.
+        ValueError: Naming the timeline and the first such parse ID.
     """
-    given = {extraction.id for extraction in extractions}
+    given = {parse.id for parse in parses}
     for timeline, sides in projected:
         named = {
-            str(side.source["extraction_id"])
+            str(side.source["parse_id"])
             for side in sides
-            if side.source is not None and "extraction_id" in side.source
+            if side.source is not None and "parse_id" in side.source
         } - given
         if not named:
             continue
-        held = {
-            extraction.id for extraction in timeline._tree_root().registry.extractions
-        }
+        held = {parse.id for parse in timeline._tree_root().registry.parses}
         unknown = sorted(named - held)
         if unknown:
             raise ValueError(
-                f"A side on timeline {quote_id(timeline.id)} names the extraction "
+                f"A side on timeline {quote_id(timeline.id)} names the parse "
                 f"{quote_id(unknown[0])} for its Projection, which is neither given "
-                f"(extractions=) nor held by the timeline's family; nothing is added."
+                f"(parses=) nor held by the timeline's family; nothing is added."
             )
 
 

@@ -370,8 +370,8 @@ class TestRoundTrips:
         bundle.to_file(directory / "manifest.yaml")
         assert sorted(path.name for path in directory.iterdir()) == [
             "boxes.parquet",
-            "extractions.parquet",
             "manifest.yaml",
+            "parses.parquet",
             "registry.parquet",
         ]
         read_page = AlignmentBundle.from_file(directory / "manifest.yaml").get_timeline(

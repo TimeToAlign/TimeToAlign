@@ -10,6 +10,7 @@ from typing import Any
 
 import pyarrow as pa
 import pytest
+from timetoshare import tables as format_tables
 
 import timetoalign
 from timetoalign.alignment import AlignmentBundle
@@ -22,12 +23,12 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.loader import _sources
-from timetoalign.storage import EventData, EventRegistry, Extraction
+from timetoalign.storage import EventData, EventRegistry, Parse
 from timetoalign.storage.registry import (
-    EXTRACTION_SCHEMA,
+    PARSE_SCHEMA,
     REGISTRY_SCHEMA,
-    extraction_table,
     member_uri,
+    parse_table,
 )
 from timetoalign.timelines import (
     ContinuousLogicalTimeline,
@@ -138,16 +139,16 @@ def _registry_rows(rows: list[dict[str, Any]], unit: str, number_type: str) -> p
                     "number_type",
                     "start",
                     "duration",
-                    "extraction_id",
+                    "parse_id",
                 )
             ]
         ),
     )
 
 
-def _package_extraction() -> Extraction:
-    return Extraction(
-        id="extraction_p",
+def _package_parse() -> Parse:
+    return Parse(
+        id="parse_p",
         source="score.mei",
         source_integrity={"algorithm": "SHA-256", "digest": ABC_SHA256},
         parser="TestParser",
@@ -175,7 +176,26 @@ class TestRootPositions:
         root, *_ = _family()
         table = root.registry.table
 
-        assert table.schema.names == REGISTRY_SCHEMA.names
+        assert (
+            table.schema.names
+            == REGISTRY_SCHEMA.names
+            == [
+                "id",
+                "kind",
+                "location",
+                "timeline_id",
+                "unit",
+                "number_type",
+                "start",
+                "duration",
+                "parse_id",
+                "locator",
+                "vanished_in",
+                "projection_of",
+            ]
+        )
+        assert REGISTRY_SCHEMA.names == format_tables.REGISTRY_SCHEMA.names
+        assert table.column("projection_of").null_count == 5
         assert _ids(table) == ["r1", "a1", "a2", "g1", "b1"]
         assert table.column("kind").to_pylist() == [
             "Beat",
@@ -217,19 +237,19 @@ class TestRootPositions:
         assert _ids(segments) == ["clt_a", "clt_b", "clt_g"]
         assert _starts(segments) == [2, 4, 3]
         assert _exact(segments.column("duration").to_pylist()) == [4, 4, 2]
-        assert segments.column("extraction_id").to_pylist() == [None, None, None]
+        assert segments.column("parse_id").to_pylist() == [None, None, None]
 
-    def test_every_event_names_the_familys_tool_extraction(self) -> None:
+    def test_every_event_names_the_familys_tool_parse(self) -> None:
         root, *_ = _family()
         table = root.registry.table
 
-        (tool,) = root.registry.extractions
+        (tool,) = root.registry.parses
         assert (tool.parser, tool.parser_version, tool.source) == (
             "timetoalign",
             timetoalign.__version__,
             None,
         )
-        assert set(table.column("extraction_id").to_pylist()) == {tool.id}
+        assert set(table.column("parse_id").to_pylist()) == {tool.id}
         for name in ("location", "locator", "vanished_in"):
             assert table.column(name).null_count == len(table)
 
@@ -271,7 +291,7 @@ class TestRootPositions:
                     "timeline_id": "clt_pc",
                     "start": Fraction(5, 2),
                     "duration": Fraction(1, 2),
-                    "extraction_id": "extraction_p",
+                    "parse_id": "parse_p",
                 }
             ],
             "quarters",
@@ -279,7 +299,7 @@ class TestRootPositions:
         )
         content = pa.table({"id": ["p1"], "pitch": [62]})
 
-        root._registry.add_rows(rows, {"Note": content}, [_package_extraction()])
+        root._registry.add_rows(rows, {"Note": content}, [_package_parse()])
 
         (event,) = child.events.table.to_pylist()
         assert (event["id"], event["event_type"], event["temporal_type"]) == (
@@ -329,14 +349,14 @@ class TestRootPositions:
                     "location": "tables/Note/part.parquet",
                     "timeline_id": "clt_pc",
                     "start": Fraction(5, 2),
-                    "extraction_id": "extraction_p",
+                    "parse_id": "parse_p",
                 }
             ],
             "quarters",
             "fraction",
         )
 
-        root._registry.add_rows(rows, {"Note": content}, [_package_extraction()])
+        root._registry.add_rows(rows, {"Note": content}, [_package_parse()])
 
         (event,) = child.events.table.to_pylist()
         assert (event["id"], event["name"], event["pitch"]) == ("p1", name, 62)
@@ -352,14 +372,14 @@ class TestRootPositions:
                     "kind": "Tick",
                     "timeline_id": "dlt_pc",
                     "start": 10,
-                    "extraction_id": "extraction_p",
+                    "parse_id": "parse_p",
                 }
             ],
             "ticks",
             "int",
         )
 
-        root._registry.add_rows(rows, {}, [_package_extraction()])
+        root._registry.add_rows(rows, {}, [_package_parse()])
 
         assert _starts(child.events.table) == [3]
         assert child.events.table.column("temporal_type").to_pylist() == ["instant"]
@@ -367,10 +387,10 @@ class TestRootPositions:
     def test_rows_read_from_a_package_keep_their_order(self, tmp_path: Path) -> None:
         path = tmp_path / "score.txt"
         path.write_bytes(b"abc")
-        first = Extraction(
+        first = Parse(
             **{
-                **Extraction.of_source(path, parser="P", parser_version="1").__dict__,
-                "id": "extraction_first",
+                **Parse.of_source(path, parser="P", parser_version="1").__dict__,
+                "id": "parse_first",
             }
         )
         timeline = _quarters("clt_t", 8)
@@ -384,9 +404,9 @@ class TestRootPositions:
             "fraction",
         )
         rows = rows.set_column(
-            rows.schema.get_field_index("extraction_id"),
-            "extraction_id",
-            pa.array(["extraction_first"] * 3),
+            rows.schema.get_field_index("parse_id"),
+            "parse_id",
+            pa.array(["parse_first"] * 3),
         ).append_column("locator", pa.array(["L1", "L2", "L3"]))
         contents = {
             "Note": pa.table({"id": ["n1", "n2"], "pitch": [60, 64]}),
@@ -397,7 +417,7 @@ class TestRootPositions:
 
         assert _ids(timeline.events.table) == ["n1", "b1", "n2"]
         assert _ids(timeline.registry.table) == ["n1", "b1", "n2"]
-        second = Extraction(**{**first.__dict__, "id": "extraction_second"})
+        second = Parse(**{**first.__dict__, "id": "parse_second"})
         again = EventData.from_dicts(
             [
                 {
@@ -426,7 +446,7 @@ class TestRootPositions:
         assert timeline.events.table.column("pitch").to_pylist() == [61, None, 65]
         assert timeline.registry.table.column("vanished_in").to_pylist() == [
             None,
-            "extraction_second",
+            "parse_second",
             None,
         ]
 
@@ -454,14 +474,14 @@ class TestTheFloatCase:
                     "kind": "Onset",
                     "timeline_id": "cpt_c",
                     "start": 0.3,
-                    "extraction_id": "extraction_p",
+                    "parse_id": "parse_p",
                 }
             ],
             "seconds",
             "float",
         )
 
-        root._registry.add_rows(rows, {}, [_package_extraction()])
+        root._registry.add_rows(rows, {}, [_package_parse()])
 
         assert _values(child.events.table) == [0.09999999999999998]
         assert _values(root.registry.filter(kinds="Onset").table) == [0.3]
@@ -580,7 +600,7 @@ class TestViews:
         assert refusal.value.args[0] == (
             "No registry column 'start' to count by. Available columns: ['id', "
             "'kind', 'location', 'timeline_id', 'unit', 'number_type', "
-            "'extraction_id', 'locator', 'vanished_in']"
+            "'parse_id', 'locator', 'vanished_in']"
         )
 
     def test_concat_keeps_each_row_once(self) -> None:
@@ -613,10 +633,10 @@ class TestViews:
         assert root.registry.content("Beat", ids=["a1"]).to_pylist() == [{"id": "a1"}]
         assert _ids(root.registry.content("Beat")) == ["r1", "a1", "a2", "b1"]
 
-    def test_a_segment_names_no_tool_extraction(self, tmp_path: Path) -> None:
+    def test_a_segment_names_no_tool_parse(self, tmp_path: Path) -> None:
         path = tmp_path / "score.txt"
         path.write_bytes(b"abc")
-        extraction = Extraction.of_source(path, parser="P", parser_version="1")
+        parse = Parse.of_source(path, parser="P", parser_version="1")
         root = _quarters("clt_r", 8)
         child = _quarters("clt_c", 4)
         root.add_child(child, offset=1)
@@ -626,9 +646,9 @@ class TestViews:
             NumberType.fraction,
         )
 
-        child._registry.add("clt_c", data, extraction=extraction)
+        child._registry.add("clt_c", data, parse=parse)
 
-        assert root.registry.extractions == [extraction]
+        assert root.registry.parses == [parse]
         assert root._registry._family.tool is None
 
 
@@ -697,31 +717,31 @@ class TestMergeOnAttach:
         g.add_events([{"id": "g1", "event_type": "Beat", "start": Fraction(1, 4)}])
         a.add_child(g, offset=1)
         view = a.registry
-        (child_tool,) = view.extractions
+        (child_tool,) = view.parses
         assert _ids(view.table) == ["a1", "g1"]
         assert _starts(view.table) == [Fraction(1, 3), Fraction(5, 4)]
 
         root.add_child(a, offset=2)
 
         assert _starts(view.table) == [Fraction(7, 3), Fraction(13, 4)]
-        (tool,) = root.registry.extractions
+        (tool,) = root.registry.parses
         assert tool.id != child_tool.id
-        assert set(root.registry.table.column("extraction_id").to_pylist()) == {tool.id}
+        assert set(root.registry.table.column("parse_id").to_pylist()) == {tool.id}
         a.add_events([{"id": "a3", "event_type": "Beat", "start": 2}])
         assert _starts(root.registry.filter(within="clt_a", kinds="Beat").table) == [
             Fraction(7, 3),
             4,
         ]
 
-    def test_a_root_of_no_events_adopts_the_childs_tool_extraction(self) -> None:
+    def test_a_root_of_no_events_adopts_the_childs_tool_parse(self) -> None:
         root = _quarters("clt_root", 8)
         a = _quarters("clt_a", 4)
         a.add_events([{"id": "a1", "event_type": "Beat", "start": 0}])
-        (child_tool,) = a.registry.extractions
+        (child_tool,) = a.registry.parses
 
         root.add_child(a, offset=2)
 
-        assert root.registry.extractions == [child_tool]
+        assert root.registry.parses == [child_tool]
 
 
 class TestUpdate:
@@ -734,8 +754,8 @@ class TestUpdate:
     @staticmethod
     def _run(
         path: Path, rows: list[tuple[str, str, Any, int]]
-    ) -> tuple[Extraction, EventData]:
-        extraction = Extraction.of_source(path, parser="TestParser", parser_version="1")
+    ) -> tuple[Parse, EventData]:
+        parse = Parse.of_source(path, parser="TestParser", parser_version="1")
         data = EventData.from_dicts(
             [
                 {
@@ -750,7 +770,7 @@ class TestUpdate:
             TimeUnit.quarters,
             NumberType.fraction,
         )
-        return extraction, data
+        return parse, data
 
     def test_rows_matched_by_locator_keep_their_ids(self, tmp_path: Path) -> None:
         path = self._source(tmp_path)
@@ -758,7 +778,7 @@ class TestUpdate:
         first, data = self._run(
             path, [("n1", "m0", 0, 60), ("n2", "m1", 1, 62), ("n3", "m2", 2, 64)]
         )
-        timeline._registry.add("clt_u", data, extraction=first)
+        timeline._registry.add("clt_u", data, parse=first)
         assert first.source_integrity == {"algorithm": "SHA-256", "digest": ABC_SHA256}
         assert "locator" not in timeline.events.table.column_names
         assert timeline.registry.table.column("locator").to_pylist() == [
@@ -776,7 +796,7 @@ class TestUpdate:
                 ("x3", "m3", 3, 65),
             ],
         )
-        second = Extraction(**{**second.__dict__, "id": "extraction_second"})
+        second = Parse(**{**second.__dict__, "id": "parse_second"})
         timeline.registry.update(again, second, timeline_id="clt_u")
 
         table = timeline.registry.table
@@ -791,16 +811,16 @@ class TestUpdate:
         assert _starts(table) == [0, 1, Fraction(5, 2), 5, 3]
         tool = timeline._registry._family.tool
         assert tool is not None
-        assert table.column("extraction_id").to_pylist() == [
-            "extraction_second",
+        assert table.column("parse_id").to_pylist() == [
+            "parse_second",
             first.id,
-            "extraction_second",
+            "parse_second",
             tool.id,
-            "extraction_second",
+            "parse_second",
         ]
         assert table.column("vanished_in").to_pylist() == [
             None,
-            "extraction_second",
+            "parse_second",
             None,
             None,
             None,
@@ -810,7 +830,7 @@ class TestUpdate:
     def test_an_update_without_locators_is_refused(self, tmp_path: Path) -> None:
         path = self._source(tmp_path)
         timeline = _quarters("clt_u", 8)
-        extraction = Extraction.of_source(path, parser="TestParser", parser_version="1")
+        parse = Parse.of_source(path, parser="TestParser", parser_version="1")
         data = EventData.from_dicts(
             [{"id": "n1", "event_type": "Note", "start": 0}],
             TimeUnit.quarters,
@@ -818,7 +838,7 @@ class TestUpdate:
         )
 
         with pytest.raises(ValueError) as refusal:
-            timeline.registry.update(data, extraction, timeline_id="clt_u")
+            timeline.registry.update(data, parse, timeline_id="clt_u")
 
         assert str(refusal.value) == (
             "an update matches rows by their locator: the rows give none (a column "
@@ -826,15 +846,15 @@ class TestUpdate:
         )
         assert len(timeline.events) == 0
 
-    def _first(self, tmp_path: Path) -> tuple[Timeline, Extraction]:
-        """A timeline holding ``n1``, ``n2``, ``n3`` of ``extraction_first``."""
+    def _first(self, tmp_path: Path) -> tuple[Timeline, Parse]:
+        """A timeline holding ``n1``, ``n2``, ``n3`` of ``parse_first``."""
         first, data = self._run(
             self._source(tmp_path),
             [("n1", "m0", 0, 60), ("n2", "m1", 1, 62), ("n3", "m2", 2, 64)],
         )
-        first = Extraction(**{**first.__dict__, "id": "extraction_first"})
+        first = Parse(**{**first.__dict__, "id": "parse_first"})
         timeline = _quarters("clt_u", 8)
-        timeline._registry.add("clt_u", data, extraction=first)
+        timeline._registry.add("clt_u", data, parse=first)
         return timeline, first
 
     def test_a_locator_given_twice_in_a_run_is_refused(self, tmp_path: Path) -> None:
@@ -843,31 +863,31 @@ class TestUpdate:
         second, again = self._run(
             self._source(tmp_path), [("x1", "m0", 0, 61), ("x2", "m0", 1, 62)]
         )
-        second = Extraction(**{**second.__dict__, "id": "extraction_second"})
+        second = Parse(**{**second.__dict__, "id": "parse_second"})
 
         with pytest.raises(ValueError) as refusal:
             timeline.registry.update(again, second, timeline_id="clt_u")
 
         assert str(refusal.value) == (
-            "locator 'm0' is given to 2 events of extraction 'extraction_second'; "
+            "locator 'm0' is given to 2 events of parse 'parse_second'; "
             "a locator names one event of its source"
         )
         assert timeline.registry.table.equals(before)
         assert _ids(timeline.events.table) == ["n1", "n2", "n3"]
 
-    def test_a_locator_held_by_an_event_of_its_extraction_is_refused(
+    def test_a_locator_held_by_an_event_of_its_parse_is_refused(
         self, tmp_path: Path
     ) -> None:
         timeline, first = self._first(tmp_path)
         before = timeline.registry.table
         message = (
-            "locator 'm0' is given to 2 events of extraction 'extraction_first'; "
+            "locator 'm0' is given to 2 events of parse 'parse_first'; "
             "a locator names one event of its source"
         )
         _, again = self._run(self._source(tmp_path), [("y1", "m0", 3, 61)])
 
         with pytest.raises(ValueError) as refusal:
-            timeline._registry.add("clt_u", again, extraction=first)
+            timeline._registry.add("clt_u", again, parse=first)
         assert str(refusal.value) == message
         rows = _registry_rows(
             [
@@ -876,7 +896,7 @@ class TestUpdate:
                     "kind": "Note",
                     "timeline_id": "clt_u",
                     "start": 3,
-                    "extraction_id": "extraction_first",
+                    "parse_id": "parse_first",
                 }
             ],
             "quarters",
@@ -887,11 +907,11 @@ class TestUpdate:
         assert str(refusal.value) == message
         assert timeline.registry.table.equals(before)
 
-        timeline._registry.add("clt_u", again, extraction=_package_extraction())
+        timeline._registry.add("clt_u", again, parse=_package_parse())
 
         assert _ids(timeline.registry.table) == ["n1", "n2", "n3", "y1"]
 
-    def _under_a_root(self, tmp_path: Path) -> tuple[Timeline, Timeline, Extraction]:
+    def _under_a_root(self, tmp_path: Path) -> tuple[Timeline, Timeline, Parse]:
         """``clt_root`` with the child ``clt_u`` at 2 holding the first run's rows."""
         timeline, first = self._first(tmp_path)
         root = _quarters("clt_root", 16)
@@ -900,9 +920,9 @@ class TestUpdate:
 
     def _second(
         self, tmp_path: Path, rows: list[tuple[str, str, Any, int]]
-    ) -> tuple[Extraction, EventData]:
+    ) -> tuple[Parse, EventData]:
         second, again = self._run(self._source(tmp_path), rows)
-        return Extraction(**{**second.__dict__, "id": "extraction_second"}), again
+        return Parse(**{**second.__dict__, "id": "parse_second"}), again
 
     def test_an_update_through_a_view_finds_its_timeline(self, tmp_path: Path) -> None:
         root, timeline, first = self._under_a_root(tmp_path)
@@ -926,7 +946,7 @@ class TestUpdate:
         assert _starts(timeline.registry.table) == [2, 3, Fraction(9, 2), 5]
         assert timeline.registry.table.column("vanished_in").to_pylist() == [
             None,
-            "extraction_second",
+            "parse_second",
             None,
             None,
         ]
@@ -936,15 +956,15 @@ class TestUpdate:
     ) -> None:
         path = self._source(tmp_path)
         first, held_u = self._run(path, [("u2", "m2", 0, 60)])
-        first = Extraction(**{**first.__dict__, "id": "extraction_first"})
+        first = Parse(**{**first.__dict__, "id": "parse_first"})
         _, held_v = self._run(path, [("v0", "m0", 0, 60), ("v1", "m1", 1, 62)])
         root = _quarters("clt_root", 16)
         u = _quarters("clt_u", 4)
         v = _quarters("clt_v", 4)
         root.add_child(u, offset=0)
         root.add_child(v, offset=8)
-        u._registry.add("clt_u", held_u, extraction=first)
-        v._registry.add("clt_v", held_v, extraction=first)
+        u._registry.add("clt_u", held_u, parse=first)
+        v._registry.add("clt_v", held_v, parse=first)
         second, again = self._second(
             tmp_path, [("x0", "m0", 0, 61), ("x1", "m1", 1, 63), ("x2", "m2", 2, 65)]
         )
@@ -958,19 +978,19 @@ class TestUpdate:
         root, timeline, _ = self._under_a_root(tmp_path)
         other = tmp_path / "other.txt"
         other.write_bytes(b"xyz")
-        extraction, again = self._run(other, [("z0", "m0", 4, 70)])
+        parse, again = self._run(other, [("z0", "m0", 4, 70)])
 
-        assert root.registry.update_target(again, extraction) is None
+        assert root.registry.update_target(again, parse) is None
         before = root.registry.table
         with pytest.raises(ValueError) as refusal:
-            root.registry.update(again, extraction)
+            root.registry.update(again, parse)
         assert str(refusal.value) == (
-            f"the rows of extraction {extraction.id!r} ({extraction.source}) match no "
+            f"the rows of parse {parse.id!r} ({parse.source}) match no "
             "timeline of the registry, by locator or by ID (None); nothing is updated"
         )
         assert root.registry.table.equals(before)
 
-        assert root.registry.update(again, extraction, timeline_id="clt_u") == "clt_u"
+        assert root.registry.update(again, parse, timeline_id="clt_u") == "clt_u"
 
         assert _ids(timeline.registry.table) == ["n1", "n2", "n3", "z0"]
         assert timeline.registry.table.column("vanished_in").to_pylist() == [None] * 4
@@ -983,7 +1003,7 @@ class TestWritten:
         b.add_events([{"id": "s1", "event_type": "Segment", "start": 1}])
         return root, a, g, b
 
-    def test_rows_contents_extractions_families(self) -> None:
+    def test_rows_contents_parses_families(self) -> None:
         root, a, _, _ = self._with_a_segment_event()
 
         written = root.registry.written()
@@ -991,7 +1011,7 @@ class TestWritten:
         tool = root._registry._family.tool
         assert tool is not None
         assert _ids(written.rows) == ["r1", "a1", "a2", "g1", "b1", "s1"]
-        assert written.rows.column("extraction_id").to_pylist() == [tool.id] * 6
+        assert written.rows.column("parse_id").to_pylist() == [tool.id] * 6
         assert _starts(written.rows) == [
             Fraction(1, 2),
             Fraction(7, 3),
@@ -1014,7 +1034,7 @@ class TestWritten:
             {"id": "a1"},
             {"id": "a2"},
         ]
-        assert written.extractions == (tool,)
+        assert written.parses == (tool,)
         (family,) = written.families
         assert (family.root_id, family.unit, family.number_type, family.timelines) == (
             "clt_root",
@@ -1078,7 +1098,7 @@ class TestAddRows:
                     "timeline_id": "clt_pc",
                     "start": start,
                     "duration": Fraction(1, 2),
-                    "extraction_id": "extraction_p",
+                    "parse_id": "parse_p",
                 }
             ],
             "quarters",
@@ -1086,7 +1106,7 @@ class TestAddRows:
         )
 
     @staticmethod
-    def _o1(extraction_id: str = "extraction_p") -> pa.Table:
+    def _o1(parse_id: str = "parse_p") -> pa.Table:
         return _registry_rows(
             [
                 {
@@ -1094,7 +1114,7 @@ class TestAddRows:
                     "kind": "Onset",
                     "timeline_id": "cpt_s",
                     "start": 2.5,
-                    "extraction_id": extraction_id,
+                    "parse_id": parse_id,
                 }
             ],
             "seconds",
@@ -1108,7 +1128,7 @@ class TestAddRows:
         bundle.registry.add_rows(
             rows,
             {"Note": pa.table({"id": ["p1"], "pitch": [62]})},
-            [_package_extraction()],
+            [_package_parse()],
         )
 
         assert _ids(child.events.table) == ["p1"]
@@ -1117,8 +1137,8 @@ class TestAddRows:
         assert _values(seconds.events.table) == [2.5]
         assert child.length is not None and child.length.value == 2
         assert seconds.length is not None and seconds.length.value == 2.5
-        assert child.registry.extractions == [_package_extraction()]
-        assert seconds.registry.extractions == [_package_extraction()]
+        assert child.registry.parses == [_package_parse()]
+        assert seconds.registry.parses == [_package_parse()]
 
     def test_a_locked_timeline_refuses_a_row_past_its_length(self) -> None:
         locked = ContinuousLogicalTimeline(
@@ -1132,7 +1152,7 @@ class TestAddRows:
         )
 
         with pytest.raises(ValueError) as refusal:
-            locked.registry.add_rows(rows, {}, [_package_extraction()])
+            locked.registry.add_rows(rows, {}, [_package_parse()])
 
         assert str(refusal.value) == (
             "Adding content ending at 3 exceeds timeline length 2. Timeline is "
@@ -1143,14 +1163,14 @@ class TestAddRows:
 
     def test_a_row_stated_already_is_passed_over(self) -> None:
         root, child, _, _ = self._timelines()
-        root.registry.add_rows(self._p1(), {}, [_package_extraction()])
+        root.registry.add_rows(self._p1(), {}, [_package_parse()])
         before = root.registry.table
 
-        root.registry.add_rows(self._p1(), {}, [_package_extraction()])
+        root.registry.add_rows(self._p1(), {}, [_package_parse()])
 
         assert root.registry.table.equals(before)
         with pytest.raises(ValueError) as refusal:
-            root.registry.add_rows(self._p1(start=3), {}, [_package_extraction()])
+            root.registry.add_rows(self._p1(start=3), {}, [_package_parse()])
         assert str(refusal.value) == (
             "Event id 'p1' is already held by an event of timeline 'clt_pc'"
         )
@@ -1160,17 +1180,17 @@ class TestAddRows:
         _, _, seconds, bundle = self._timelines()
         rows = pa.concat_tables([self._o1(), self._p1()])
         rows = rows.set_column(
-            rows.schema.get_field_index("extraction_id"),
-            "extraction_id",
-            pa.array(["extraction_p", "extraction_nowhere"]),
+            rows.schema.get_field_index("parse_id"),
+            "parse_id",
+            pa.array(["parse_p", "parse_nowhere"]),
         )
 
         with pytest.raises(ValueError) as refusal:
-            bundle.registry.add_rows(rows, {}, [_package_extraction()])
+            bundle.registry.add_rows(rows, {}, [_package_parse()])
 
         assert str(refusal.value) == (
-            "a registry row names the extraction 'extraction_nowhere', which is "
-            "given with none of the extractions"
+            "a registry row names the parse 'parse_nowhere', which is "
+            "given with none of the parses"
         )
         assert len(bundle.registry) == 0
         assert len(seconds.events) == 0
@@ -1185,7 +1205,7 @@ class TestAddRows:
         )
 
         with pytest.raises(KeyError) as refusal:
-            bundle.registry.add_rows(rows, {}, [_package_extraction()])
+            bundle.registry.add_rows(rows, {}, [_package_parse()])
 
         assert str(refusal.value) == (
             "\"A registry row names the timeline 'clt_nowhere', which no family of "
@@ -1193,7 +1213,7 @@ class TestAddRows:
         )
 
     @staticmethod
-    def _box_rows(start: int) -> tuple[pa.Table, dict[str, pa.Table], list[Extraction]]:
+    def _box_rows(start: int) -> tuple[pa.Table, dict[str, pa.Table], list[Parse]]:
         """The registry rows and Box content of ``rect_h2`` on ``seg_2``, its start *start*."""
         made = DiscreteGraphicalTimeline(
             length=867,
@@ -1215,7 +1235,7 @@ class TestAddRows:
         rows = rows.set_column(
             rows.schema.get_field_index("start"), REGISTRY_SCHEMA.field("start"), cells
         )
-        return rows, {"Box": made.registry.content("Box")}, made.registry.extractions
+        return rows, {"Box": made.registry.content("Box")}, made.registry.parses
 
     def test_a_box_read_is_checked_against_its_shape(self) -> None:
         seg_2 = DiscreteGraphicalTimeline(
@@ -1223,10 +1243,10 @@ class TestAddRows:
             uid="seg_2",
             meta={"box": {"x": 7, "y": 0, "width": 867, "height": 270}},
         )
-        rows, contents, extractions = self._box_rows(1)
+        rows, contents, parses = self._box_rows(1)
 
         with pytest.raises(ValueError) as refusal:
-            seg_2.registry.add_rows(rows, contents, extractions)
+            seg_2.registry.add_rows(rows, contents, parses)
 
         assert str(refusal.value) == (
             "Box 'rect_h2' starts at 1 on timeline 'seg_2', but its shape starts at "
@@ -1235,108 +1255,104 @@ class TestAddRows:
         )
         assert len(seg_2.registry) == 0
         assert len(seg_2.events) == 0
-        assert seg_2.registry.extractions == []
+        assert seg_2.registry.parses == []
 
         seg_2.registry.add_rows(*self._box_rows(378))
 
         assert _ids(seg_2.events.table) == ["rect_h2"]
 
     def test_a_registry_standing_alone_checks_no_box(self) -> None:
-        rows, contents, extractions = self._box_rows(1)
+        rows, contents, parses = self._box_rows(1)
         registry = EventRegistry(
             "seg_2", EventData.empty(TimeUnit.pixels, NumberType.int)
         )
 
-        registry.add_rows(rows, contents, extractions)
+        registry.add_rows(rows, contents, parses)
 
         assert _ids(registry.table) == ["rect_h2"]
 
 
 class TestAddEvents:
     @staticmethod
-    def _extraction(tmp_path: Path, version: str) -> Extraction:
+    def _parse(tmp_path: Path, version: str) -> Parse:
         path = tmp_path / "score.txt"
         path.write_bytes(b"abc")
-        return Extraction.of_source(path, parser="P", parser_version=version)
+        return Parse.of_source(path, parser="P", parser_version=version)
 
     @staticmethod
-    def _rows(extraction_id: str, *ids: str) -> list[dict[str, Any]]:
+    def _rows(parse_id: str, *ids: str) -> list[dict[str, Any]]:
         return [
             {
                 "id": event_id,
                 "event_type": "Note",
                 "start": index,
-                "extraction_id": extraction_id,
+                "parse_id": parse_id,
                 "locator": f"m{index}",
             }
             for index, event_id in enumerate(ids)
         ]
 
-    def test_extractions_are_held_with_the_rows(self, tmp_path: Path) -> None:
-        e1 = self._extraction(tmp_path, "1")
-        e2 = self._extraction(tmp_path, "2")
+    def test_parses_are_held_with_the_rows(self, tmp_path: Path) -> None:
+        e1 = self._parse(tmp_path, "1")
+        e2 = self._parse(tmp_path, "2")
         timeline = _quarters("clt_e", 8)
 
-        assert timeline.add_events(
-            self._rows(e1.id, "n1", "n2"), extractions=[e1, e2]
-        ) == [
+        assert timeline.add_events(self._rows(e1.id, "n1", "n2"), parses=[e1, e2]) == [
             "n1",
             "n2",
         ]
 
-        assert timeline.registry.extractions == [e1]
-        assert (
-            timeline.registry.table.column("extraction_id").to_pylist() == [e1.id] * 2
-        )
+        assert timeline.registry.parses == [e1]
+        assert timeline.registry.table.column("parse_id").to_pylist() == [e1.id] * 2
         assert timeline.registry.table.column("locator").to_pylist() == ["m0", "m1"]
-        assert "extraction_id" not in timeline.events.table.column_names
+        assert "parse_id" not in timeline.events.table.column_names
         assert "locator" not in timeline.events.table.column_names
-        assert e2.id not in timeline._registry._family.extractions
+        assert e2.id not in timeline._registry._family.parses
 
-    def test_refused_rows_hold_no_extraction(self, tmp_path: Path) -> None:
-        e1 = self._extraction(tmp_path, "1")
-        e3 = self._extraction(tmp_path, "3")
+    def test_refused_rows_hold_no_parse(self, tmp_path: Path) -> None:
+        e1 = self._parse(tmp_path, "1")
+        e3 = self._parse(tmp_path, "3")
         timeline = _quarters("clt_e", 8)
-        timeline.add_events(self._rows(e1.id, "n1"), extractions=[e1])
+        timeline.add_events(self._rows(e1.id, "n1"), parses=[e1])
 
         with pytest.raises(ValueError):
-            timeline.add_events(self._rows(e3.id, "n1"), extractions=[e3])
+            timeline.add_events(self._rows(e3.id, "n1"), parses=[e3])
 
-        assert e3.id not in timeline._registry._family.extractions
-        assert timeline.registry.extractions == [e1]
+        assert e3.id not in timeline._registry._family.parses
+        assert timeline.registry.parses == [e1]
 
-    def test_an_extraction_neither_given_nor_held_is_refused(self) -> None:
+    def test_an_parse_neither_given_nor_held_is_refused(self) -> None:
         timeline = _quarters("clt_e", 8)
 
         with pytest.raises(ValueError) as refusal:
-            timeline.add_events(self._rows("extraction_nowhere", "n1"))
+            timeline.add_events(self._rows("parse_nowhere", "n1"))
 
         assert str(refusal.value) == (
-            "the rows name the extraction 'extraction_nowhere', which this family "
-            "does not hold: give it with the rows (EventData.with_extractions)"
+            "the rows name the parse 'parse_nowhere', which this family "
+            "does not hold: give it with the rows (EventData.with_parses)"
         )
         assert len(timeline.events) == 0
 
 
-class TestExtractions:
+class TestParses:
     def test_a_source_file_is_named_by_its_digest(self, tmp_path: Path) -> None:
         path = tmp_path / "score.txt"
         path.write_bytes(b"abc")
 
-        first = Extraction.of_source(
+        first = Parse.of_source(
             path, parser="P", parser_version="2", parameters={"b": [2], "a": 1}
         )
-        second = Extraction.of_source(
+        second = Parse.of_source(
             path, parser="P", parser_version="2", parameters={"a": 1, "b": [2]}
         )
 
         assert first.source_integrity == {"algorithm": "SHA-256", "digest": ABC_SHA256}
         assert first.id == second.id
-        assert first.id.startswith("extraction_")
+        assert first.id.startswith("parse_")
         row = first.to_row()
         assert row["parameters"] == '{"a":1,"b":[2]}'
-        assert Extraction.from_row(row) == first
-        assert extraction_table([first]).schema == EXTRACTION_SCHEMA
+        assert Parse.from_row(row) == first
+        assert parse_table([first]).schema == PARSE_SCHEMA
 
     def test_the_id_never_depends_on_where_the_file_lies(self, tmp_path: Path) -> None:
         (tmp_path / "one").mkdir()
@@ -1346,7 +1362,7 @@ class TestExtractions:
         there.write_bytes(b"abc")
 
         runs = [
-            Extraction.of_source(
+            Parse.of_source(
                 path,
                 source=source,
                 parser="P",
@@ -1380,10 +1396,8 @@ class TestExtractions:
             handle.writestr("inner/score.txt", b"abc")
         run = {"parser": "P", "parser_version": "2", "date": "2026-11-28T00:00:00Z"}
 
-        member = Extraction.of_source(
-            zipfile.Path(archive, at="inner/score.txt"), **run
-        )
-        named = Extraction.of_source(
+        member = Parse.of_source(zipfile.Path(archive, at="inner/score.txt"), **run)
+        named = Parse.of_source(
             zipfile.Path(archive, at="inner/score.txt"), source="score.txt", **run
         )
 
@@ -1391,14 +1405,14 @@ class TestExtractions:
             "algorithm": "SHA-256",
             "digest": ABC_SHA256,
         }
-        assert member.id == Extraction.of_source(disk, **run).id
+        assert member.id == Parse.of_source(disk, **run).id
         assert member.source == f"jar:{archive.as_uri()}!/inner/score.txt"
         assert named.source == "score.txt"
         with zipfile.ZipFile(io.BytesIO(archive.read_bytes())) as from_object:
             inside = zipfile.Path(from_object, at="inner/score.txt")
             with pytest.raises(ValueError, match="opened from a file object"):
-                Extraction.of_source(inside, **run)
-            assert Extraction.of_source(inside, source="score.txt", **run) == named
+                Parse.of_source(inside, **run)
+            assert Parse.of_source(inside, source="score.txt", **run) == named
 
     def test_one_jar_uri(self, tmp_path: Path) -> None:
         archive = tmp_path / "set.zip"
@@ -1414,56 +1428,54 @@ class TestExtractions:
             f"jar:{archive.absolute().as_uri()}!/inner/folder"
         )
 
-    def test_a_table_carries_its_extractions_to_its_timeline(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_table_carries_its_parses_to_its_timeline(self, tmp_path: Path) -> None:
         path = tmp_path / "score.txt"
         path.write_bytes(b"abc")
-        e1 = Extraction.of_source(path, parser="P", parser_version="1")
-        e2 = Extraction.of_source(path, parser="P", parser_version="2")
+        e1 = Parse.of_source(path, parser="P", parser_version="1")
+        e2 = Parse.of_source(path, parser="P", parser_version="2")
         data = EventData.from_dicts(
             [
                 {
                     "id": event_id,
                     "event_type": "Note",
                     "start": start,
-                    "extraction_id": e1.id,
+                    "parse_id": e1.id,
                     "locator": locator,
                 }
                 for event_id, start, locator in (("n1", 0, "m0"), ("n2", 1, "m1"))
             ],
             TimeUnit.quarters,
             NumberType.fraction,
-        ).with_extractions(e1)
+        ).with_parses(e1)
 
         timeline = data.create_timeline(uid="clt_e")
 
-        assert timeline.registry.extractions == [e1]
+        assert timeline.registry.parses == [e1]
         table = timeline.registry.table
-        assert table.column("extraction_id").to_pylist() == [e1.id, e1.id]
+        assert table.column("parse_id").to_pylist() == [e1.id, e1.id]
         assert table.column("locator").to_pylist() == ["m0", "m1"]
-        for name in ("extraction_id", "locator"):
+        for name in ("parse_id", "locator"):
             assert name not in timeline.events.table.column_names
         other = EventData.empty(TimeUnit.quarters, NumberType.fraction)
-        joined = data.concat(other.with_extractions(e2, e1))
-        assert joined.extractions == (e1, e2)
+        joined = data.concat(other.with_parses(e2, e1))
+        assert joined.parses == (e1, e2)
 
-    def test_a_row_naming_an_extraction_nobody_gives_is_refused(self) -> None:
+    def test_a_row_naming_an_parse_nobody_gives_is_refused(self) -> None:
         data = EventData.from_dicts(
             [
                 {
                     "id": "n1",
                     "event_type": "Note",
                     "start": 0,
-                    "extraction_id": "extraction_nowhere",
+                    "parse_id": "parse_nowhere",
                 }
             ],
             TimeUnit.quarters,
             NumberType.fraction,
         )
         message = (
-            "the rows name the extraction 'extraction_nowhere', which this family "
-            "does not hold: give it with the rows (EventData.with_extractions)"
+            "the rows name the parse 'parse_nowhere', which this family "
+            "does not hold: give it with the rows (EventData.with_parses)"
         )
         with pytest.raises(ValueError) as refusal:
             data.create_timeline(uid="clt_e")
@@ -1475,17 +1487,14 @@ class TestExtractions:
 
         assert str(refusal.value) == message
         assert len(timeline.events) == 0
-        assert timeline._registry._family.extractions == {}
+        assert timeline._registry._family.parses == {}
 
     def test_a_source_without_its_digest_is_refused(self) -> None:
         with pytest.raises(ValueError) as refusal:
-            Extraction(
-                id="extraction_x", source="a.mid", parser="P", parser_version="1"
-            )
+            Parse(id="parse_x", source="a.mid", parser="P", parser_version="1")
 
         assert str(refusal.value) == (
-            "extraction 'extraction_x' names a source file and its digest together "
-            "or neither"
+            "parse 'parse_x' names a source file and its digest together " "or neither"
         )
 
     def test_content_given_as_a_callable_is_read_once_when_needed(self) -> None:
@@ -1503,14 +1512,14 @@ class TestExtractions:
                     "kind": "Note",
                     "timeline_id": "clt_p",
                     "start": 1,
-                    "extraction_id": "extraction_p",
+                    "parse_id": "parse_p",
                 }
             ],
             "quarters",
             "fraction",
         )
 
-        root._registry.add_rows(rows, {"Note": content}, [_package_extraction()])
+        root._registry.add_rows(rows, {"Note": content}, [_package_parse()])
         assert calls == []
         assert root.events.table.column("pitch").to_pylist() == [62]
         assert root.events.table.column("pitch").to_pylist() == [62]
@@ -1641,15 +1650,13 @@ class TestRefusals:
                     "kind": "Note",
                     "timeline_id": "clt_p",
                     "start": 1,
-                    "extraction_id": "extraction_p",
+                    "parse_id": "parse_p",
                 }
             ],
             "quarters",
             "fraction",
         )
-        read._registry.add_rows(
-            rows, {}, [_package_extraction()], registered=registered
-        )
+        read._registry.add_rows(rows, {}, [_package_parse()], registered=registered)
         parent = _quarters("clt_parent", 8)
 
         if not registered:
@@ -1694,10 +1701,10 @@ class TestRefusals:
                 "'clt_g', 'clt_b']",
             ),
             (
-                {"extraction_id": "extraction_unknown"},
+                {"parse_id": "parse_unknown"},
                 ValueError,
-                "a registry row names the extraction 'extraction_unknown', which is "
-                "given with none of the extractions",
+                "a registry row names the parse 'parse_unknown', which is "
+                "given with none of the parses",
             ),
             (
                 {"id": "a1"},
@@ -1706,7 +1713,7 @@ class TestRefusals:
                 f"it cannot join timeline 'clt_b': event ids are unique {SAME}",
             ),
         ],
-        ids=["unknown-timeline", "unknown-extraction", "held-id"],
+        ids=["unknown-timeline", "unknown-parse", "held-id"],
     )
     def test_registry_rows_refused(
         self, row: dict[str, Any], error: type[Exception], message: str
@@ -1720,7 +1727,7 @@ class TestRefusals:
                     "kind": "Note",
                     "timeline_id": "clt_b",
                     "start": 5,
-                    "extraction_id": "extraction_p",
+                    "parse_id": "parse_p",
                     **row,
                 }
             ],
@@ -1729,21 +1736,19 @@ class TestRefusals:
         )
 
         with pytest.raises(error) as refusal:
-            root._registry.add_rows(rows, {}, [_package_extraction()])
+            root._registry.add_rows(rows, {}, [_package_parse()])
 
         text = refusal.value.args[0] if error is KeyError else str(refusal.value)
         assert text == message
         assert root.registry.table.equals(before)
-        assert list(root._registry._family.extractions) == [
-            root._registry._family.tool.id
-        ]
+        assert list(root._registry._family.parses) == [root._registry._family.tool.id]
 
-    def test_an_extraction_is_held_only_with_its_rows(self) -> None:
+    def test_an_parse_is_held_only_with_its_rows(self) -> None:
         root = _quarters("clt_root", 8)
         root.add_events(
             [{"id": "r1", "event_type": "Beat", "start": 0, "velocity": 80}]
         )
-        held = dict(root._registry._family.extractions)
+        held = dict(root._registry._family.parses)
         data = EventData.from_dicts(
             [{"id": "v2", "event_type": "Beat", "start": 1, "velocity": "ff"}],
             TimeUnit.quarters,
@@ -1751,16 +1756,14 @@ class TestRefusals:
         )
 
         with pytest.raises(ValueError):
-            root._registry.add("clt_root", data, extraction=_package_extraction())
+            root._registry.add("clt_root", data, parse=_package_parse())
 
-        assert root._registry._family.extractions == held
+        assert root._registry._family.parses == held
         assert _ids(root.events.table) == ["r1"]
 
-    def test_a_child_holding_an_extraction_of_other_content(self) -> None:
-        def run(parser: str) -> Extraction:
-            return Extraction(
-                id="extraction_x", parser=parser, parser_version="1", date="2026"
-            )
+    def test_a_child_holding_an_parse_of_other_content(self) -> None:
+        def run(parser: str) -> Parse:
+            return Parse(id="parse_x", parser=parser, parser_version="1", date="2026")
 
         root = _quarters("clt_root", 8)
         root._registry.add(
@@ -1770,7 +1773,7 @@ class TestRefusals:
                 TimeUnit.quarters,
                 NumberType.fraction,
             ),
-            extraction=run("A"),
+            parse=run("A"),
         )
         child = _quarters("clt_c", 2)
         child._registry.add(
@@ -1780,7 +1783,7 @@ class TestRefusals:
                 TimeUnit.quarters,
                 NumberType.fraction,
             ),
-            extraction=run("B"),
+            parse=run("B"),
         )
         before = root._registry._family.table()
 
@@ -1788,10 +1791,10 @@ class TestRefusals:
             root.add_child(child, offset=1)
 
         assert str(refusal.value) == (
-            "extraction 'extraction_x' is held already, of other content"
+            "parse 'parse_x' is held already, of other content"
         )
         assert root._registry._family.table().equals(before)
-        assert root._registry._family.extractions["extraction_x"].parser == "A"
+        assert root._registry._family.parses["parse_x"].parser == "A"
         assert child._parent is None
         assert _ids(child.registry.table) == ["c1"]
 
@@ -1804,7 +1807,7 @@ class TestRefusals:
                     "kind": "Note",
                     "timeline_id": "clt_b",
                     "start": 5,
-                    "extraction_id": "extraction_p",
+                    "parse_id": "parse_p",
                 }
             ],
             "quarters",
@@ -1812,7 +1815,7 @@ class TestRefusals:
         )
 
         with pytest.raises(ValueError) as refusal:
-            root._registry.add_rows(rows, {}, [_package_extraction()])
+            root._registry.add_rows(rows, {}, [_package_parse()])
 
         assert str(refusal.value) == (
             "event 'p1' lies on quarters in float, but the root of its timeline "

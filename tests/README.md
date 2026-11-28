@@ -124,10 +124,11 @@ package's `resolve` finds, each of the ID asked for. The case's oracle is
 the package's own data, so a reader that refused a valid package, or
 answered an ID with another count, fails. A bundle built here (a root with
 a child holding a Note and a Projection, a recording holding a Box)
-written with `to_file(events=True)` gives a registry, an Extraction table
-and a Projection table that the package's table checks accept against the
-manifest written (`registry_problems`, `extraction_problems`,
-`projection_problems` all `[]`), and a registry whose non-event rows are
+written with `to_file(events=True)` gives a registry and a Parse table
+that the package's table checks accept against the manifest written
+(`registry_problems`, `parse_problems` both `[]`), no Projection table
+(a Projection lies in its registry row, `projection_of` among its
+columns), and a registry whose non-event rows are
 the package's `non_event_rows` of the manifest read as a package of one
 manifest.
 

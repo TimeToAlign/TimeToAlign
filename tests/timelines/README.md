@@ -320,7 +320,7 @@ the library writes back against the same literal text.
   numbers are doubles`), and an unknown serialization name (`"rfc8785"`)
   raises its own; in both cases the directory stays empty and the
   bundle's `resources` are unchanged (a writer that wrote the tables
-  first leaves `match_claims.parquet` and `projections.parquet` behind and
+  first leaves `match_claims.parquet` and `registry.parquet` behind and
   renames the resources). Into a directory already holding the bundle's
   package, written in YAML, and then given a belief that changes its
   MatchClaim table, the refused `jcs` writing leaves every file with its
@@ -792,8 +792,10 @@ tables are absent, is one more byte-identical round trip.
   manifest without `events`, in the same serialization, byte for byte that
   variant's text without the key apart from its `resources`, which name
   exactly the registry (`Registry`, `take_1`, `registry.parquet`), the
-  files beside it being `Beat.parquet`, `Note.parquet`,
-  `extractions.parquet` and `registry.parquet`; read back, its timelines
+  files beside it being `Note.parquet`, `parses.parquet` and
+  `registry.parquet` (the Beat `e1` holds nothing but its ID, so it lies
+  in its registry row alone, `location` null, and no `Beat.parquet` is
+  written); read back, its timelines
   hold the same event rows (`to_dict(events=True)` gives the literal's
   timelines). The variant without `events` is written back byte for byte.
   `to_file(events=False)` on the full literal writes it without `events`
@@ -3049,7 +3051,7 @@ write fractions):
     Projection);
   - a row giving a property the Projection does not have (`pitch`):
     `A Projection holds its ID, its position and projection_of (and, read
-    from a source file, its locator and extraction_id), nothing else of the
+    from a source file, its locator and parse_id), nothing else of the
     event it stands for; the row also gives ['pitch']`;
   - a `projection_of` that is not an event reference (the joined string
     `"clt_6:x1azmn68"`);
@@ -3097,26 +3099,35 @@ and the number of rows the timeline holds afterwards, never a count of calls:
   (`Projection id 'p' is given twice for different positions in one call on
   timeline 'dpt_1'`), and a row that is no Projection (`add_projections adds
   Projections, not a row of type 'Note'`).
-- **A source's locator and extraction go into the registry row.** An
-  `Extraction` `extraction_maps` (source `a.json`, parser `P` 1). On the
+- **A source's locator and parse go into the registry row.** A
+  `Parse` `parse_maps` (source `a.json`, parser `P` 1). On the
   samples timeline, `add_projections` of a row standing for `clt_6:n1` at
-  sample 22050 with `locator` `row:0 key:n1` and `extraction_id`
-  `extraction_maps`, given `extractions=[that extraction]`, returns one ID;
+  sample 22050 with `locator` `row:0 key:n1` and `parse_id`
+  `parse_maps`, given `parses=[that parse]`, returns one ID;
   the timeline's registry row of it holds that locator and that
-  extraction ID, and `registry.extractions` holds the extraction, equal
+  parse ID, and `registry.parses` holds the parse, equal
   field for field. The same thing stood for again with the locator `row:5
   key:n1` returns the same ID and leaves the registry row as it was (the
   Projection held is returned as it is, its locator never restated); two
   rows of one call standing for one new thing (no event, sample 44100),
   located `row:1` and `row:2`, give one ID whose locator is `row:1`, the
-  first row's. An extraction given to a call that adds nothing
-  (`extraction_other`, the first row again) is not held:
-  `registry.extractions` still holds `extraction_maps` alone. Two new
-  Projections at different positions given one locator of one extraction
+  first row's. A parse given to a call that adds nothing
+  (`parse_other`, the first row again) is not held:
+  `registry.parses` still holds `parse_maps` alone. Two new
+  Projections at different positions given one locator of one parse
   are refused atomically, with the registry's message (`locator 'row:9' is
-  given to 2 events of extraction 'extraction_maps'; …`, asserted whole),
+  given to 2 events of parse 'parse_maps'; …`, asserted whole),
   the timeline keeping its 2 events. A Projection added without a locator
   names none: its registry row's locator is null.
+- **The event a Projection stands for goes into its registry row.** On the
+  samples timeline holding the Note `n9` (instant 0), `add_projections` of
+  a Projection of `clt_6:n1` at sample 22050 and of one standing for no
+  event at 44100: the registry rows' `projection_of`, by ID, are
+  `{timeline_id: clt_6, event_id: n1}`, null, and null for `n9` (a column
+  every other kind leaves null); the timeline's events hold the same
+  three values. `registry.counts("projection_of")` is
+  refused (`No registry column 'projection_of' to count by. ...`, the
+  columns listed being those without numbers or structs).
 
 ---
 
@@ -3644,7 +3655,7 @@ declares (`int` on pixels, `Fraction` on fractions), and so do the Boxes
 read back after (a) the timeline's dict form, `Timeline.from_dict(
 page.to_dict(events=True))`, and (b) the package: an `AlignmentBundle`
 holding the page written with `to_file` into a folder as `manifest.yaml`
-(the folder then holds exactly `boxes.parquet`, `extractions.parquet`,
+(the folder then holds exactly `boxes.parquet`, `parses.parquet`,
 `manifest.yaml` and `registry.parquet`) and read with
 `AlignmentBundle.from_file`. What would show it
 broken: a Box read back unequal to the one added (an ID, a number or its
@@ -5680,23 +5691,23 @@ source both ways and asserts `type(events) is NoteEventData` and
 since a filter derives its table through the same copy.
 
 A timeline split by `group_by` from a loaded source keeps what the loader
-recorded of each row (`TestGroupedTimelinesKeepTheirExtractions`): which
-source file made it (its extraction) and where in that file it stands (its
+recorded of each row (`TestGroupedTimelinesKeepTheirParses`): which
+source file made it (its parse) and where in that file it stands (its
 locator). Each group's rows are a selection of the loaded table, so the
-proof is that every registry row of every child names the extraction and
+proof is that every registry row of every child names the parse and
 the locator its source row had, and that the family holds exactly the
-extractions the rows name. Before, a group's rows were rebuilt without the
-loader's extractions, and the family refused them for naming an
-extraction it did not hold. The expected values are read off the files the
-test writes, never off the loader: the extraction's `source` is the file's
+parses the rows name. Before, a group's rows were rebuilt without the
+loader's parses, and the family refused them for naming a
+parse it did not hold. The expected values are read off the files the
+test writes, never off the loader: the parse's `source` is the file's
 path and its digest the SHA-256 of the file's bytes, and the locator of
 the CSV row `i` is `row:i`. One file of three rows (images `a`, `b`, `a`)
 gives the children `a.png` holding `row:0` and `row:2` and `b.png`
-holding `row:1`, all naming the one extraction, which is the family's
+holding `row:1`, all naming the one parse, which is the family's
 only one. Two files (`one.csv`: `a`, `b`; `two.csv`: `a`) give `a.png`
-holding `row:0` of each file, each naming its own file's extraction, and
+holding `row:0` of each file, each naming its own file's parse, and
 `b.png` holding `row:1` of `one.csv` alone: a child's rows name only
-the extractions of the files they come from, and the family holds both,
+the parses of the files they come from, and the family holds both,
 in file order.
 
 `test_types.py` resolves continuous, discrete, string-unit, and unmatched-unit

@@ -618,7 +618,7 @@ position on the **root's** axis, and per timeline its events in its **own**
 coordinates (`Timeline.events`). Both are read back, and agree, on every
 number type the plan states; everything a ruling refuses is refused before
 anything changes, and a refusal leaves the family as it was (its rows, its
-events and its extractions).
+events and its parses).
 
 **The family** (`_family()`, used throughout): a `fraction` quarters root
 `clt_root` (length 8) holding the Beat `r1` at `1/2`; a child `clt_a`
@@ -633,8 +633,9 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
 - **Root storage** (`TestRootPositions`). The root's registry view holds
   its 5 events in the columns of `REGISTRY_SCHEMA` (`id`, `kind`,
   `location`, `timeline_id`, `unit`, `number_type`, `start`, `duration`,
-  `extraction_id`, `locator`, `vanished_in`: no `name`, which is an
-  event's content), the timelines in
+  `parse_id`, `locator`, `vanished_in`, `projection_of`, TimeToShare's
+  Registry columns in their order: no `name`, which is an event's
+  content), the timelines in
   joining order, each timeline's rows in the order they came: IDs `r1`,
   `a1`, `a2`, `g1`, `b1`; kinds `Beat`, `Beat`, `Beat`, `Note`, `Beat`;
   timelines `clt_root`, `clt_a`, `clt_a`, `clt_g`, `clt_b`; every `unit`
@@ -644,10 +645,11 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   `Segment` row of its parent, held by the family for the timelines and
   shown by no view: the family's own table (`_family.table()`) holds 8 rows,
   `r1`, `clt_a`, `clt_b`, `a1`, `a2`, `clt_g`, `g1`, `b1`, the Segments at
-  `2`, `4`, `3` lasting `4`, `4`, `2`. Every event row names one extraction,
-  the family's tool extraction (parser `timetoalign`, the library's version,
-  no source); a `Segment` row names none (`extraction_id` null);
-  `location`, `locator`, `vanished_in` are null. An event stating no event
+  `2`, `4`, `3` lasting `4`, `4`, `2`. Every event row names one parse,
+  the family's tool parse (parser `timetoalign`, the library's version,
+  no source); a `Segment` row names none (`parse_id` null);
+  `location`, `locator`, `vanished_in` and `projection_of` (a
+  Projection's alone) are null. An event stating no event
   type (`{"id": "z1", "start": 1}` added to a root) is of kind `Event`, the
   `Event` base's (the column is never null), its own `event_type` left as
   held (null).
@@ -677,7 +679,7 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   with the contents `{n1: 60, n2: 64}` (pitch) and `{b1: 1}` (strength),
   taken by `add_rows` (not registered): the timeline's events read `n1`,
   `b1`, `n2`, as its registry rows do, though the kinds' contents are read
-  kind by kind. A second run of the same source (another extraction) giving
+  kind by kind. A second run of the same source (another parse) giving
   `L1` with pitch 61 and `L3` with pitch 65 updates it: events and registry
   both `n1`, `b1`, `n2`, pitches `61`, `None`, `65`, `b1` (not found)
   vanished in the second run and kept.
@@ -731,13 +733,13 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   `pitch` 60, no position, type or registry column (a name, where an
   event holds one, is content too); `content("Beat",
   ids=["a1"])` the one column `id`, `a1`; `content("Beat")` reads `r1`,
-  `a1`, `a2`, `b1` in the view's order. `extractions` lists the tool
-  extraction once.
-- **The tool extraction only where an event names it.** A root with a
+  `a1`, `a2`, `b1` in the view's order. `parses` lists the tool
+  parse once.
+- **The tool parse only where an event names it.** A root with a
   child at 1 whose one event comes from a source file (an
-  `Extraction.of_source`) lists that extraction only: the child's place, a
-  `Segment` row, names no extraction, so the family makes no tool
-  extraction for it.
+  `Parse.of_source`) lists that parse only: the child's place, a
+  `Segment` row, names no parse, so the family makes no tool
+  parse for it.
 - **Tables span timelines** (`TestTablesSpanTimelines`, T136–T138 for
   tables standing alone). A timeline's events lie on its timeline: `b1`'s
   events (`fraction` quarters) joined with the seconds timeline's (`float`)
@@ -757,17 +759,17 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   before it joins the root reads `a1` at `1/3` and `g1` at `5/4` (its own
   family's root, `clt_a`); after the join the same view reads them at `7/3`
   and `13/4`, shifted once onto the new root, and every event row of the
-  merged family names the root's tool extraction (the child's tool
-  extraction is dropped, its rows renamed to the root's), `extractions`
+  merged family names the root's tool parse (the child's tool
+  parse is dropped, its rows renamed to the root's), `parses`
   one. A root of no events taking such a child adopts the child's tool
-  extraction. Rows added to a child after it joined are shifted likewise
+  parse. Rows added to a child after it joined are shifted likewise
   (`a3` at `2` on `clt_a` is `4` on the root).
 - **The writers' read** (`TestWritten`). `written()` over the family of
   `_family()` with a user's `Segment` event `s1` (an event of kind
   `Segment` whose ID names no timeline) added to `clt_b` at 1: its rows are
   every row of the family but the three recording a child's place (the
   `Segment` rows `clt_a`, `clt_g`, `clt_b`), in the family's order, `r1`,
-  `a1`, `a2`, `g1`, `b1`, `s1`, each naming the family's tool extraction
+  `a1`, `a2`, `g1`, `b1`, `s1`, each naming the family's tool parse
   (`s1` too, which names none in memory) and lying on the root's axis
   (`1/2`, `7/3`, `2`, `13/4`, `41/10`, `5`); its contents are keyed
   `(timeline, kind)`, the family's timelines in order and a timeline's
@@ -775,7 +777,7 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   `(clt_b, Beat)`, `(clt_b, Segment)`, each `id` first then the columns in
   which one of its events holds a value, no position or type
   (`(clt_g, Note)` is `id` `g1`, `pitch` 60; `(clt_a, Beat)` the one column
-  `id`, `a1`, `a2`); its extractions the tool extraction alone; its one
+  `id`, `a1`, `a2`); its parses the tool parse alone; its one
   family `clt_root` on quarters in `fraction`, the timelines `clt_root`,
   `clt_a`, `clt_g`, `clt_b`, and `family_of("clt_g")` that family (an
   unknown timeline `KeyError`, naming the available ones).
@@ -784,21 +786,21 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   bundle of the root and the seconds timeline writes both families, the
   seconds one after (`o1`, `audio` on seconds in `float`).
 - **Update by locator** (`TestUpdate`). A timeline holds three events of
-  one source file (an `Extraction.of_source` of a file of the bytes `abc`,
+  one source file (a `Parse.of_source` of a file of the bytes `abc`,
   SHA-256 `ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad`)
   with the locators `m0`, `m1`, `m2` (`n1` at 0, `n2` at 1, `n3` at 2,
   pitch 60, 62, 64), the column `locator` moved into the registry rows (the
-  events hold none). A second run over the file (another `Extraction` of
+  events hold none). A second run over the file (another `Parse` of
   the same source) gives `m0` with pitch 61, `m2` at `5/2` and a new `m3`
   at 3, under IDs of its own (`x0`, `x2`, `x3`): the rows read `n1`, `n2`,
   `n3`, `x3`: `n1` and `n3` keep their IDs and take the new content (pitch
-  61, start `5/2`) and the new extraction; `n2`, no longer found, is kept,
-  its `vanished_in` the new extraction, its extraction the old; `x3` is
-  added, naming the new extraction. A row of another source keeps its place
+  61, start `5/2`) and the new parse; `n2`, no longer found, is kept,
+  its `vanished_in` the new parse, its parse the old; `x3` is
+  added, naming the new parse. A row of another source keeps its place
   and is never flagged. `filter(vanished=True)` reads `n2`. Data without a
   `locator` column is refused (`an update matches rows by their locator:
   the rows give none (a column 'locator')`).
-- **Update through a view** (`TestUpdate`). `update(data, extraction,
+- **Update through a view** (`TestUpdate`). `update(data, parse,
   timeline_id=None)` is taken by any view and returns the timeline it
   updates. A root `clt_root` with the child `clt_u` (at offset 2) whose
   rows `n1`, `n2`, `n3` the first run made: a second run (`m0` pitch 61,
@@ -812,28 +814,28 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   of another source never match: a run of the bytes `xyz` (another file)
   giving `m0` matches none and, given `timeline_id="clt_u"`, adds its row to
   `clt_u` under its own ID (the fallback by ID); without a timeline it is
-  refused (`the rows of extraction '<ID>' (<source>) match no timeline of
+  refused (`the rows of parse '<ID>' (<source>) match no timeline of
   the registry, by locator or by ID (None); nothing is updated`), nothing
   changed, and `update_target` answers None.
 - **A locator names one event of its source** (`TestUpdate`). A second run
   giving `m0` to two new rows (`x1`, `x2`) is refused (`locator 'm0' is
-  given to 2 events of extraction 'extraction_second'; a locator names one
+  given to 2 events of parse 'parse_second'; a locator names one
   event of its source`), the timeline's three events as they were; adding
-  a row `y1` with the locator `m0` of the first extraction, which `n1`
-  holds, is refused likewise (`... given to 2 events of extraction
-  'extraction_first' ...`), and so are registry rows (`add_rows`) repeating
-  a held pair; rows of another extraction may take `m0`.
-- **Extractions** (`TestExtractions`). `Extraction.of_source` reads the
+  a row `y1` with the locator `m0` of the first parse, which `n1`
+  holds, is refused likewise (`... given to 2 events of parse
+  'parse_first' ...`), and so are registry rows (`add_rows`) repeating
+  a held pair; rows of another parse may take `m0`.
+- **Parses** (`TestParses`). `Parse.of_source` reads the
   file's SHA-256, its `to_row()` / `from_row()` round trip gives an equal
-  extraction, its `parameters` canonical JSON text (`{"a":1,"b":[2]}` for
+  parse, its `parameters` canonical JSON text (`{"a":1,"b":[2]}` for
   `{"b": [2], "a": 1}`), and two runs over one file with one parser mint one
   ID. **The ID never depends on where the file lies**: the same bytes at two
   paths (`one/score.txt`, `two/copy.txt`) give one ID, with or without a
   `source` (the reference recorded; the path given, POSIX-spelled, when
-  none): `source="score.txt"` is recorded as given. Equal extractions hash
-  alike (`hash(extraction) == hash(extraction.id)`, so a set holds them). A
-  source without its digest is refused. `extraction_table` has the columns
-  of `EXTRACTION_SCHEMA`. **A member of a ZIP archive is read in place**: the
+  none): `source="score.txt"` is recorded as given. Equal parses hash
+  alike (`hash(parse) == hash(parse.id)`, so a set holds them). A
+  source without its digest is refused. `parse_table` has the columns
+  of `PARSE_SCHEMA`. **A member of a ZIP archive is read in place**: the
   bytes `abc` as the member `inner/score.txt` of an archive written by the
   test give the digest of `abc` and the ID of the same bytes on disk
   (`one/score.txt`), and the recorded source is the member's `jar:` URI,
@@ -841,16 +843,16 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   `Path.as_uri()`), unless a `source` is given; a member of an archive
   opened from a file object (`io.BytesIO` of its bytes), without a
   `source`, is refused (it has no URI) and with one is read.
-- **A table carries its extractions to the timeline made of it.** An
-  `EventData` of two Notes naming `extraction_id` `e1`'s ID with the
-  locators `m0`, `m1`, carrying `e1` (`with_extractions(e1)`), made a
+- **A table carries its parses to the timeline made of it.** An
+  `EventData` of two Notes naming `parse_id` `e1`'s ID with the
+  locators `m0`, `m1`, carrying `e1` (`with_parses(e1)`), made a
   timeline by `create_timeline()`: the timeline's registry lists `e1` only,
   its rows name `e1` and hold the locators, its events hold neither column;
   `concat` of two tables carrying `e1` and `e2` carries `e1`, `e2`, each
-  once. A row naming an extraction the family neither holds nor is given
-  (`extraction_nowhere`) is refused (`the rows name the extraction
-  'extraction_nowhere', which this family does not hold: give it with the
-  rows (EventData.with_extractions)`), whether through the factory or
+  once. A row naming a parse the family neither holds nor is given
+  (`parse_nowhere`) is refused (`the rows name the parse
+  'parse_nowhere', which this family does not hold: give it with the
+  rows (EventData.with_parses)`), whether through the factory or
   `add`, nothing added.
 - **Rows read from a package, through a view** (`TestAddRows`).
   `add_rows` is taken by any view: rows joining a root `clt_p` (length 4)
@@ -869,10 +871,10 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   and `duration` cells) leaves the registry as it was (one `p1`), while a
   `p1` at another start is refused as an ID held (`Event id 'p1' is already
   held by an event of timeline 'clt_pc'`). **Atomic over families**: rows of
-  `cpt_s` then of `clt_p` where the `clt_p` row names an extraction not
+  `cpt_s` then of `clt_p` where the `clt_p` row names a parse not
   given leave `cpt_s` without `o1`. A row naming a timeline no family of
   the view holds is refused (`KeyError`, naming the available timelines).
-  The extractions given are held by each family taking rows.
+  The parses given are held by each family taking rows.
 - **A Box read is checked against its shape** (`TestAddRows`). A Box row
   read for a graphical timeline (`seg_2`, the timeline at x 7 of its image)
   whose `start` is 1 while its shape's `x_min` is 385 is refused with the
@@ -882,17 +884,17 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   as before (no `rect_h2`); with `start` 378 it is read (`seg_2` holds
   `rect_h2`). A registry standing alone (no host timeline) holds no length
   and checks no Box.
-- **Extractions given with the rows a timeline adds** (`TestAddEvents`).
-  `Timeline.add_events(rows, extractions=[e1])` with two Notes naming
+- **Parses given with the rows a timeline adds** (`TestAddEvents`).
+  `Timeline.add_events(rows, parses=[e1])` with two Notes naming
   `e1`'s ID and the locators `m0`, `m1`: the timeline's registry lists
   `e1`, its rows name it and hold the locators, its events hold neither
-  column; a further extraction `e2` given but named by no row is not held.
-  Rows refused (the second call repeating `n1`) hold no extraction given
+  column; a further parse `e2` given but named by no row is not held.
+  Rows refused (the second call repeating `n1`) hold no parse given
   with them: `e3` given with the refused rows is not held after. A row
-  naming an extraction neither given nor held is refused (`the rows name
-  the extraction 'extraction_nowhere', which this family does not hold:
-  give it with the rows (EventData.with_extractions)`).
-- **One `jar:` URI** (`TestExtractions`). `storage.registry.member_uri` is
+  naming a parse neither given nor held is refused (`the rows name
+  the parse 'parse_nowhere', which this family does not hold:
+  give it with the rows (EventData.with_parses)`).
+- **One `jar:` URI** (`TestParses`). `storage.registry.member_uri` is
   the one function: `loader._sources.member_uri` is the same object, and
   the URI of `inner/sc ore.txt` in an archive is
   `jar:<the archive's absolute file URI>!/inner/sc%20ore.txt`, a member
@@ -917,15 +919,15 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   - rows on another axis than the family's (`the rows of timeline 'clt_a'
     lie on its axis, quarters in fraction; these lie on quarters in float`);
   - registry rows naming a timeline the family does not hold (`KeyError`),
-    another axis, an extraction not given, an ID the family holds; the
-    family's extractions unchanged after each;
-  - an event added with an extraction whose column the timeline's does not
-    read (`velocity` `"ff"` beside `80`): refused, and the extraction is not
+    another axis, a parse not given, an ID the family holds; the
+    family's parses unchanged after each;
+  - an event added with a parse whose column the timeline's does not
+    read (`velocity` `"ff"` beside `80`): refused, and the parse is not
     held afterwards;
-  - a child whose family holds an extraction under an ID the parent's holds
-    with other content (`extraction_x`, parser `A` and `B`): refused
-    (`extraction 'extraction_x' is held already, of other content`), the
-    child still its own family's root, the parent's rows and extractions
+  - a child whose family holds a parse under an ID the parent's holds
+    with other content (`parse_x`, parser `A` and `B`): refused
+    (`parse 'parse_x' is held already, of other content`), the
+    child still its own family's root, the parent's rows and parses
     unchanged;
   - rows added (`add`) through a view (`TypeError`: rows join the registry
     of one family, not a view of it; `add_rows` and `update` take a view);

@@ -29,14 +29,13 @@ import timetoshare
 from timetoshare import loads
 from timetoshare.tables import (
     ELEMENT_KINDS,
-    EXTRACTION_SCHEMA,
     NON_EVENT_KINDS,
     PACKAGE_FILE,
+    PARSE_SCHEMA,
     PROVENANCE_METADATA_KEY,
     REGISTRY_SCHEMA,
     TYPE_METADATA_KEY,
-    check_extractions,
-    check_projections,
+    check_parses,
     check_registry,
     package_problems,
     read_table,
@@ -62,13 +61,13 @@ from timetoalign.core.ids import (
     seed_from,
     table_seed_part,
 )
-from timetoalign.storage.registry import Extraction, extraction_table
+from timetoalign.storage.registry import Parse, parse_table
 from timetoalign.timelines import TimelineGroup
 from timetoalign.timelines.manifest import (
     _NEW_FILE,
     ALWAYS_WRITTEN_KINDS,
-    EXTRACTIONS_FILE_NAME,
     PARQUET_MEDIA_TYPE,
+    PARSES_FILE_NAME,
     REGISTRY_FILE_NAME,
     EventTables,
     Integrity,
@@ -292,7 +291,7 @@ def _file_path(text: str) -> Path | None:
 
 
 def _source_written(source: str | None, root: Path) -> str | None:
-    """An extraction's *source* as a package lying at *root* (a manifest
+    """A parse's *source* as a package lying at *root* (a manifest
     alone: its folder) writes it, so that the package names no path of the
     machine that wrote it where its source lies in it.
 
@@ -302,7 +301,7 @@ def _source_written(source: str | None, root: Path) -> str | None:
     member, its archive written by the same rule; a URI of any other scheme
     as it stands. A source as the library holds it is a path (absolute, or
     relative to the current folder) or a ``jar:`` URI
-    (:meth:`Extraction.of_source <timetoalign.storage.Extraction.of_source>`).
+    (:meth:`Parse.of_source <timetoalign.storage.Parse.of_source>`).
 
     Examples:
         >>> from pathlib import Path
@@ -327,7 +326,7 @@ def _source_written(source: str | None, root: Path) -> str | None:
 
 
 def _source_read(source: str | None, root: Path) -> str | None:
-    """An extraction's *source* read from a package lying at *root*, as the
+    """A parse's *source* read from a package lying at *root*, as the
     library holds a source (the inverse of :func:`_source_written`): a
     reference resolved against *root*, a ``file:`` URI as its path, an
     archive's member with its archive's ``file:`` URI; a URI of any other
@@ -357,38 +356,30 @@ def _source_read(source: str | None, root: Path) -> str | None:
     return (root / unquote(source)).as_posix()
 
 
-def _extraction_written(extraction: Extraction, root: Path) -> Extraction:
-    """*extraction* with its source as a package lying at *root* writes it."""
-    source = _source_written(extraction.source, root)
-    return (
-        extraction
-        if source == extraction.source
-        else replace(extraction, source=source)
-    )
+def _parse_written(parse: Parse, root: Path) -> Parse:
+    """*parse* with its source as a package lying at *root* writes it."""
+    source = _source_written(parse.source, root)
+    return parse if source == parse.source else replace(parse, source=source)
 
 
-def _extraction_read(extraction: Extraction, root: Path) -> Extraction:
-    """*extraction* read from a package lying at *root*, its source as the
+def _parse_read(parse: Parse, root: Path) -> Parse:
+    """*parse* read from a package lying at *root*, its source as the
     library holds it."""
-    source = _source_read(extraction.source, root)
-    return (
-        extraction
-        if source == extraction.source
-        else replace(extraction, source=source)
-    )
+    source = _source_read(parse.source, root)
+    return parse if source == parse.source else replace(parse, source=source)
 
 
-def _read_extractions(
+def _read_parses(
     registries: Sequence[Path], root: Path, named: Sequence[str], what: str
-) -> dict[str, Extraction]:
-    """The extractions *named*, read from the Extraction tables the
+) -> dict[str, Parse]:
+    """The parses *named*, read from the Parse tables the
     non-event rows of the registries lying at *registries* (every one the
     manifest names) locate, each by ID.
 
     Raises:
-        ValueError: If an extraction is located by no non-event row, or its
+        ValueError: If a parse is located by no non-event row, or its
             table holds no row of it.
-        timetoshare.tables.TableError: If an Extraction table breaks a rule.
+        timetoshare.tables.TableError: If a Parse table breaks a rule.
     """
     if not named:
         return {}
@@ -397,30 +388,24 @@ def _read_extractions(
         promote_options="default",
     )
     located = located.filter(
-        _filled(
-            pc.equal(located.column("kind"), pa.scalar("Extraction")), pa.scalar(False)
-        )
+        _filled(pc.equal(located.column("kind"), pa.scalar("Parse")), pa.scalar(False))
     )
-    found: dict[str, Extraction] = {}
+    found: dict[str, Parse] = {}
     for location in distinct_strings(located.column("location")):
         path = _location_path(root, location)
         if path is None or not path.exists():
             continue
         ids = located.filter(pc.equal(located.column("location"), pa.scalar(location)))
-        table = read_table(
-            path, ids=distinct_strings(ids.column("id")), type="Extraction"
-        )
-        check_extractions(table)
+        table = read_table(path, ids=distinct_strings(ids.column("id")), type="Parse")
+        check_parses(table)
         for row in table.to_pylist():
-            found.setdefault(
-                row["id"], _extraction_read(Extraction.from_row(row), root)
-            )
-    missing = [extraction_id for extraction_id in named if extraction_id not in found]
+            found.setdefault(row["id"], _parse_read(Parse.from_row(row), root))
+    missing = [parse_id for parse_id in named if parse_id not in found]
     if missing:
         raise ValueError(
-            f"The events of {what} name the extraction {quote_id(missing[0])}, which "
-            f"no Extraction table its non-event rows locate holds: an event names the "
-            f"extraction that made it."
+            f"The events of {what} name the parse {quote_id(missing[0])}, which "
+            f"no Parse table its non-event rows locate holds: an event names the "
+            f"parse that made it."
         )
     return found
 
@@ -430,18 +415,14 @@ def _content_reader(
     entries: list[tuple[Path, pa.Array]],
     unit: Any,
     number_type: Any,
-    manifest: Mapping[str, Any] | None,
 ) -> Callable[[], pa.Table]:
     """The reader of the content of one family's events of *kind*: each
-    pre-parsed table of *entries* read by the IDs given, when first asked, a
-    Projection table checked (against *manifest*, where given)."""
+    pre-parsed table of *entries* read by the IDs given, when first asked."""
 
     def read() -> pa.Table:
         parts = []
         for path, ids in entries:
             table = read_table(path, ids=ids, type=kind)
-            if kind == "Projection":
-                check_projections(table, manifest)
             parts.append(
                 content_in_memory(
                     table, unit, number_type, f"{kind} table '{path.name}'"
@@ -477,7 +458,7 @@ def _install_registry(
 ) -> bool:
     """Install the event rows of the registry *resource* names (lying at
     *path*) in the families of the bundle's timelines (``_read_tables``),
-    their extractions located by the non-event rows of *registries*.
+    their parses located by the non-event rows of *registries*.
 
     Each family takes its rows through its registry
     (:meth:`EventRegistry.add_rows <timetoalign.storage.EventRegistry.add_rows>`),
@@ -500,11 +481,11 @@ def _install_registry(
     memory = registry_rows_in_memory(events, what)
     named = sorted(
         {
-            *distinct_strings(memory.column("extraction_id")),
+            *distinct_strings(memory.column("parse_id")),
             *distinct_strings(memory.column("vanished_in")),
         }
     )
-    extractions = _read_extractions(registries, root, named, what)
+    parses = _read_parses(registries, root, named, what)
     timelines = memory.column("timeline_id").combine_chunks()
     held = pc.unique(timelines)
     roots = [bundle._root_of(str(timeline_id)) for timeline_id in held.to_pylist()]
@@ -528,25 +509,17 @@ def _install_registry(
             ids = stored.column("id").combine_chunks().take(pa.array(where, pa.int64()))
             located.setdefault(kind, []).append((target, ids))
         contents = {
-            kind: _content_reader(
-                kind,
-                entries,
-                family.unit,
-                family.number_type,
-                # In a package a Projection may stand for an event of
-                # another manifest's timeline: the package check's to see.
-                None if filtered else manifest,
-            )
+            kind: _content_reader(kind, entries, family.unit, family.number_type)
             for kind, entries in located.items()
         }
         own_named = {
-            *distinct_strings(own.column("extraction_id")),
+            *distinct_strings(own.column("parse_id")),
             *distinct_strings(own.column("vanished_in")),
         }
         family.registry.add_rows(
             own,
             contents,
-            [extractions[key] for key in sorted(own_named)],
+            [parses[key] for key in sorted(own_named)],
             registered=True,
         )
     kinds = set(distinct_strings(memory.column("kind")))
@@ -633,14 +606,14 @@ def _non_event_rows_of(
     manifest: Mapping[str, Any],
     location: str,
     claims: tuple[pa.Array, str] | None,
-    extractions: tuple[pa.Array, str] | None,
+    parses: tuple[pa.Array, str] | None,
 ) -> pa.Table:
     """The non-event rows of a manifest written (in the file form) at
-    *location*, of its MatchClaims and of its extractions (their IDs and
+    *location*, of its MatchClaims and of its parses (their IDs and
     their table's URL), in the Registry's columns, sorted by ``location``,
     then ``id``."""
     parts = [non_event_rows_of(timetoshare.with_bare_ids(manifest), location)]
-    for given, kind in ((claims, "MatchClaim"), (extractions, "Extraction")):
+    for given, kind in ((claims, "MatchClaim"), (parses, "Parse")):
         if given is not None:
             parts.append(table_non_event_rows(given[0], kind, given[1]))
     joined = pa.concat_tables(parts).sort_by(
@@ -649,25 +622,25 @@ def _non_event_rows_of(
     return non_event_table(joined)
 
 
-def _kept_extractions(tables: EventTables, target: Path, root: Path) -> pa.Table:
-    """The Extraction table of *tables* to write at *target*, for a manifest
+def _kept_parses(tables: EventTables, target: Path, root: Path) -> pa.Table:
+    """The Parse table of *tables* to write at *target*, for a manifest
     alone in the folder *root*: each source written as that folder holds it
-    (:func:`_source_written`); an extraction the table lying there holds
-    under its ID, of the same content but its date, is that extraction,
+    (:func:`_source_written`); a parse the table lying there holds
+    under its ID, of the same content but its date, is that parse,
     written with the date it was first written with; every other as the
     bundle holds it."""
-    held: dict[str, Extraction] = {}
+    held: dict[str, Parse] = {}
     if target.is_file():
-        for row in read_table(target, type="Extraction").to_pylist():
-            held.setdefault(row["id"], Extraction.from_row(row))
+        for row in read_table(target, type="Parse").to_pylist():
+            held.setdefault(row["id"], Parse.from_row(row))
     rows = []
-    for extraction in tables.extractions:
-        extraction = _extraction_written(extraction, root)
-        kept = held.get(extraction.id)
-        same = kept is not None and _undated(kept) == _undated(extraction)
-        rows.append(kept if kept is not None and same else extraction)
-    table = extraction_table(rows).cast(EXTRACTION_SCHEMA)
-    return table.replace_schema_metadata({TYPE_METADATA_KEY: "Extraction"})
+    for parse in tables.parses:
+        parse = _parse_written(parse, root)
+        kept = held.get(parse.id)
+        same = kept is not None and _undated(kept) == _undated(parse)
+        rows.append(kept if kept is not None and same else parse)
+    table = parse_table(rows).cast(PARSE_SCHEMA)
+    return table.replace_schema_metadata({TYPE_METADATA_KEY: "Parse"})
 
 
 def _stale_pre_parsed(registry: Path, root: Path, written: set[Path]) -> list[Path]:
@@ -777,7 +750,7 @@ def _write_tables(self: AlignmentBundle, path: Path, *, events: bool = False) ->
     if with_events:
         urls = {kind: quote(pre_parsed_file_name(kind)) for kind in tables.contents}
         rows = tables.located(urls)
-        extraction_url = quote(EXTRACTIONS_FILE_NAME)
+        parse_url = quote(PARSES_FILE_NAME)
         with _validated_by_the_file():
             manifest = _to_dict(self, minimal=False, resources=resources_with(planned))
         claim_ids = (
@@ -785,22 +758,20 @@ def _write_tables(self: AlignmentBundle, path: Path, *, events: bool = False) ->
             if "MatchClaim" in planned
             else None
         )
-        extraction_ids = pa.array(
-            [extraction.id for extraction in tables.extractions], pa.string()
-        )
+        parse_ids = pa.array([parse.id for parse in tables.parses], pa.string())
         non_events = _non_event_rows_of(
             manifest,
             quote(path.name),
             claim_ids,
-            (extraction_ids, extraction_url) if len(extraction_ids) else None,
+            (parse_ids, parse_url) if len(parse_ids) else None,
         )
         registry = pa.concat_tables([non_events, rows]).replace_schema_metadata(
             {TYPE_METADATA_KEY: "Registry"}
         )
         files.append((resource_path(directory, planned["Registry"].url), registry, ()))
-        if len(extraction_ids):
-            target = resource_path(directory, extraction_url)
-            files.append((target, _kept_extractions(tables, target, directory), ()))
+        if len(parse_ids):
+            target = resource_path(directory, parse_url)
+            files.append((target, _kept_parses(tables, target, directory), ()))
         for kind, content in tables.contents.items():
             files.append((resource_path(directory, urls[kind]), content, ()))
     stale = (
@@ -909,11 +880,11 @@ _PART_PREFIX = "part"
 #: The URL of a package's registry in ``package.yaml``: one file at its root.
 _REGISTRY_URL = REGISTRY_FILE_NAME
 
-#: The URL of a package's Extraction table in ``package.yaml``.
-_EXTRACTIONS_URL = f"{_TABLES_FOLDER}/{EXTRACTIONS_FILE_NAME}"
+#: The URL of a package's Parse table in ``package.yaml``.
+_PARSES_URL = f"{_TABLES_FOLDER}/{PARSES_FILE_NAME}"
 
 #: The table types of a package that are no pre-parsed table.
-_PACKAGE_TYPES = frozenset({"Registry", "Extraction", "MatchClaim"})
+_PACKAGE_TYPES = frozenset({"Registry", "Parse", "MatchClaim"})
 
 #: The columns naming a row's timelines in a MatchClaim table.
 _CLAIM_TIMELINES = ("timeline_a_id", "timeline_b_id")
@@ -1004,7 +975,7 @@ class _Written:
         rows: Its registry's event rows, each pre-parsed row's location the
             folder of its kind's pre-parsed table.
         contents: Its pre-parsed table of each kind.
-        extractions: The extractions its rows name.
+        parses: The parses its rows name.
         claims: Its MatchClaim table as a package file holds it, or None.
         removed: The timelines whose rows the write removes from the files
             on disk: the manifest's and the one it replaces; none for a
@@ -1018,7 +989,7 @@ class _Written:
     media_type: str
     rows: pa.Table
     contents: dict[str, pa.Table]
-    extractions: tuple[Extraction, ...]
+    parses: tuple[Parse, ...]
     claims: pa.Table | None
     resources: list[Resource]
     timelines: frozenset[str]
@@ -1359,10 +1330,10 @@ class Package:
     ``package.yaml`` at the folder's root lists the package's manifests and
     its tables: the **registry** (``registry.parquet`` at the root, as this
     class writes it: one Parquet file holding every row, the non-event rows,
-    one per manifest element, MatchClaim and extraction, then the event
+    one per manifest element, MatchClaim and parse, then the event
     rows, one per event, each position on the axis of its timeline's root),
-    the **Extraction table**
-    (``tables/extractions.parquet``), one **pre-parsed table** per kind of
+    the **Parse table**
+    (``tables/parses.parquet``), one **pre-parsed table** per kind of
     event (``tables/<Kind>/``, each event's content keyed by its ID, without
     positions) and the **MatchClaim table** (``tables/MatchClaim/``). A
     manifest names the registry and the MatchClaim table in its
@@ -1390,7 +1361,9 @@ class Package:
         >>> from timetoalign.alignment import AlignmentBundle, Package
         >>> from timetoalign.timelines import ContinuousLogicalTimeline
         >>> score = ContinuousLogicalTimeline(length=Fraction(4), uid="score")
-        >>> _ = score.add_events([{"id": "n1", "event_type": "Note", "start": 0}])
+        >>> _ = score.add_events(
+        ...     [{"id": "n1", "event_type": "Note", "start": 0, "name": "C4"}]
+        ... )
         >>> bundle = AlignmentBundle(id="piece")
         >>> _ = bundle.add_timeline(score)
         >>> package = Package(name="Pieces")
@@ -1399,7 +1372,7 @@ class Package:
         >>> package.manifests
         ['piece/manifest.yaml']
         >>> [(table["type"], table["url"]) for table in package.tables]
-        [('Registry', 'registry.parquet'), ('Extraction', 'tables/extractions.parquet'), ('Note', 'tables/Note/')]
+        [('Registry', 'registry.parquet'), ('Parse', 'tables/parses.parquet'), ('Note', 'tables/Note/')]
         >>> read = Package.from_file(path).bundle("piece/manifest.yaml")
         >>> read.get_timeline("score").events.table.column("id").to_pylist()
         ['n1']
@@ -1567,8 +1540,8 @@ class Package:
         rewritten whole with each write in the order of the format
         (``timetoshare.tables.write_registry``: the non-event rows by
         ``location`` and ``id``, then the event rows by ``timeline_id``,
-        exact ``start`` and ``id``). Their extractions go into the Extraction table
-        (``tables/extractions.parquet``, each extraction once, its source
+        exact ``start`` and ``id``). Their parses go into the Parse table
+        (``tables/parses.parquet``, each parse once, its source
         written as a path from the package's root where the file lies under
         it, else as its ``file:`` URI, so that the package names no path of
         the machine that wrote it; read back, the source is the file's path
@@ -1593,8 +1566,8 @@ class Package:
         be kept by the bundle, as :meth:`MatchClaimField.to_parquet
         <timetoalign.alignment.MatchClaimField.to_parquet>` requires, so a
         bundle holding none while the package holds MatchClaims of that
-        manifest is refused, and an extraction once written stays in the
-        Extraction table.
+        manifest is refused, and a parse once written stays in the
+        Parse table.
 
         Before anything is written, every ID is checked in memory: each
         event ID among every event of the package, every kind; each
@@ -1825,7 +1798,7 @@ class Package:
                 {kind: f"{_TABLES_FOLDER}/{quote(kind)}/" for kind in tables.contents}
             ),
             contents=dict(tables.contents),
-            extractions=tables.extractions,
+            parses=tables.parses,
             claims=claim_table,
             resources=resources,
             timelines=timelines,
@@ -2057,7 +2030,7 @@ class Package:
                 )
                 if not claims and "kind" in columns:
                     # The non-event rows hold the IDs of elements, MatchClaims
-                    # and extractions, not events.
+                    # and parses, not events.
                     keep = pc.and_(keep, pc.invert(_is_non_event(rows)))
                 parts.append((rows.filter(keep).select(["id", column]), f"'{name}'"))
             ids, timelines = _id_columns(written, claims)
@@ -2103,8 +2076,8 @@ class Package:
         In order: the format version of an opened package is checked; the
         registry is written whole, losing the event rows of the timelines
         replaced and taking the bundles' in (:meth:`_registry_events`), then
-        the Extraction
-        table (:meth:`_extraction_table`), then one new file per pre-parsed
+        the Parse
+        table (:meth:`_parse_table`), then one new file per pre-parsed
         kind and one of MatchClaims (:func:`_joined_tables`), each under a
         name starting with ``.``, which readers skip; the rows of the
         timelines replaced leave the pre-parsed and MatchClaim files holding
@@ -2118,7 +2091,7 @@ class Package:
 
         Raises:
             ValueError: If an opened package is of another format version,
-                or an extraction is held under its ID with other content
+                or a parse is held under its ID with other content
                 (before anything is written), or the package check finds a
                 problem, its first.
         """
@@ -2146,20 +2119,20 @@ class Package:
 
         registry_url = self._registry_url()
         listed("Registry", registry_url)
-        extractions = self._extraction_table(pending, entries, root)
+        parses = self._parse_table(pending, entries, root)
         undo = _Undo()
         try:
             placed: list[tuple[Path, Path]] = []
             removed_ids = self._registry_events(
                 pending, resource_path(root, registry_url), removed, undo, placed
             )
-            if extractions is not None:
-                url, table = extractions
-                listed("Extraction", url)
+            if parses is not None:
+                url, table = parses
+                listed("Parse", url)
                 target = resource_path(root, url)
                 if url.endswith("/"):
                     undo.folder(target)
-                    target = target / _file_name("Extraction", table, target)
+                    target = target / _file_name("Parse", table, target)
                 undo.folder(target.parent)
                 hidden = target.with_name(f".{target.name}")
                 undo.keep(hidden)
@@ -2241,43 +2214,43 @@ class Package:
         self._pending.clear()
         self._staged = _Staged()
 
-    def _extraction_table(
+    def _parse_table(
         self,
         pending: Sequence[_Written],
         entries: Sequence[Mapping[str, Any]],
         root: Path,
     ) -> tuple[str, pa.Table] | None:
-        """The Extraction table to write for the bundles *pending*, at its
-        URL: for a file (``tables/extractions.parquet`` as this class writes
-        it), every extraction it holds and every new one; for a folder, a new
-        part of the new ones alone; None where no extraction is new.
+        """The Parse table to write for the bundles *pending*, at its
+        URL: for a file (``tables/parses.parquet`` as this class writes
+        it), every parse it holds and every new one; for a folder, a new
+        part of the new ones alone; None where no parse is new.
 
         Raises:
-            ValueError: If an extraction is held, on disk or by another
+            ValueError: If a parse is held, on disk or by another
                 bundle, under its ID with other content (its date aside),
                 naming it; nothing is written then.
         """
         url = next(
-            (entry["url"] for entry in entries if entry["type"] == "Extraction"),
-            _EXTRACTIONS_URL,
+            (entry["url"] for entry in entries if entry["type"] == "Parse"),
+            _PARSES_URL,
         )
         target = resource_path(root, url)
-        held: dict[str, Extraction] = {}
+        held: dict[str, Parse] = {}
         if target.exists():
-            for row in read_table(target, type="Extraction").to_pylist():
-                held.setdefault(row["id"], Extraction.from_row(row))
-        new: dict[str, Extraction] = {}
+            for row in read_table(target, type="Parse").to_pylist():
+                held.setdefault(row["id"], Parse.from_row(row))
+        new: dict[str, Parse] = {}
         for written in pending:
-            for extraction in written.extractions:
-                extraction = _extraction_written(extraction, root)
-                known = held.get(extraction.id) or new.get(extraction.id)
+            for parse in written.parses:
+                parse = _parse_written(parse, root)
+                known = held.get(parse.id) or new.get(parse.id)
                 if known is None:
-                    new[extraction.id] = extraction
-                elif _undated(known) != _undated(extraction):
+                    new[parse.id] = parse
+                elif _undated(known) != _undated(parse):
                     raise ValueError(
-                        f"The extraction {quote_id(extraction.id)} of the manifest "
+                        f"The parse {quote_id(parse.id)} of the manifest "
                         f"{written.url!r} cannot join the package: the package "
-                        f"holds an extraction of that ID of other content; "
+                        f"holds a parse of that ID of other content; "
                         f"nothing is written."
                     )
         if not new:
@@ -2285,8 +2258,8 @@ class Package:
         rows = (
             list(new.values()) if url.endswith("/") else [*held.values(), *new.values()]
         )
-        table = extraction_table(rows).cast(EXTRACTION_SCHEMA)
-        return url, table.replace_schema_metadata({TYPE_METADATA_KEY: "Extraction"})
+        table = parse_table(rows).cast(PARSE_SCHEMA)
+        return url, table.replace_schema_metadata({TYPE_METADATA_KEY: "Parse"})
 
     @staticmethod
     def _registry_events(
@@ -2346,9 +2319,9 @@ class Package:
         stating a provenance its rows share is rewritten with that
         provenance in each row kept, as the package writer writes
         provenance. The registry is :meth:`_registry_events`'; the
-        Extraction table keeps every extraction."""
+        Parse table keeps every parse."""
         for kind, file, _ in list(self._files()):
-            if kind in ("Registry", "Extraction"):
+            if kind in ("Registry", "Parse"):
                 continue
             names = pq.read_schema(file).names
             if kind == "MatchClaim":
@@ -2390,9 +2363,9 @@ class Package:
             )
 
 
-def _undated(extraction: Extraction) -> dict[str, Any]:
-    """*extraction*'s row but its date: what two runs of one extraction share."""
-    row = extraction.to_row()
+def _undated(parse: Parse) -> dict[str, Any]:
+    """*parse*'s row but its date: what two runs of one parse share."""
+    row = parse.to_row()
     del row["date"]
     return row
 
@@ -2630,13 +2603,12 @@ def _resolve(target: str | os.PathLike[str], id: str) -> list[Any]:
                 resource_path(root, str(location)), ids=[bare], type="MatchClaim"
             )
             answers.extend(MatchClaimField.from_package_table(table).to_claims())
-        elif kind == "Extraction":
+        elif kind == "Parse":
             table = read_table(
-                resource_path(root, str(location)), ids=[bare], type="Extraction"
+                resource_path(root, str(location)), ids=[bare], type="Parse"
             )
             answers.extend(
-                _extraction_read(Extraction.from_row(item), root)
-                for item in table.to_pylist()
+                _parse_read(Parse.from_row(item), root) for item in table.to_pylist()
             )
         else:
             content = None

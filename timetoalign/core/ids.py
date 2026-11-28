@@ -131,7 +131,7 @@ def quote_id(element_id: str) -> str:
 ID_LENGTH = 13
 
 ID_MINTER = "splitmix64-base36-1"
-"""The algorithm of :class:`IdMinter`, as an extraction of events records it.
+"""The algorithm of :class:`IdMinter`, as a parse of events records it.
 
 SplitMix64's finalizer over a seeded counter, written in base 36; the
 number counts the version of that algorithm.

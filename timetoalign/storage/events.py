@@ -116,7 +116,7 @@ from .schema import (
 if TYPE_CHECKING:
     from timetoalign.timelines.base import Timeline
 
-    from .registry import Extraction
+    from .registry import Parse
 
 module_logger = logging.getLogger(__name__)
 
@@ -1049,12 +1049,12 @@ def joined_tables(
     return pa.concat_tables(conformed)
 
 
-def _united(*groups: Iterable[Extraction]) -> tuple[Extraction, ...]:
-    """The extractions of *groups*, each ID once, in the order first given."""
-    united: dict[str, Extraction] = {}
+def _united(*groups: Iterable[Parse]) -> tuple[Parse, ...]:
+    """The parses of *groups*, each ID once, in the order first given."""
+    united: dict[str, Parse] = {}
     for group in groups:
-        for extraction in group:
-            united.setdefault(extraction.id, extraction)
+        for parse in group:
+            united.setdefault(parse.id, parse)
     return tuple(united.values())
 
 
@@ -1470,8 +1470,8 @@ class EventData(SemanticFieldAccessMixin):
         self._axes: dict[str, Axis] | None = None
         # The timeline a table standing alone lies on, if it is one's.
         self._timeline_id: str | None = None
-        # The extractions that made its rows (:attr:`extractions`).
-        self._extractions: tuple[Extraction, ...] = ()
+        # The parses that made its rows (:attr:`parses`).
+        self._parses: tuple[Parse, ...] = ()
 
     @classmethod
     def _of_reduced(
@@ -1479,7 +1479,7 @@ class EventData(SemanticFieldAccessMixin):
         table: pa.Table,
         unit: TimeUnit,
         number_type: NumberType | None = None,
-        extractions: Iterable[Extraction] = (),
+        parses: Iterable[Parse] = (),
     ) -> Self:
         """An instance over *table*, whose coordinate cells are in lowest terms.
 
@@ -1490,18 +1490,18 @@ class EventData(SemanticFieldAccessMixin):
         classes whose ``__init__`` adds none; an instance of any class derives
         a table through :meth:`_derived`.
 
-        Of *extractions* (those of the tables the rows were taken from), the
-        instance carries the ones its rows name in their ``extraction_id``
-        (:attr:`extractions`), each once, in the order given: rows selected
-        from a loaded table keep the extractions that made them, so a
+        Of *parses* (those of the tables the rows were taken from), the
+        instance carries the ones its rows name in their ``parse_id``
+        (:attr:`parses`), each once, in the order given: rows selected
+        from a loaded table keep the parses that made them, so a
         timeline made of them records them with the rows.
         """
         data = cls.__new__(cls)
         data._hold(table, unit, number_type)
-        given = _united(extractions)
-        if given and "extraction_id" in table.column_names:
-            named = set(pc.unique(table.column("extraction_id")).to_pylist())
-            data._extractions = tuple(item for item in given if item.id in named)
+        given = _united(parses)
+        if given and "parse_id" in table.column_names:
+            named = set(pc.unique(table.column("parse_id")).to_pylist())
+            data._parses = tuple(item for item in given if item.id in named)
         return data
 
     def _derived(self, table: pa.Table) -> Self:
@@ -2429,15 +2429,15 @@ class EventData(SemanticFieldAccessMixin):
         return self._table.num_rows
 
     @property
-    def extractions(self) -> tuple[Extraction, ...]:
-        """The extractions that made the rows, which their ``extraction_id`` names.
+    def parses(self) -> tuple[Parse, ...]:
+        """The parses that made the rows, which their ``parse_id`` names.
 
-        A loader gives its rows the column ``extraction_id`` and the table
-        the :class:`~timetoalign.storage.Extraction` of each source file
-        (:meth:`with_extractions`); a timeline made of the table records
+        A loader gives its rows the column ``parse_id`` and the table
+        the :class:`~timetoalign.storage.Parse` of each source file
+        (:meth:`with_parses`); a timeline made of the table records
         them in its family's registry. Empty for a table made in code.
         """
-        return self._extractions
+        return self._parses
 
     # endregion
 
@@ -2557,14 +2557,14 @@ class EventData(SemanticFieldAccessMixin):
         )
         return keyed_by_timeline(self._table, key), {key: self._axis}
 
-    def with_extractions(self, *extractions: Extraction) -> Self:
-        """This table carrying *extractions* too (:attr:`extractions`).
+    def with_parses(self, *parses: Parse) -> Self:
+        """This table carrying *parses* too (:attr:`parses`).
 
-        Each extraction once, by ID, the ones carried already first. The
+        Each parse once, by ID, the ones carried already first. The
         rows are shared; this table is left as it is.
         """
         derived = self._derived(self._table)
-        derived._extractions = _united(self._extractions, extractions)
+        derived._parses = _united(self._parses, parses)
         return derived
 
     def concat(self, *others: "EventData") -> Self:
@@ -2628,7 +2628,7 @@ class EventData(SemanticFieldAccessMixin):
             )
             if any(part._timeline_id != self._timeline_id for part in others):
                 joined._timeline_id = None
-            joined._extractions = _united(*(part._extractions for part in parts))
+            joined._parses = _united(*(part._parses for part in parts))
             return joined
         axes: dict[str, Axis] = {}
         tables: list[pa.Table] = []
@@ -2655,7 +2655,7 @@ class EventData(SemanticFieldAccessMixin):
         joined = self._derived(joined_tables(tables, _column_refusal))
         joined._axes = axes
         joined._timeline_id = None
-        joined._extractions = _united(*(part._extractions for part in parts))
+        joined._parses = _united(*(part._parses for part in parts))
         return joined
 
     def to_number_type(

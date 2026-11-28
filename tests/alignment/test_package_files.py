@@ -39,7 +39,7 @@ from timetoalign.core import (
     Provenance,
     TimeUnit,
 )
-from timetoalign.storage import EventData, Extraction
+from timetoalign.storage import EventData, Parse
 from timetoalign.timelines import Timeline
 from timetoalign.timelines.manifest import (
     PARQUET_MEDIA_TYPE,
@@ -67,10 +67,12 @@ _PART = re.compile(r"part_[0-9a-z]{13}\.parquet")
 _EXPECTED = {
     "bach/manifest.yaml": {
         "MatchClaim": ["claim_1", "claim_2", "claim_5"],
+        "Note": ["note_1", "note_2", "note_3", "note_4"],
         "Projection": ["projection_1", "projection_2", "projection_7", "projection_9"],
     },
     "handel/manifest.yaml": {
         "MatchClaim": ["claim_3", "claim_4"],
+        "Note": ["note_5", "note_6", "note_7"],
         "Projection": [
             "projection_3",
             "projection_4",
@@ -206,8 +208,8 @@ def _files(directory: Path) -> dict[str, bytes]:
 
 
 def _tool(root: str) -> str:
-    """The ID of the extraction a family of *root* mints for events made in code."""
-    return Extraction.of_tool(scope=root).id
+    """The ID of the parse a family of *root* mints for events made in code."""
+    return Parse.of_tool(scope=root).id
 
 
 def _event_rows(registry: pa.Table) -> list[dict[str, Any]]:
@@ -227,7 +229,7 @@ def _non_events(registry: pa.Table) -> list[tuple[Any, ...]]:
 
 def non_event_rows_of_lone(directory: Path, name: str) -> pa.Table:
     """TimeToShare's non-event rows of the manifest *name* lying in *directory*
-    with its registry, Extraction table and MatchClaim table, read as a
+    with its registry, Parse table and MatchClaim table, read as a
     package of one manifest (a copy given a ``package.yaml`` listing them)."""
     copy = Path(
         shutil.copytree(directory, directory.parent / f"{directory.name}_as_package")
@@ -239,7 +241,7 @@ def non_event_rows_of_lone(directory: Path, name: str) -> pa.Table:
                 "manifests": [{"url": name}],
                 "tables": [
                     {"type": "Registry", "url": "registry.parquet"},
-                    {"type": "Extraction", "url": "extractions.parquet"},
+                    {"type": "Parse", "url": "parses.parquet"},
                     {"type": "MatchClaim", "url": "match_claims.parquet"},
                 ],
             }
@@ -263,13 +265,11 @@ class TestTablesBesideAManifest:
         path = bundle.to_file(tmp_path / "a.yaml", events=True)
 
         assert sorted(p.name for p in tmp_path.iterdir()) == [
-            "Beat.parquet",
             "Note.parquet",
             "a.yaml",
             "boxes.parquet",
-            "extractions.parquet",
             "match_claims.parquet",
-            "projections.parquet",
+            "parses.parquet",
             "registry.parquet",
         ]
         manifest = timetoshare.loads(path.read_text(encoding="utf-8"))
@@ -323,47 +323,48 @@ class TestTablesBesideAManifest:
                 )
             ],
         }
-        locations = {
-            "Note": "Note.parquet",
-            "Beat": "Beat.parquet",
-            "Projection": "projections.parquet",
-            "Box": "boxes.parquet",
-        }
+        # Beats and Projections hold nothing but their IDs: no pre-parsed table.
+        locations = {"Note": "Note.parquet", "Box": "boxes.parquet"}
+        of = {claim.event_a_id: {"timeline_id": "a_pcm", "event_id": "a_o1"}}
         registry = pq.read_table(tmp_path / "registry.parquet")
         assert _event_rows(registry) == [
             {
                 "id": event_id,
                 "kind": kind,
-                "location": locations[kind],
+                "location": locations.get(kind),
                 "timeline_id": timeline_id,
                 **axis,
                 "start": start,
                 "duration": duration,
-                "extraction_id": extraction_id,
+                "parse_id": parse_id,
                 "locator": None,
                 "vanished_in": None,
+                "projection_of": of.get(event_id),
             }
-            for extraction_id in sorted(rows)
-            for event_id, kind, timeline_id, axis, start, duration in rows[
-                extraction_id
-            ]
+            for parse_id in sorted(rows)
+            for event_id, kind, timeline_id, axis, start, duration in rows[parse_id]
         ]
         assert _non_events(registry) == _non_events(
             non_event_rows_of_lone(tmp_path, "a.yaml")
         )
         notes = pq.read_table(tmp_path / "Note.parquet")
         assert notes.column_names == ["id", "name", "midi", "staff"]
-        assert notes.to_pylist() == [
+        # In the registry's order: the parses by ID, a_score's or a_pcm's first.
+        score_notes = [
             {"id": "a_n3", "name": None, "midi": 64, "staff": None},
             {"id": "a_n1", "name": "C4", "midi": 60, "staff": None},
             {"id": "a_n2", "name": None, "midi": 62, "staff": 1},
-            {"id": "a_o1", "name": None, "midi": None, "staff": None},
         ]
-        assert pq.read_table(tmp_path / "Beat.parquet").to_pylist() == [{"id": "a_b1"}]
+        pcm_notes = [{"id": "a_o1", "name": None, "midi": None, "staff": None}]
+        assert notes.to_pylist() == (
+            score_notes + pcm_notes
+            if _tool("a_score") < _tool("a_pcm")
+            else pcm_notes + score_notes
+        )
         assert [
-            Extraction.from_row(row)
-            for row in pq.read_table(tmp_path / "extractions.parquet").to_pylist()
-        ] == sorted(bundle.registry.extractions, key=lambda item: item.id)
+            Parse.from_row(row)
+            for row in pq.read_table(tmp_path / "parses.parquet").to_pylist()
+        ] == sorted(bundle.registry.parses, key=lambda item: item.id)
 
     def test_the_events_read_back_the_same(self, tmp_path: Path) -> None:
         bundle = _a()
@@ -383,8 +384,8 @@ class TestTablesBesideAManifest:
         assert event_tables(read.registry, events=True).rows.equals(
             event_tables(bundle.registry, events=True).rows
         )
-        assert sorted(read.registry.extractions, key=lambda item: item.id) == sorted(
-            bundle.registry.extractions, key=lambda item: item.id
+        assert sorted(read.registry.parses, key=lambda item: item.id) == sorted(
+            bundle.registry.parses, key=lambda item: item.id
         )
         read.to_file(tmp_path / "second" / "a.yaml")
         assert _files(tmp_path / "second") == _files(tmp_path / "first")
@@ -395,15 +396,18 @@ class TestTablesBesideAManifest:
         assert sorted(p.name for p in tmp_path.iterdir()) == [
             "a.yaml",
             "boxes.parquet",
-            "extractions.parquet",
             "match_claims.parquet",
-            "projections.parquet",
+            "parses.parquet",
             "registry.parquet",
         ]
         assert [
             row["kind"]
             for row in _event_rows(pq.read_table(tmp_path / "registry.parquet"))
-        ] == ["Projection", "Box"]
+        ] == (
+            ["Projection", "Box"]
+            if _tool("a_score") < _tool("a_seg")
+            else ["Box", "Projection"]
+        )
 
     def test_the_sort_is_exact(self) -> None:
         floats = ContinuousPhysicalTimeline(length=10.0, uid="t_float")
@@ -461,8 +465,8 @@ class TestTablesBesideAManifest:
             "t_int": ["y", "x", "z"],
             "t_big": ["m", "n"],
         }
-        assert [row["extraction_id"] for row in rows] == sorted(
-            row["extraction_id"] for row in rows
+        assert [row["parse_id"] for row in rows] == sorted(
+            row["parse_id"] for row in rows
         )
         (b,) = [row for row in rows if row["id"] == "b"]
         assert b["start"] == _number(6004799503160661, 2**54)
@@ -563,13 +567,16 @@ class TestTablesBesideAManifest:
 
         bundle.to_file(tmp_path / "seg.yaml", events=True)
 
-        assert pq.read_table(tmp_path / "Segment.parquet").column("id").to_pylist() == [
-            "s1"
+        # Both hold nothing but their IDs: their registry rows alone.
+        assert sorted(p.name for p in tmp_path.iterdir()) == [
+            "parses.parquet",
+            "registry.parquet",
+            "seg.yaml",
         ]
         assert sorted(
-            row["id"]
+            (row["id"], row["kind"], row["location"])
             for row in _event_rows(pq.read_table(tmp_path / "registry.parquet"))
-        ) == ["n1", "s1"]
+        ) == [("n1", "Note", None), ("s1", "Segment", None)]
         read = AlignmentBundle.from_file(tmp_path / "seg.yaml")
         timeline = read.get_timeline("seg_t")
         assert sorted(_ids(timeline.events.table)) == ["n1", "s1", "seg_c"]
@@ -784,10 +791,10 @@ def _velocities(table: pa.Table) -> dict[str, Any]:
     )
 
 
-def _sourced(uid: str, source: Path | zipfile.Path) -> tuple[Timeline, Extraction]:
+def _sourced(uid: str, source: Path | zipfile.Path) -> tuple[Timeline, Parse]:
     """The root *uid* (quarters) holding the Note ``<uid>_n`` made by the
-    extraction of *source*, at the locator ``row:0``, and that extraction."""
-    extraction = Extraction.of_source(source, parser="TestParser", parser_version="1")
+    parse of *source*, at the locator ``row:0``, and that parse."""
+    parse = Parse.of_source(source, parser="TestParser", parser_version="1")
     score = ContinuousLogicalTimeline(length=Fraction(4), uid=uid)
     score.add_events(
         [
@@ -795,13 +802,13 @@ def _sourced(uid: str, source: Path | zipfile.Path) -> tuple[Timeline, Extractio
                 "id": f"{uid}_n",
                 "event_type": "Note",
                 "start": Fraction(0),
-                "extraction_id": extraction.id,
+                "parse_id": parse.id,
                 "locator": "row:0",
             }
         ],
-        extractions=[extraction],
+        parses=[parse],
     )
-    return score, extraction
+    return score, parse
 
 
 def _bundle_of(*timelines: Timeline) -> AlignmentBundle:
@@ -904,7 +911,7 @@ class TestWritersOfLoneManifests:
         self, tmp_path: Path
     ) -> None:
         (tmp_path / "notes.csv").write_bytes(b"a\n1\n")
-        first, extraction = _sourced("l1", tmp_path / "notes.csv")
+        first, parse = _sourced("l1", tmp_path / "notes.csv")
         second, _ = _sourced("l2", tmp_path / "notes.csv")
         bundle = _bundle_of(first, second)
         (tmp_path / "out").mkdir()
@@ -913,9 +920,9 @@ class TestWritersOfLoneManifests:
             bundle.to_file(tmp_path / "out" / "l.yaml", events=True)
 
         assert str(refused.value) == (
-            f"The locator 'row:0' of the extraction '{extraction.id}' names an "
+            f"The locator 'row:0' of the parse '{parse.id}' names an "
             "event on the timeline 'l1' and one on 'l2': a locator names one event "
-            "of its extraction's source; nothing is written."
+            "of its parse's source; nothing is written."
         )
         assert list((tmp_path / "out").iterdir()) == []
 
@@ -940,14 +947,13 @@ class TestWritersOfLoneManifests:
         assert sorted(p.name for p in tmp_path.iterdir()) == [
             "a.yaml",
             "boxes.parquet",
-            "extractions.parquet",
             "match_claims.parquet",
-            "projections.parquet",
+            "parses.parquet",
             "registry.parquet",
         ]
 
 
-class TestExtractionSources:
+class TestParseSources:
     """Values in tests/alignment/README.md, "A source is written where the
     manifest lies" and "A source is written from the package's root"."""
 
@@ -973,31 +979,31 @@ class TestExtractionSources:
                 zipfile.ZipFile(folder / "archive.zip"), at="dir/notes.csv"
             )
             written = "jar:archive.zip!/dir/notes.csv"
-        score, extraction = _sourced("score", source)
+        score, parse = _sourced("score", source)
 
         _bundle_of(score).to_file(folder / "a.yaml", events=True)
 
-        (row,) = pq.read_table(folder / "extractions.parquet").to_pylist()
-        assert (row["id"], row["source"]) == (extraction.id, written)
+        (row,) = pq.read_table(folder / "parses.parquet").to_pylist()
+        assert (row["id"], row["source"]) == (parse.id, written)
         read = AlignmentBundle.from_file(folder / "a.yaml")
-        assert read.registry.extractions == [extraction]
+        assert read.registry.parses == [parse]
 
     def test_a_source_is_written_from_the_package_s_root(self, tmp_path: Path) -> None:
         root = (tmp_path / "package").resolve()
         (root / "sources").mkdir(parents=True)
         (root / "sources" / "notes.csv").write_bytes(b"a\n1\n")
-        score, extraction = _sourced("score", root / "sources" / "notes.csv")
+        score, parse = _sourced("score", root / "sources" / "notes.csv")
         package = Package()
         package.write_bundle(_bundle_of(score), "score/manifest.yaml")
 
         path = package.to_file(root / "package.yaml")
 
-        table = root / "tables" / "extractions.parquet"
+        table = root / "tables" / "parses.parquet"
         (row,) = pq.read_table(table).to_pylist()
-        assert (row["id"], row["source"]) == (extraction.id, "sources/notes.csv")
+        assert (row["id"], row["source"]) == (parse.id, "sources/notes.csv")
         opened = Package.from_file(path)
         read = opened.bundle("score/manifest.yaml")
-        assert read.registry.extractions == [extraction]
+        assert read.registry.parses == [parse]
         before = table.read_bytes()
         opened.write_bundle(read, "score/manifest.yaml")
         assert table.read_bytes() == before
@@ -1009,22 +1015,26 @@ class TestPackage:
         path, a, b = _two_bundle_package(tmp_path)
 
         files = _files(tmp_path)
-        extractions = [_tool(root) for root in ("a_score", "a_pcm", "a_seg", "b_score")]
+        parses = [_tool(root) for root in ("a_score", "a_pcm", "a_seg", "b_score")]
         assert [name for name in files if not name.startswith("tables/")] == [
             "a/manifest.yaml",
             "b/manifest.yaml",
             "package.yaml",
             "registry.parquet",
         ]
-        parts = {
-            kind: _parts(tmp_path, kind)
-            for kind in ("Beat", "Box", "MatchClaim", "Note", "Projection")
-        }
+        parts = {kind: _parts(tmp_path, kind) for kind in ("Box", "MatchClaim", "Note")}
         assert {kind: len(names) for kind, names in parts.items()} == dict.fromkeys(
             parts, 1
         )
         assert all(_PART.fullmatch(name) for names in parts.values() for name in names)
-        assert len(files) == 4 + 5 + 1
+        # Beats and Projections hold nothing but their IDs: no folder of theirs.
+        assert sorted(p.name for p in (tmp_path / "tables").iterdir()) == [
+            "Box",
+            "MatchClaim",
+            "Note",
+            "parses.parquet",
+        ]
+        assert len(files) == 4 + 3 + 1
         assert package_problems(path) == []
         tables = [
             {
@@ -1034,8 +1044,8 @@ class TestPackage:
             },
             {
                 "media_type": PARQUET_MEDIA_TYPE,
-                "type": "Extraction",
-                "url": "tables/extractions.parquet",
+                "type": "Parse",
+                "url": "tables/parses.parquet",
             },
             *(
                 {
@@ -1043,7 +1053,7 @@ class TestPackage:
                     "type": kind,
                     "url": f"tables/{kind}/",
                 }
-                for kind in ("Beat", "Note", "Projection", "Box", "MatchClaim")
+                for kind in ("Note", "Box", "MatchClaim")
             ),
         ]
         assert timetoshare.loads(path.read_text(encoding="utf-8")) == {
@@ -1107,8 +1117,8 @@ class TestPackage:
                     "Registry"
                     if name == "registry.parquet"
                     else (
-                        "Extraction"
-                        if name == "tables/extractions.parquet"
+                        "Parse"
+                        if name == "tables/parses.parquet"
                         else name.split("/")[1]
                     )
                 )
@@ -1135,15 +1145,15 @@ class TestPackage:
             ("b_score", "b_b1"),
         ]
         root_of = {"a_bar": "a_score"}
-        assert [row["extraction_id"] for row in events] == [
+        assert [row["parse_id"] for row in events] == [
             _tool(root_of.get(row["timeline_id"], row["timeline_id"])) for row in events
         ]
         assert events[0]["start"] == _number(17, 2)
         assert sorted(
-            pq.read_table(tmp_path / "tables" / "extractions.parquet")
+            pq.read_table(tmp_path / "tables" / "parses.parquet")
             .column("id")
             .to_pylist()
-        ) == sorted(extractions)
+        ) == sorted(parses)
         (claims,) = parts["MatchClaim"]
         claim_file = pq.read_table(tmp_path / "tables" / "MatchClaim" / claims)
         assert b"timetoshare:provenance" not in claim_file.schema.metadata
@@ -1159,6 +1169,47 @@ class TestPackage:
                 "stated_by": None,
             }
         ]
+
+    def test_a_kind_holding_nothing_but_ids_has_no_table(self, tmp_path: Path) -> None:
+        take = ContinuousPhysicalTimeline(length=10.0, uid="o_take")
+        take.add_events(
+            [
+                {"id": "o1", "event_type": "Onset", "start": 0.5},
+                {"id": "o2", "event_type": "Onset", "start": 1.25, "duration": 0.25},
+            ]
+        )
+        bundle = AlignmentBundle(id="onsets")
+        bundle.add_timeline(take)
+        package = Package()
+        package.write_bundle(bundle, "o/manifest.yaml")
+
+        path = package.to_file(tmp_path / "package.yaml")
+
+        assert sorted(_files(tmp_path)) == [
+            "o/manifest.yaml",
+            "package.yaml",
+            "registry.parquet",
+            "tables/parses.parquet",
+        ]
+        assert [
+            (table["type"], table["url"])
+            for table in timetoshare.loads(path.read_text(encoding="utf-8"))["tables"]
+        ] == [("Registry", "registry.parquet"), ("Parse", "tables/parses.parquet")]
+        registry = pq.read_table(tmp_path / "registry.parquet")
+        assert [
+            (row["id"], row["kind"], row["location"], row["start"], row["duration"])
+            for row in _event_rows(registry)
+        ] == [
+            ("o1", "Onset", None, _number(value=0.5), None),
+            ("o2", "Onset", None, _number(value=1.25), _number(value=0.25)),
+        ]
+        assert package_problems(path) == []
+        opened = Package.from_file(path)
+        read = opened.bundle("o/manifest.yaml")
+        assert _rows(read) == _rows(bundle)
+        before = _files(tmp_path)
+        opened.write_bundle(read, "o/manifest.yaml")
+        assert _files(tmp_path) == before
 
     def test_one_file_per_type_however_many_bundles(self, tmp_path: Path) -> None:
         score = ContinuousLogicalTimeline(length=Fraction(4), uid="e_score")
@@ -1178,23 +1229,22 @@ class TestPackage:
 
         path = package.to_file(tmp_path / "package.yaml")
 
-        parts = {
-            kind: _parts(tmp_path, kind)
-            for kind in ("Beat", "Box", "MatchClaim", "Note", "Projection")
-        }
+        parts = {kind: _parts(tmp_path, kind) for kind in ("Box", "MatchClaim", "Note")}
         assert {kind: len(names) for kind, names in parts.items()} == dict.fromkeys(
             parts, 1
         )
+        assert not (tmp_path / "tables" / "Beat").exists()
+        assert not (tmp_path / "tables" / "Projection").exists()
         roots = ("a_score", "a_pcm", "a_seg", "b_score", "e_score")
         assert not (tmp_path / "registry").exists()
         registry = pq.read_table(tmp_path / "registry.parquet")
-        assert sorted(
-            {row["extraction_id"] for row in _event_rows(registry)}
-        ) == sorted(_tool(root) for root in roots)
+        assert sorted({row["parse_id"] for row in _event_rows(registry)}) == sorted(
+            _tool(root) for root in roots
+        )
         notes = pq.read_table(tmp_path / "tables" / "Note" / parts["Note"][0])
-        # The bundles in the order staged, each in its registry's order.
+        # The bundles in the order staged, each in its registry's order; e's
+        # Note holds nothing but its ID, so e writes no Note table.
         assert notes.column("id").to_pylist() == [
-            "e_n1",
             *(
                 ["a_n3", "a_n1", "a_n2", "a_o1"]
                 if _tool("a_score") < _tool("a_pcm")
@@ -1202,8 +1252,13 @@ class TestPackage:
             ),
             "b_n1",
         ]
-        beats = pq.read_table(tmp_path / "tables" / "Beat" / parts["Beat"][0])
-        assert sorted(beats.column("id").to_pylist()) == ["a_b1", "b_b1", "e_b1"]
+        unstored = sorted(
+            row["id"] for row in _event_rows(registry) if row["location"] is None
+        )
+        projection = next(
+            row["id"] for row in _event_rows(registry) if row["kind"] == "Projection"
+        )
+        assert unstored == sorted(["a_b1", "b_b1", "e_b1", "e_n1", projection])
         assert package_problems(path) == []
         assert package.manifests == [
             "e/manifest.yaml",
@@ -1219,9 +1274,8 @@ class TestPackage:
         )
         path.write_text(timetoshare.dumps(stated), encoding="utf-8")
         before = _files(tmp_path)
-        shared = {
-            name for name in before if name.startswith(("tables/Beat/", "tables/Note/"))
-        }
+        # b's Beat holds nothing but its ID: b shares the Note file alone.
+        shared = {name for name in before if name.startswith("tables/Note/")}
 
         def b_rows() -> list[dict[str, Any]]:
             registry = pq.read_table(tmp_path / "registry.parquet")
@@ -1240,15 +1294,14 @@ class TestPackage:
         pre_parsed = {
             name
             for name in before
-            if name.startswith("tables/") and name != "tables/extractions.parquet"
+            if name.startswith("tables/") and name != "tables/parses.parquet"
         }
-        assert len(pre_parsed) == 5
-        assert len(shared) == 2
+        assert len(pre_parsed) == 3
+        assert len(shared) == 1
         assert shared <= after.keys()
         assert (pre_parsed - shared).isdisjoint(after)
         assert sorted(_ids(pq.read_table(tmp_path / name))[0] for name in shared) == [
-            "b_b1",
-            "b_n1",
+            "b_n1"
         ]
         for name in shared:
             assert pq.read_table(tmp_path / name).num_rows == 1
@@ -1257,11 +1310,10 @@ class TestPackage:
                 [
                     name
                     for name in after
-                    if name.startswith("tables/")
-                    and name != "tables/extractions.parquet"
+                    if name.startswith("tables/") and name != "tables/parses.parquet"
                 ]
             )
-            == 7
+            == 4
         )
         assert [row["id"] for row in b_before] == ["b_n1", "b_b1"]
         assert b_rows() == b_before
@@ -1272,7 +1324,7 @@ class TestPackage:
             if row["timeline_id"] == "a_score" and row["kind"] != "Projection"
         ] == ["a_n1", "a_b1", "a_n2", "a_n4"]
         assert sorted(
-            pq.read_table(tmp_path / "tables" / "extractions.parquet")
+            pq.read_table(tmp_path / "tables" / "parses.parquet")
             .column("id")
             .to_pylist()
         ) == sorted(_tool(root) for root in ("a_score", "a_pcm", "a_seg", "b_score"))
@@ -1304,15 +1356,11 @@ class TestPackage:
     ) -> None:
         copy = shutil.copytree(_SHARED, tmp_path / "shared")
 
-        def rows_of(extraction: str) -> list[dict[str, Any]]:
+        def rows_of(parse: str) -> list[dict[str, Any]]:
             registry = pq.read_table(copy / "registry.parquet")
-            return [
-                row
-                for row in _event_rows(registry)
-                if row["extraction_id"] == extraction
-            ]
+            return [row for row in _event_rows(registry) if row["parse_id"] == parse]
 
-        handel_rows = rows_of("extraction_2")
+        handel_rows = rows_of("parse_2")
         package = Package.from_file(copy / "package.yaml")
         bach = package.bundle("bach/manifest.yaml")
 
@@ -1321,25 +1369,27 @@ class TestPackage:
         def ids(name: str) -> list[str]:
             return _ids(pq.read_table(copy / name))
 
-        assert [row["id"] for row in rows_of("extraction_1")] == [
+        assert [row["id"] for row in rows_of("parse_1")] == [
             "projection_1",
             "projection_2",
             "projection_9",
             "projection_7",
         ]
-        assert len(handel_rows) == 5
-        assert rows_of("extraction_2") == handel_rows
-        assert ids("tables/Projection/part_a.parquet") == [
-            "projection_5",
-            "projection_3",
-            "projection_4",
+        assert [row["id"] for row in rows_of("parse_3")] == [
+            "note_1",
+            "note_2",
+            "note_4",
+            "note_3",
         ]
-        assert ids("tables/Projection/part_b.parquet") == [
-            "projection_6",
-            "projection_8",
-        ]
+        assert len(handel_rows) == 8
+        assert rows_of("parse_2") == handel_rows
+        # The Projections lie in the registry alone; the Note files keep
+        # handel's rows in their order.
+        assert not (copy / "tables" / "Projection").exists()
+        assert ids("tables/Note/part_a.parquet") == ["note_5", "note_6"]
+        assert ids("tables/Note/part_b.parquet") == ["note_7"]
         assert ids("tables/MatchClaim/part_a.parquet") == ["claim_3", "claim_4"]
-        assert ids("tables/extractions.parquet") == ["extraction_1", "extraction_2"]
+        assert ids("tables/parses.parquet") == ["parse_1", "parse_2", "parse_3"]
         claims = pq.read_table(copy / "tables" / "MatchClaim" / "part_a.parquet")
         assert b"timetoshare:provenance" not in claims.schema.metadata
         assert (
@@ -1358,7 +1408,7 @@ class TestPackage:
             ]
             * 2
         )
-        for kind, rows in (("MatchClaim", 3), ("Projection", 4)):
+        for kind, rows in (("MatchClaim", 3), ("Note", 4)):
             (new,) = [n for n in _parts(copy, kind) if _PART.fullmatch(n)]
             assert pq.read_table(copy / "tables" / kind / new).num_rows == rows
         assert package_problems(copy / "package.yaml") == []
@@ -1370,9 +1420,9 @@ class TestPackage:
         assert package.manifests == ["bach/manifest.yaml", "handel/manifest.yaml"]
         assert [(table["type"], table["url"]) for table in package.tables] == [
             ("Registry", "registry.parquet"),
-            ("Extraction", "tables/extractions.parquet"),
+            ("Parse", "tables/parses.parquet"),
             ("MatchClaim", "tables/MatchClaim/"),
-            ("Projection", "tables/Projection/"),
+            ("Note", "tables/Note/"),
         ]
         _assert_expected_reads(package)
 
@@ -1660,7 +1710,7 @@ class TestPackage:
                 f"The package check refuses the package written at '{path}': "
                 "foreign_table in 'tables/Features/features.parquet': the table "
                 "'tables/Features/features.parquet' of type 'Features' has no 'id' "
-                "column: a package's tables hold the registry, the Extraction "
+                "column: a package's tables hold the registry, the Parse "
                 "table, MatchClaim tables and pre-parsed tables of events keyed by "
                 "'id'; the package is restored as it was."
             )
@@ -1700,8 +1750,7 @@ class TestPackage:
             for table in timetoshare.loads(path.read_text(encoding="utf-8"))["tables"]
         ] == [
             ("Registry", "registry.parquet"),
-            ("Extraction", "tables/extractions.parquet"),
-            ("Beat", "tables/Beat/"),
+            ("Parse", "tables/parses.parquet"),
             ("Note", "tables/Note/"),
             ("Scan", "tables/Scan/scans/"),
         ]
@@ -1860,17 +1909,18 @@ class TestPackage:
 
 def _assert_expected_reads(package: Package) -> None:
     """Each manifest of the shared fixture's package, read through *package*,
-    holds the MatchClaims and Projections ``expected.yaml`` states."""
+    holds the MatchClaims, Notes and Projections ``expected.yaml`` states."""
     for url, expected in _EXPECTED.items():
         bundle = package.bundle(url)
         assert sorted(_ids(bundle.match_claim_table.table)) == (expected["MatchClaim"])
-        held = sorted(
-            row["id"]
-            for timeline in bundle._known_timelines().values()
-            for row in timeline.events.table.to_pylist()
-            if row["event_type"] == "Projection"
-        )
-        assert held == expected["Projection"]
+        for kind in ("Note", "Projection"):
+            held = sorted(
+                row["id"]
+                for timeline in bundle._known_timelines().values()
+                for row in timeline.events.table.to_pylist()
+                if row["event_type"] == kind
+            )
+            assert held == expected[kind]
 
 
 class TestResolve:
@@ -1894,14 +1944,14 @@ class TestResolve:
             ],
             ("bach/manifest.yaml", "projection_3"): [],
             ("bach/manifest.yaml", "claim_1"): [("MatchClaim", "claim_1")],
-            ("bach/manifest.yaml", "extraction_1"): [
+            ("bach/manifest.yaml", "parse_1"): [
                 (
-                    "Extraction",
-                    "extraction_1",
+                    "Parse",
+                    "parse_1",
                     (_SHARED.resolve() / "bach" / "alignment.csv").as_posix(),
                 )
             ],
-            ("bach/manifest.yaml", "extraction_2"): [],
+            ("bach/manifest.yaml", "parse_2"): [],
             ("handel/manifest.yaml", "projection_5"): [_PROJECTION_5],
             (".", "resource_1"): [
                 ("Resource", "resource_1", ("clt_1", "dpt_1")),
@@ -1962,8 +2012,8 @@ def _described(item: Any) -> tuple[Any, ...]:
             None if item.duration is None else item.duration.value,
             item.projection_of,
         )
-    if isinstance(item, Extraction):
-        return ("Extraction", item.id, item.source)
+    if isinstance(item, Parse):
+        return ("Parse", item.id, item.source)
     if isinstance(item, Resource):
         return ("Resource", item.id, item.timelines)
     if isinstance(item, MatchClaim):

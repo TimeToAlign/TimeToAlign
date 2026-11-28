@@ -12,11 +12,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from pydantic import ValidationError
-from timetoshare.tables import (
-    PROJECTION_SCHEMA,
-    fixture_path,
-    projection_problems,
-)
+from timetoshare.tables import PROJECTION_OF_TYPE, fixture_path
 
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import (
@@ -306,9 +302,11 @@ class TestAxesPerCell:
         assert empty.data.type == ProjectionField.pa_schema
 
 
-def _fixture_projections() -> pa.Table:
-    """TimeToShare's fixture pre-parsed Projection table, which the installed package holds."""
-    return pq.read_table(fixture_path("projections.parquet"))
+def _fixture_events() -> list[dict]:
+    """The event rows of TimeToShare's fixture registry, which the installed
+    package holds, in the registry's order."""
+    registry = pq.read_table(fixture_path("registry.parquet")).to_pylist()
+    return [row for row in registry if row["start"] is not None]
 
 
 #: The Projections of TimeToShare's fixture package, in its registry's order
@@ -432,17 +430,20 @@ class TestTimeToShareFixture:
         assert types(read["cpt_1"]) == [(float, None), (float, float)]
         assert types(read["clt_2"]) == [(Fraction, Fraction)]
 
-    def test_the_field_in_the_package_form_is_the_fixture_tables(self) -> None:
+    def test_the_field_in_the_package_form_is_the_fixture_registry(self) -> None:
         field = ProjectionField.from_projections(FIXTURE_PROJECTIONS)
-        written = pa.Table.from_arrays(
-            [field.data.field("id"), field.data.field("projection_of")],
-            schema=PROJECTION_SCHEMA,
+        events = _fixture_events()
+        # The event each Projection stands for is its registry row's.
+        assert [row["kind"] for row in events] == ["Projection"] * 11
+        assert all(row["location"] is None for row in events)
+        assert [(row["id"], row["projection_of"]) for row in events] == list(
+            zip(
+                field.data.field("id").to_pylist(),
+                field.data.field("projection_of").cast(PROJECTION_OF_TYPE).to_pylist(),
+                strict=True,
+            )
         )
-        assert projection_problems(written) == []
-        assert written.equals(_fixture_projections().replace_schema_metadata(None))
         start = field.data.field("start")
-        registry = pq.read_table(fixture_path("registry.parquet")).to_pylist()
-        events = [row for row in registry if row["start"] is not None]
         # The registry holds each start on its root's axis: clt_2 lies at 8
         # on clt_1, the others are roots.
         offsets = {"clt_2": 8}

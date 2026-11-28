@@ -33,10 +33,9 @@ from timetoshare import (
     with_context,
 )
 from timetoshare.tables import (
-    extraction_problems,
     non_event_rows,
     package_fixture_path,
-    projection_problems,
+    parse_problems,
     registry_problems,
 )
 
@@ -879,17 +878,14 @@ def test_the_tables_written_pass_the_package_s_checks(tmp_path: Path) -> None:
     manifest = loads(path.read_text(encoding="utf-8"))
     registry = pq.read_table(tmp_path / "registry.parquet")
     assert registry_problems(registry, manifest) == []
-    assert extraction_problems(pq.read_table(tmp_path / "extractions.parquet")) == []
-    assert (
-        projection_problems(pq.read_table(tmp_path / "projections.parquet"), manifest)
-        == []
-    )
+    assert parse_problems(pq.read_table(tmp_path / "parses.parquet")) == []
+    assert not (tmp_path / "projections.parquet").exists()
     copy = tmp_path / "as_package"
     copy.mkdir()
     for name in (
         "checked.yaml",
         "registry.parquet",
-        "extractions.parquet",
+        "parses.parquet",
         "match_claims.parquet",
     ):
         (copy / name).write_bytes((tmp_path / name).read_bytes())
@@ -900,7 +896,7 @@ def test_the_tables_written_pass_the_package_s_checks(tmp_path: Path) -> None:
                 "manifests": [{"url": "checked.yaml"}],
                 "tables": [
                     {"type": "Registry", "url": "registry.parquet"},
-                    {"type": "Extraction", "url": "extractions.parquet"},
+                    {"type": "Parse", "url": "parses.parquet"},
                     {"type": "MatchClaim", "url": "match_claims.parquet"},
                 ],
             }

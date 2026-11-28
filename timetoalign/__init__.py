@@ -169,7 +169,7 @@ from timetoalign.storage import (
     EventData,
     EventRegistry,
     EventStore,
-    Extraction,
+    Parse,
     SingleStore,
 )
 
@@ -378,7 +378,7 @@ __all__ = [
     "EventData",
     "EventRegistry",
     "EventStore",
-    "Extraction",
+    "Parse",
     "SingleStore",
     "DictStore",
     "Loader",

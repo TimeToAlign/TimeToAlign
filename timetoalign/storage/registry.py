@@ -9,9 +9,10 @@ holds two things for every event:
 - a **registry row** in the columns of :data:`REGISTRY_SCHEMA`: the event's
   ID, its kind (its event type), the timeline holding it, its ``start`` and
   ``duration`` on the axis of the family's **root**, the axis's unit and
-  number type, and the :class:`Extraction` that made it, with
+  number type, and the :class:`Parse` that made it, with
   the parser's ``locator`` of the event in its source and, after an
-  update, the extraction that no longer found it (``vanished_in``);
+  update, the parse that no longer found it (``vanished_in``); a
+  Projection's row names the event it stands for (``projection_of``);
 - its **content**, the event's own columns (its name, a note's pitch, a
   Box's shape), in the timeline's own coordinates: :attr:`Timeline.events
   <timetoalign.timelines.Timeline.events>` is an :class:`EventData` of
@@ -58,6 +59,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 
 from timetoalign.core import NumberType, TimeUnit, resolve_coordinate_spec
+from timetoalign.core.events import EventReferenceField
 from timetoalign.core.fields import _filled, _if_else, _null_column, _struct_array
 from timetoalign.core.ids import ID_LENGTH, ID_MINTER, IdMinter, quote_id, seed_from
 from timetoalign.core.time import (
@@ -67,8 +69,10 @@ from timetoalign.core.time import (
 )
 
 from .events import (
+    PROJECTION_EVENT_TYPE,
     TIMELINE_ID,
     EventData,
+    _build_extra_field_schema,
     _column_refusal,
     _extreme_coordinate,
     joined_tables,
@@ -79,16 +83,16 @@ if TYPE_CHECKING:
     from os import PathLike
 
 __all__ = [
-    "EXTRACTION_SCHEMA",
+    "PARSE_SCHEMA",
     "NOT_CONTENT_COLUMNS",
     "REGISTRY_SCHEMA",
     "SEGMENT_KIND",
     "EventRegistry",
-    "Extraction",
+    "Parse",
     "RegistryFamily",
     "RegistryHost",
     "WrittenEvents",
-    "extraction_table",
+    "parse_table",
     "member_uri",
 ]
 
@@ -98,7 +102,7 @@ SEGMENT_KIND = "Segment"
 
 A child timeline's ``Segment`` row (its ID the child's) is held in memory
 among its parent's rows, for the timelines' own use: it names no
-extraction, is never written to a package and no view of the registry
+parse, is never written to a package and no view of the registry
 (:attr:`EventRegistry.table`) shows it.
 """
 
@@ -118,9 +122,10 @@ REGISTRY_SCHEMA = pa.schema(
         pa.field("number_type", pa.string()),
         pa.field("start", RATIONAL_STRUCT_TYPE),
         pa.field("duration", RATIONAL_STRUCT_TYPE),
-        pa.field("extraction_id", pa.string()),
+        pa.field("parse_id", pa.string()),
         pa.field("locator", pa.string()),
         pa.field("vanished_in", pa.string()),
+        pa.field("projection_of", EventReferenceField.struct_schema()),
     ]
 )
 """The registry's columns in memory, in the order of TimeToShare's Registry table.
@@ -128,25 +133,56 @@ REGISTRY_SCHEMA = pa.schema(
 ``start`` and ``duration`` are storage cells (both sides of each number,
 :data:`~timetoalign.core.time.RATIONAL_STRUCT_TYPE`), on the root's axis;
 the row's ``number_type`` says which side is authoritative.
+``projection_of`` names the event a Projection stands for (its timeline
+and its ID), on a Projection's row only; null on every other row.
 """
 
 _REGISTRY_COLUMNS = tuple(REGISTRY_SCHEMA.names)
 
+#: The registry columns :meth:`EventRegistry.counts` does not count by:
+#: numbers and the struct naming a projected event.
+_UNCOUNTED = frozenset({"start", "duration", "projection_of"})
+
 #: The columns of an event row that the registry holds and no event table
 #: does: given in an EventData, they are moved into the registry row.
-_RESERVED_COLUMNS = ("locator", "extraction_id")
+_RESERVED_COLUMNS = ("locator", "parse_id")
 
 NOT_CONTENT_COLUMNS = frozenset(
     {"start", "end", "duration", "instant", "temporal_type", "event_type"}
 )
 """The columns of an event that are its registry row's, never its content.
 
-Its position and its type: an event's content
+Its position and its type, and for a Projection the event it stands for
+(``projection_of``, :func:`_content_columns`): an event's content
 (:meth:`EventRegistry.content`, a pre-parsed table) is every other column
 but ``id``, which keys it, its name among them.
 """
 
-EXTRACTION_SCHEMA = pa.schema(
+#: The column of a Projection's registry row naming the event it stands for.
+_PROJECTION_OF = "projection_of"
+
+
+def _content_columns(kind: str, table: pa.Table) -> list[str]:
+    """The columns of *table*, events of *kind*, that are their content.
+
+    ``id`` first, then every column but :data:`NOT_CONTENT_COLUMNS` (and,
+    for a Projection, ``projection_of``, its registry row's) in which one
+    of the events holds a value, in the table's order.
+    """
+    registry = (
+        NOT_CONTENT_COLUMNS | {_PROJECTION_OF}
+        if kind == PROJECTION_EVENT_TYPE
+        else NOT_CONTENT_COLUMNS
+    )
+    n = table.num_rows
+    return [
+        name
+        for name in table.column_names
+        if name == "id" or (name not in registry and table.column(name).null_count < n)
+    ]
+
+
+PARSE_SCHEMA = pa.schema(
     [
         pa.field("id", pa.string(), nullable=False),
         pa.field("source", pa.string()),
@@ -165,9 +201,9 @@ EXTRACTION_SCHEMA = pa.schema(
         pa.field("date", pa.string(), nullable=False),
     ]
 )
-"""The columns of the Extraction table, one row per :class:`Extraction`."""
+"""The columns of the Parse table, one row per :class:`Parse`."""
 
-_EXTRACTION_PREFIX = "extraction"
+_PARSE_PREFIX = "parse"
 
 
 def _now() -> str:
@@ -175,14 +211,14 @@ def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _extraction_id(*parts: object) -> str:
-    """The ID of an extraction of the content *parts*: the same in every run.
+def _parse_id(*parts: object) -> str:
+    """The ID of a parse of the content *parts*: the same in every run.
 
     Minted by a minter of its own seeded from the content, never by a
-    call's minter, so an extraction recorded on the way takes no ID from
+    call's minter, so a parse recorded on the way takes no ID from
     the events it records.
     """
-    return IdMinter(seed_from(_EXTRACTION_PREFIX, *parts)).mint(_EXTRACTION_PREFIX)
+    return IdMinter(seed_from(_PARSE_PREFIX, *parts)).mint(_PARSE_PREFIX)
 
 
 def member_uri(member: zipfile.Path) -> str:
@@ -216,22 +252,22 @@ def _canonical_json(value: Mapping[str, Any]) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
-# region Extraction
+# region Parse
 
 
 @dataclass(frozen=True, kw_only=True)
-class Extraction:
-    """One run of a parser over one source file: what made a set of events.
+class Parse:
+    """One run of a parser over one source file (or of a tool without one) that made events.
 
-    A row of the Extraction table (CRMdig's D10 Software Execution): the
+    A row of the Parse table (CRMdig's D10 Software Execution): the
     source file and its digest, the parser and its version, the parameters
     it ran with, and the ID minter's algorithm, length and seed, so that a
     run again over the same file mints the same IDs. Events made without a
-    source file (in code, by a script) name the tool's extraction
-    (:meth:`of_tool`). Extractions sharing an ID hash alike.
+    source file (in code, by a script) name the tool's parse
+    (:meth:`of_tool`). Parses sharing an ID hash alike.
 
     Attributes:
-        id: The extraction's ID (``extraction_…``).
+        id: The parse's ID (``parse_…``).
         source: The source file, a path or URI reference; None for events
             made without one.
         source_integrity: ``{"algorithm": "SHA-256", "digest": <hex>}`` of
@@ -270,8 +306,8 @@ class Extraction:
         scope: str | None = None,
         id: str | None = None,
         date: str | None = None,
-    ) -> Extraction:
-        """The extraction of events made without a source file.
+    ) -> Parse:
+        """The parse of events made without a source file.
 
         A registry makes one of its own (for its root timeline) when events
         made in code join it.
@@ -279,9 +315,9 @@ class Extraction:
         Args:
             parser: The tool's name; ``"timetoalign"`` by default.
             parser_version: Its version; this library's by default.
-            scope: What the extraction is one of (a root timeline's ID); a
+            scope: What the parse is one of (a root timeline's ID); a
                 minted ID is seeded from it, the parser and its version.
-            id: The extraction's ID; minted when None.
+            id: The parse's ID; minted when None.
             date: When it ran; now when None.
         """
         if parser_version is None:
@@ -289,7 +325,7 @@ class Extraction:
 
             parser_version = __version__
         if id is None:
-            id = _extraction_id(parser, parser_version, scope)
+            id = _parse_id(parser, parser_version, scope)
         return cls(
             id=id,
             parser=parser,
@@ -311,8 +347,8 @@ class Extraction:
         seed: int | str | None = None,
         id: str | None = None,
         date: str | None = None,
-    ) -> Extraction:
-        """The extraction of a parser's run over the file *path*.
+    ) -> Parse:
+        """The parse of a parser's run over the file *path*.
 
         The file's SHA-256 digest is read from its bytes. The ID, when
         minted, is seeded from the digest, the parser and its version, the
@@ -336,7 +372,7 @@ class Extraction:
             minter: The algorithm of the ID minter.
             id_length: The length of the IDs it minted.
             seed: The seed given to the minter, if one was.
-            id: The extraction's ID; minted when None.
+            id: The parse's ID; minted when None.
             date: When it ran; now when None.
 
         Raises:
@@ -357,7 +393,7 @@ class Extraction:
         seed_text = None if seed is None else str(seed)
         integrity = {"algorithm": "SHA-256", "digest": digest.hexdigest()}
         if id is None:
-            id = _extraction_id(
+            id = _parse_id(
                 integrity["digest"],
                 parser,
                 parser_version,
@@ -380,8 +416,8 @@ class Extraction:
         )
 
     @classmethod
-    def from_row(cls, row: Mapping[str, Any]) -> Extraction:
-        """The extraction of a row of the Extraction table (:meth:`to_row`)."""
+    def from_row(cls, row: Mapping[str, Any]) -> Parse:
+        """The parse of a row of the Parse table (:meth:`to_row`)."""
         parameters = row.get("parameters")
         integrity = row.get("source_integrity")
         return cls(
@@ -400,7 +436,7 @@ class Extraction:
     def __post_init__(self) -> None:
         if (self.source is None) != (self.source_integrity is None):
             raise ValueError(
-                f"extraction {quote_id(self.id)} names a source file and its "
+                f"parse {quote_id(self.id)} names a source file and its "
                 "digest together or neither"
             )
 
@@ -408,7 +444,7 @@ class Extraction:
         return hash(self.id)
 
     def to_row(self) -> dict[str, Any]:
-        """The extraction as a row of the Extraction table.
+        """The parse as a row of the Parse table.
 
         ``parameters`` is canonical JSON text (sorted keys, no spaces).
         """
@@ -430,17 +466,17 @@ class Extraction:
         }
 
 
-def _without_date(extraction: Extraction) -> dict[str, Any]:
-    """*extraction*'s row but its date: what two runs of one extraction share."""
-    row = extraction.to_row()
+def _without_date(parse: Parse) -> dict[str, Any]:
+    """*parse*'s row but its date: what two runs of one parse share."""
+    row = parse.to_row()
     del row["date"]
     return row
 
 
-def extraction_table(extractions: Iterable[Extraction]) -> pa.Table:
-    """The Extraction table of *extractions*, one row each, in order."""
+def parse_table(parses: Iterable[Parse]) -> pa.Table:
+    """The Parse table of *parses*, one row each, in order."""
     return pa.Table.from_pylist(
-        [extraction.to_row() for extraction in extractions], schema=EXTRACTION_SCHEMA
+        [parse.to_row() for parse in parses], schema=PARSE_SCHEMA
     )
 
 
@@ -623,39 +659,37 @@ def _own(table: pa.Table) -> pa.Table:
 
 
 def _refuse_repeated_locators(rows: pa.Table, held: pa.Table | None = None) -> None:
-    """Refuse a locator naming two events of one extraction, among *rows* and *held*.
+    """Refuse a locator naming two events of one parse, among *rows* and *held*.
 
     A locator names one event of its source: the registry rows *rows*
-    joining may not repeat an ``(extraction_id, locator)`` pair, among
+    joining may not repeat an ``(parse_id, locator)`` pair, among
     themselves or with the rows *held* already. Rows without a locator
     are not compared.
 
     Raises:
         ValueError: Naming the locator, the number of events and the
-            extraction.
+            parse.
     """
     named = pc.and_(
-        rows.column("locator").is_valid(), rows.column("extraction_id").is_valid()
+        rows.column("locator").is_valid(), rows.column("parse_id").is_valid()
     )
     if not pc.any(named).as_py():
         return
-    pairs = rows.select(["extraction_id", "locator"]).filter(named)
+    pairs = rows.select(["parse_id", "locator"]).filter(named)
     if held is not None and held.num_rows:
         near = pc.and_(
-            pc.is_in(
-                held.column("extraction_id"), value_set=pairs.column("extraction_id")
-            ),
+            pc.is_in(held.column("parse_id"), value_set=pairs.column("parse_id")),
             pc.is_in(held.column("locator"), value_set=pairs.column("locator")),
         )
         pairs = pa.concat_tables(
             [
                 pairs,
-                held.select(["extraction_id", "locator"]).filter(
+                held.select(["parse_id", "locator"]).filter(
                     _filled(near, pa.scalar(False))
                 ),
             ]
         )
-    counted = pairs.group_by(["extraction_id", "locator"], use_threads=False).aggregate(
+    counted = pairs.group_by(["parse_id", "locator"], use_threads=False).aggregate(
         [("locator", "count")]
     )
     repeated = counted.filter(pc.greater(counted.column("locator_count"), pa.scalar(1)))
@@ -663,8 +697,8 @@ def _refuse_repeated_locators(rows: pa.Table, held: pa.Table | None = None) -> N
         first = repeated.slice(0, 1).to_pylist()[0]
         raise ValueError(
             f"locator {quote_id(str(first['locator']))} is given to "
-            f"{first['locator_count']} events of extraction "
-            f"{quote_id(str(first['extraction_id']))}; a locator names one event "
+            f"{first['locator_count']} events of parse "
+            f"{quote_id(str(first['parse_id']))}; a locator names one event "
             "of its source"
         )
 
@@ -719,8 +753,8 @@ class _Family:
         self.parts: dict[str, EventData] = {}
         self.rows: dict[str, pa.Table] = {}
         self.paths: dict[str, tuple[int | float | Fraction, ...]] = {timeline_id: ()}
-        self.extractions: dict[str, Extraction] = {}
-        self.tool: Extraction | None = None
+        self.parses: dict[str, Parse] = {}
+        self.tool: Parse | None = None
         self.contents: dict[str, list[pa.Table | Callable[[], pa.Table]]] = {}
         self.registered = False
         # Per timeline: the events that copy another event of the family (a
@@ -899,10 +933,10 @@ class _Family:
                 holder, joiner = self.holder_of(event_id), other.holder_of(event_id)
                 assert holder is not None and joiner is not None
                 raise ValueError(_collision(event_id, holder, joiner))
-        self.refuse_extractions(
-            extraction
-            for extraction in other.extractions.values()
-            if not (extraction is other.tool and self.tool is not None)
+        self.refuse_parses(
+            parse
+            for parse in other.parses.values()
+            if not (parse is other.tool and self.tool is not None)
         )
         _refuse_repeated_locators(other.table(), self.table())
 
@@ -936,14 +970,13 @@ class _Family:
         alone._timeline_id = None
         return alone
 
-    def refuse_extractions(self, extractions: Iterable[Extraction]) -> None:
-        """Refuse an extraction held under its ID with other content (but its date)."""
-        for extraction in extractions:
-            held = self.extractions.get(extraction.id)
-            if held is not None and _without_date(held) != _without_date(extraction):
+    def refuse_parses(self, parses: Iterable[Parse]) -> None:
+        """Refuse a parse held under its ID with other content (but its date)."""
+        for parse in parses:
+            held = self.parses.get(parse.id)
+            if held is not None and _without_date(held) != _without_date(parse):
                 raise ValueError(
-                    f"extraction {quote_id(extraction.id)} is held already, of "
-                    "other content"
+                    f"parse {quote_id(parse.id)} is held already, of " "other content"
                 )
 
     # endregion
@@ -959,39 +992,39 @@ class _Family:
         """Make *part* the events of *timeline_id*: a table of that timeline's."""
         held = part._derived(part.table)
         held._timeline_id = timeline_id
-        held._extractions = ()
+        held._parses = ()
         self.parts[timeline_id] = held
 
-    def _record(self, extractions: Iterable[Extraction]) -> None:
-        """Hold *extractions*, refused already where they conflict; one held stays."""
-        for extraction in extractions:
-            self.extractions.setdefault(extraction.id, extraction)
+    def _record(self, parses: Iterable[Parse]) -> None:
+        """Hold *parses*, refused already where they conflict; one held stays."""
+        for parse in parses:
+            self.parses.setdefault(parse.id, parse)
 
     def registry_rows(
         self,
         timeline_id: str,
         data: EventData,
-        extraction: Extraction | None,
+        parse: Parse | None,
         kept: pa.Table | None = None,
-    ) -> tuple[pa.Table, list[Extraction], Extraction | None]:
+    ) -> tuple[pa.Table, list[Parse], Parse | None]:
         """The registry rows of *data*'s rows, joining *timeline_id*; nothing changed.
 
         Positions shifted onto the root; the reserved columns ``locator``
-        and ``extraction_id`` read where *data* holds them; a row an ID of
+        and ``parse_id`` read where *data* holds them; a row an ID of
         *kept* (rows it replaces) names keeps that row's location,
-        extraction, locator and vanishing, unless *data* states them; the
-        other event rows name *extraction*, else the family's tool
-        extraction. A ``Segment`` row names none. An event without an
+        parse, locator and vanishing, unless *data* states them; the
+        other event rows name *parse*, else the family's tool
+        parse. A ``Segment`` row names none. An event without an
         event type is of kind ``Event``.
 
         Returns:
-            The rows; the extractions to hold with them (*extraction*, and
+            The rows; the parses to hold with them (*parse*, and
             those *data* carries that the rows name); the family's tool
-            extraction where the rows name it and the family has none yet.
+            parse where the rows name it and the family has none yet.
 
         Raises:
-            ValueError: If a row names an extraction that is neither held,
-                nor *extraction*, nor one *data* carries.
+            ValueError: If a row names a parse that is neither held,
+                nor *parse*, nor one *data* carries.
         """
         table = data.table
         n = table.num_rows
@@ -999,23 +1032,23 @@ class _Family:
         ids = _strings(table, "id")
         kinds = _filled(_strings(table, "event_type"), pa.scalar(_UNTYPED_KIND))
         segment = pc.equal(kinds, pa.scalar(SEGMENT_KIND))
-        stated = _strings(table, "extraction_id")
+        stated = _strings(table, "parse_id")
         locator = _strings(table, "locator")
         location = pa.nulls(n, pa.string())
         vanished = pa.nulls(n, pa.string())
         named = {str(name) for name in pc.unique(pc.drop_null(stated)).to_pylist()}
-        known = {*self.extractions, *(item.id for item in data.extractions)}
-        if extraction is not None:
-            known.add(extraction.id)
+        known = {*self.parses, *(item.id for item in data.parses)}
+        if parse is not None:
+            known.add(parse.id)
         unknown = sorted(named - known)
         if unknown:
             raise ValueError(
-                f"the rows name the extraction {quote_id(unknown[0])}, which this "
+                f"the rows name the parse {quote_id(unknown[0])}, which this "
                 "family does not hold: give it with the rows "
-                "(EventData.with_extractions)"
+                "(EventData.with_parses)"
             )
-        recorded = [] if extraction is None else [extraction]
-        recorded.extend(item for item in data.extractions if item.id in named)
+        recorded = [] if parse is None else [parse]
+        recorded.extend(item for item in data.parses if item.id in named)
         if kept is not None and kept.num_rows:
             at = pc.index_in(ids, value_set=kept.column("id").combine_chunks())
 
@@ -1023,21 +1056,33 @@ class _Family:
                 old = kept.column(name).combine_chunks().take(at)
                 return pc.coalesce(own, old)
 
-            stated = carried("extraction_id", stated)
+            stated = carried("parse_id", stated)
             locator = carried("locator", locator)
             location = carried("location", location)
             vanished = carried("vanished_in", vanished)
-        tool: Extraction | None = None
+        tool: Parse | None = None
         unnamed = pc.and_(stated.is_null(), pc.invert(segment))
         if pc.any(unnamed).as_py():
-            fallback = extraction
+            fallback = parse
             if fallback is None:
                 fallback = self.tool
                 if fallback is None:
-                    fallback = tool = Extraction.of_tool(scope=self.root_id)
+                    fallback = tool = Parse.of_tool(scope=self.root_id)
                     recorded.append(tool)
             stated = _filled(stated, pa.scalar(fallback.id, pa.string()))
         stated = _if_else(segment, pa.nulls(n, pa.string()), stated)
+        projection_type = REGISTRY_SCHEMA.field(_PROJECTION_OF).type
+        projection_of = (
+            _if_else(
+                _filled(
+                    pc.equal(kinds, pa.scalar(PROJECTION_EVENT_TYPE)), pa.scalar(False)
+                ),
+                _flat(table.column(_PROJECTION_OF)).cast(projection_type),
+                pa.nulls(n, projection_type),
+            )
+            if _PROJECTION_OF in table.column_names
+            else pa.nulls(n, projection_type)
+        )
         rows = pa.Table.from_arrays(
             [
                 ids,
@@ -1051,14 +1096,13 @@ class _Family:
                 stated,
                 locator,
                 vanished,
+                projection_of,
             ],
             schema=REGISTRY_SCHEMA,
         )
         return rows, recorded, tool
 
-    def _commit_extractions(
-        self, recorded: Iterable[Extraction], tool: Extraction | None
-    ) -> None:
+    def _commit_parses(self, recorded: Iterable[Parse], tool: Parse | None) -> None:
         self._record(recorded)
         if tool is not None:
             self.tool = tool
@@ -1068,7 +1112,7 @@ class _Family:
         timeline_id: str,
         data: EventData,
         *,
-        extraction: Extraction | None = None,
+        parse: Parse | None = None,
         checked: bool = False,
     ) -> None:
         """Add *data*'s rows, in *timeline_id*'s coordinates, after its rows."""
@@ -1078,13 +1122,13 @@ class _Family:
         part = self.events_of(timeline_id)
         if not checked:
             self.refuse_held_ids(timeline_id, data.table)
-        rows, recorded, tool = self.registry_rows(timeline_id, data, extraction)
-        self.refuse_extractions(recorded)
+        rows, recorded, tool = self.registry_rows(timeline_id, data, parse)
+        self.refuse_parses(recorded)
         _refuse_repeated_locators(rows, self.table())
         joined = joined_tables(
             [part.table, _own(data.table)], _refusal_for(timeline_id)
         )
-        self._commit_extractions(recorded, tool)
+        self._commit_parses(recorded, tool)
         self._set_part(timeline_id, part._derived(_compacted(joined)))
         self.rows[timeline_id] = _compacted(
             pa.concat_tables([self.rows[timeline_id], rows])
@@ -1096,12 +1140,12 @@ class _Family:
         timeline_id: str,
         data: EventData,
         *,
-        extraction: Extraction | None = None,
+        parse: Parse | None = None,
     ) -> None:
         """Make *data*'s rows those of *timeline_id*, its class the timeline's.
 
         A row keeping the ID of a row it replaces keeps that row's
-        extraction, locator and location.
+        parse, locator and location.
         """
         data = self.on_axis(timeline_id, data)
         # Rows waiting to be read are read first: *data* replaces them too.
@@ -1111,12 +1155,10 @@ class _Family:
         unchanged = held.column("id").equals(given) if held.num_rows else not len(given)
         if not unchanged:
             self.refuse_held_ids(timeline_id, given, own=True)
-        rows, recorded, tool = self.registry_rows(
-            timeline_id, data, extraction, kept=held
-        )
-        self.refuse_extractions(recorded)
+        rows, recorded, tool = self.registry_rows(timeline_id, data, parse, kept=held)
+        self.refuse_parses(recorded)
         _refuse_repeated_locators(rows, self.others(timeline_id))
-        self._commit_extractions(recorded, tool)
+        self._commit_parses(recorded, tool)
         self._set_part(timeline_id, data._derived(_own(data.table)))
         self.rows[timeline_id] = rows
         copies = self.copies.get(timeline_id)
@@ -1158,11 +1200,11 @@ class _Family:
                 _shifted(_cells(rows, "start"), steps, self.number_type),
             )
             if other.tool is not None and tool is not None and other.tool != tool:
-                index = moved.schema.get_field_index("extraction_id")
+                index = moved.schema.get_field_index("parse_id")
                 column = moved.column(index)
                 moved = moved.set_column(
                     index,
-                    REGISTRY_SCHEMA.field("extraction_id"),
+                    REGISTRY_SCHEMA.field("parse_id"),
                     pc.if_else(
                         _filled(
                             pc.equal(column, pa.scalar(other.tool.id)), pa.scalar(False)
@@ -1175,9 +1217,9 @@ class _Family:
             self.rows[timeline_id] = moved
             self.paths[timeline_id] = (*other.paths[timeline_id], *steps)
         self._record(
-            extraction
-            for extraction in other.extractions.values()
-            if not (extraction is other.tool and tool is not None)
+            parse
+            for parse in other.parses.values()
+            if not (parse is other.tool and tool is not None)
         )
         if tool is None and other.tool is not None:
             self.tool = other.tool
@@ -1247,7 +1289,7 @@ class _Family:
             dict(self.parts),
             dict(self.rows),
             dict(self.paths),
-            dict(self.extractions),
+            dict(self.parses),
             self.tool,
             {kind: list(entries) for kind, entries in self.contents.items()},
             self.registered,
@@ -1260,7 +1302,7 @@ class _Family:
             self.parts,
             self.rows,
             self.paths,
-            self.extractions,
+            self.parses,
             self.tool,
             self.contents,
             self.registered,
@@ -1310,9 +1352,7 @@ class _Family:
             same &= both_null | equal
         return rows.filter(pa.array(~same))
 
-    def refuse_rows(
-        self, rows: pa.Table, extractions: Sequence[Extraction]
-    ) -> pa.Array | None:
+    def refuse_rows(self, rows: pa.Table, parses: Sequence[Parse]) -> pa.Array | None:
         """Refuse registry *rows* the family cannot hold; nothing changes.
 
         Returns:
@@ -1322,7 +1362,7 @@ class _Family:
             KeyError: If a row names a timeline the family does not hold.
             ValueError: As :meth:`add_rows` refuses.
         """
-        self.refuse_extractions(extractions)
+        self.refuse_parses(parses)
         if not rows.num_rows:
             return None
         timelines = rows.column("timeline_id").combine_chunks()
@@ -1360,13 +1400,13 @@ class _Family:
                 f"{quote_id(row['timeline_id'])} on {self.unit.value} in "
                 f"{self.number_type.name}"
             )
-        known = {*self.extractions, *(extraction.id for extraction in extractions)}
-        named = pc.unique(_strings(rows, "extraction_id").fill_null("")).to_pylist()
+        known = {*self.parses, *(parse.id for parse in parses)}
+        named = pc.unique(_strings(rows, "parse_id").fill_null("")).to_pylist()
         missing = [name for name in named if name not in known]
         if missing:
             raise ValueError(
-                f"a registry row names the extraction {quote_id(str(missing[0]))}, which "
-                "is given with none of the extractions"
+                f"a registry row names the parse {quote_id(str(missing[0]))}, which "
+                "is given with none of the parses"
             )
         repeated = _repeated(rows.column("id").combine_chunks(), self.root_id)
         if repeated is not None:
@@ -1427,7 +1467,7 @@ class _Family:
         self,
         rows: pa.Table,
         contents: Mapping[str, pa.Table | Callable[[], pa.Table]],
-        extractions: Iterable[Extraction],
+        parses: Iterable[Parse],
         *,
         registered: bool,
     ) -> None:
@@ -1441,16 +1481,16 @@ class _Family:
         and a refusal there puts the family back as it was.
         """
         rows = self.not_stated_already(_as_registry(rows))
-        extractions = list(extractions)
-        timelines = self.refuse_rows(rows, extractions)
+        parses = list(parses)
+        timelines = self.refuse_rows(rows, parses)
         if timelines is None:
-            self._record(extractions)
+            self._record(parses)
             self._changed()
             return
         self.fit_lengths(rows, timelines)
         before = self.state()
         # Nothing is refused past here but a Box, which puts the family back.
-        self._record(extractions)
+        self._record(parses)
         for kind, content in contents.items():
             self.contents.setdefault(kind, []).append(content)
         for timeline_id, at in _runs(timelines):
@@ -1538,6 +1578,7 @@ class _Family:
             list(columns.values()),
             schema=pa.schema([base.field(name) for name in columns]),
         )
+        projection_of = rows.column(_PROJECTION_OF).combine_chunks()
         by_kind: list[tuple[pa.Table, np.ndarray]] = []
         for kind, at in _runs(kinds):
             table = events.take(at)
@@ -1564,6 +1605,18 @@ class _Family:
                         field_.with_nullable(True),
                         content.column(field_.name).combine_chunks().take(found),
                     )
+            if (
+                str(kind) == PROJECTION_EVENT_TYPE
+                and _PROJECTION_OF not in table.column_names
+            ):
+                # The event a Projection stands for is its registry row's.
+                declared = _build_extra_field_schema(
+                    pa.schema([]), [_PROJECTION_OF], [], self.unit, number_type
+                ).field(_PROJECTION_OF)
+                table = table.append_column(
+                    declared,
+                    projection_of.take(pa.array(at, pa.int64())).cast(declared.type),
+                )
             by_kind.append((table, at))
         first = 0
         for timeline_id, table in waiting:
@@ -1589,14 +1642,14 @@ class _Family:
             self._set_part(timeline_id, part._derived(joined.take(order)))
             first = last
 
-    def update(self, timeline_id: str, data: EventData, extraction: Extraction) -> None:
+    def update(self, timeline_id: str, data: EventData, parse: Parse) -> None:
         """Update *timeline_id*'s rows from *data*, a parser's new run.
 
-        Rows are matched by ``locator`` among the rows of extractions of the
-        same source as *extraction*: a matched row keeps its ID and takes
-        the new row's content and *extraction*; a new row matching none is
+        Rows are matched by ``locator`` among the rows of parses of the
+        same source as *parse*: a matched row keeps its ID and takes
+        the new row's content and *parse*; a new row matching none is
         added; an old row of that source no longer found is kept and names
-        *extraction* in ``vanished_in``. Nothing is deleted.
+        *parse* in ``vanished_in``. Nothing is deleted.
         """
         if "locator" not in data.table.column_names:
             raise ValueError(
@@ -1616,20 +1669,20 @@ class _Family:
         _refuse_repeated_locators(
             pa.table(
                 {
-                    "extraction_id": _repeated_string(extraction.id, len(new_locators)),
+                    "parse_id": _repeated_string(parse.id, len(new_locators)),
                     "locator": new_locators,
                 }
             )
         )
-        self.refuse_extractions([extraction])
+        self.refuse_parses([parse])
         same_source = [
             held_id
-            for held_id, held_extraction in self.extractions.items()
-            if held_extraction.source == extraction.source
+            for held_id, held_parse in self.parses.items()
+            if held_parse.source == parse.source
         ]
         of_source = _filled(
             pc.is_in(
-                held.column("extraction_id").combine_chunks(),
+                held.column("parse_id").combine_chunks(),
                 value_set=pa.array(same_source, pa.string()),
             ),
             pa.scalar(False),
@@ -1651,8 +1704,8 @@ class _Family:
             data.table.schema.field("id"),
             ids,
         )
-        if "extraction_id" in new.column_names:
-            new = new.drop_columns(["extraction_id"])
+        if "parse_id" in new.column_names:
+            new = new.drop_columns(["parse_id"])
         n_old = part.table.num_rows
         # Old rows in their places (an updated one by its new row), then the
         # new rows matching none.
@@ -1668,13 +1721,13 @@ class _Family:
         joined = joined_tables([part.table, _own(new)], _refusal_for(timeline_id)).take(
             order
         )
-        stated, _, _ = self.registry_rows(timeline_id, data._derived(new), extraction)
+        stated, _, _ = self.registry_rows(timeline_id, data._derived(new), parse)
         registry = pa.concat_tables([held, stated]).take(order)
         # Old rows of the source not found vanished in this run; a found one
         # is present again.
         vanished = pc.if_else(
             pc.and_(of_source, pc.invert(found.is_valid())),
-            pa.scalar(extraction.id, pa.string()),
+            pa.scalar(parse.id, pa.string()),
             pc.if_else(
                 found.is_valid(),
                 pa.scalar(None, pa.string()),
@@ -1691,7 +1744,7 @@ class _Family:
         )
         self.refuse_held_ids(timeline_id, registry.column("id"), own=True)
         _refuse_repeated_locators(registry, self.others(timeline_id))
-        self._record([extraction])
+        self._record([parse])
         self._set_part(timeline_id, part._derived(joined))
         self.rows[timeline_id] = registry
         self._changed()
@@ -1771,21 +1824,22 @@ class WrittenEvents:
             axis of each family's root as storage cells, the families in
             order, each family's rows in its order (its timelines in
             joining order); no row records a child's place, and every row
-            names its extraction.
+            names its parse.
         contents: The content of each timeline's events of each kind, keyed
             ``(timeline_id, kind)``, the families and their timelines in
             order and the kinds of a timeline sorted: ``id`` first, then
-            every column but :data:`NOT_CONTENT_COLUMNS` in which one of
+            every column but :data:`NOT_CONTENT_COLUMNS` (and a
+            Projection's ``projection_of``, its row's) in which one of
             these events holds a value, row for row the timeline's events of
             that kind in their order.
-        extractions: The extractions the rows name (``extraction_id`` and
+        parses: The parses the rows name (``parse_id`` and
             ``vanished_in``), sorted by ID.
         families: The families the rows are of, in order.
     """
 
     rows: pa.Table
     contents: Mapping[tuple[str, str], pa.Table]
-    extractions: tuple[Extraction, ...]
+    parses: tuple[Parse, ...]
     families: tuple[RegistryFamily, ...]
 
     def family_of(self, timeline_id: str) -> RegistryFamily:
@@ -1826,7 +1880,7 @@ class _Criteria:
 
     within: frozenset[str] | None = None
     kinds: frozenset[str] | None = None
-    extractions: frozenset[str] | None = None
+    parses: frozenset[str] | None = None
     vanished: bool | None = None
     min_coord: Any = None
     max_coord: Any = None
@@ -1837,7 +1891,7 @@ class _Criteria:
         for name, wanted in (
             ("timeline_id", self.within),
             ("kind", self.kinds),
-            ("extraction_id", self.extractions),
+            ("parse_id", self.parses),
         ):
             if wanted is not None:
                 mask = pc.and_(
@@ -1910,16 +1964,16 @@ class EventRegistry:
     Args:
         timeline_id: The ID of the root timeline of a new family.
         data: The root's events, on its axis; their class is the class of
-            the family's events. The extractions it carries
-            (:attr:`EventData.extractions`) are held with them.
+            the family's events. The parses it carries
+            (:attr:`EventData.parses`) are held with them.
         host: The timeline holding its events here
             (:class:`RegistryHost`): rows read for it are held within its
             length and its Boxes checked. None for a registry standing
             alone.
 
     Raises:
-        ValueError: If *data* holds one event ID twice, or names an
-            extraction it does not carry.
+        ValueError: If *data* holds one event ID twice, or names a
+            parse it does not carry.
 
     Examples:
         >>> from fractions import Fraction
@@ -2004,16 +2058,16 @@ class EventRegistry:
         return joined
 
     @property
-    def extractions(self) -> list[Extraction]:
-        """The extractions the rows of this view name, in the families' order."""
+    def parses(self) -> list[Parse]:
+        """The parses the rows of this view name, in the families' order."""
         named = set(
-            pc.unique(self.table.column("extraction_id").combine_chunks()).to_pylist()
+            pc.unique(self.table.column("parse_id").combine_chunks()).to_pylist()
         )
-        found: dict[str, Extraction] = {}
+        found: dict[str, Parse] = {}
         for family, _ in self._families():
-            for extraction_id, extraction in family.extractions.items():
-                if extraction_id in named:
-                    found.setdefault(extraction_id, extraction)
+            for parse_id, parse in family.parses.items():
+                if parse_id in named:
+                    found.setdefault(parse_id, parse)
         return list(found.values())
 
     @property
@@ -2044,7 +2098,7 @@ class EventRegistry:
         *,
         within: str | Iterable[str] | None = None,
         kinds: str | Iterable[str] | None = None,
-        extractions: str | Iterable[str] | None = None,
+        parses: str | Iterable[str] | None = None,
         vanished: bool | None = None,
         min_coord: Any = None,
         max_coord: Any = None,
@@ -2054,7 +2108,7 @@ class EventRegistry:
         Args:
             within: Keep the rows of these timelines (IDs).
             kinds: Keep the rows of these kinds (event types).
-            extractions: Keep the rows made by these extractions (IDs).
+            parses: Keep the rows made by these parses (IDs).
             vanished: True keeps the rows an update no longer found, False
                 the others; None keeps both.
             min_coord: Keep the rows starting at or after this position
@@ -2076,7 +2130,7 @@ class EventRegistry:
         criterion = _Criteria(
             within=_frozen(within),
             kinds=_frozen(kinds),
-            extractions=_frozen(extractions),
+            parses=_frozen(parses),
             vanished=vanished,
             min_coord=min_coord,
             max_coord=max_coord,
@@ -2096,10 +2150,10 @@ class EventRegistry:
         Raises:
             KeyError: If *by* is no registry column.
         """
-        if by not in _REGISTRY_COLUMNS or by in ("start", "duration"):
+        countable = [name for name in _REGISTRY_COLUMNS if name not in _UNCOUNTED]
+        if by not in countable:
             raise KeyError(
-                f"No registry column {by!r} to count by. Available columns: "
-                f"{[name for name in _REGISTRY_COLUMNS if name not in ('start', 'duration')]}"
+                f"No registry column {by!r} to count by. Available columns: {countable}"
             )
         counted = (
             self.table.select([by])
@@ -2149,16 +2203,7 @@ class EventRegistry:
             tables.append(events.take(found))
             where.append(at)
         joined = joined_tables(tables, _column_refusal).take(_inverse(where))
-        names = [
-            name
-            for name in joined.column_names
-            if name == "id"
-            or (
-                name not in NOT_CONTENT_COLUMNS
-                and joined.column(name).null_count < joined.num_rows
-            )
-        ]
-        return joined.select(names)
+        return joined.select(_content_columns(kind, joined))
 
     def written(self, kinds: str | Iterable[str] | None = None) -> WrittenEvents:
         """What a writer stores of the events of the families this view reads.
@@ -2168,22 +2213,22 @@ class EventRegistry:
         when asked. The rows recording where a child lies (a ``Segment`` row
         named by a timeline of the family) are left out; a user's
         ``Segment`` row, an event like any other, is kept, naming the
-        family's extraction of events made in code
-        (:meth:`Extraction.of_tool`) where it names none.
+        family's parse of events made in code
+        (:meth:`Parse.of_tool`) where it names none.
 
         Args:
             kinds: Keep the rows and contents of these kinds only; every
                 kind when None.
 
         Returns:
-            The rows, the contents per timeline and kind, the extractions
+            The rows, the contents per timeline and kind, the parses
             the rows name and the families
             (:class:`WrittenEvents`).
         """
         wanted = _frozen(kinds)
         row_parts: list[pa.Table] = []
         contents: dict[tuple[str, str], pa.Table] = {}
-        found: dict[str, Extraction] = {}
+        found: dict[str, Parse] = {}
         families: list[RegistryFamily] = []
         for family, _ in self._families():
             families.append(
@@ -2207,15 +2252,15 @@ class EventRegistry:
                         ),
                     )
                 rows = held.filter(kept)
-                unnamed = rows.column("extraction_id").is_null()
+                unnamed = rows.column("parse_id").is_null()
                 if pc.any(unnamed).as_py():
-                    tool = family.tool or Extraction.of_tool(scope=family.root_id)
+                    tool = family.tool or Parse.of_tool(scope=family.root_id)
                     found.setdefault(tool.id, tool)
-                    at = rows.schema.get_field_index("extraction_id")
+                    at = rows.schema.get_field_index("parse_id")
                     rows = rows.set_column(
                         at,
                         rows.schema.field(at),
-                        _filled(rows.column("extraction_id"), pa.scalar(tool.id)),
+                        _filled(rows.column("parse_id"), pa.scalar(tool.id)),
                     )
                 row_parts.append(rows)
             for timeline_id in family.parts:
@@ -2234,33 +2279,24 @@ class EventRegistry:
                     rows = table.filter(
                         pc.and_(own, pc.equal(kinds_of, pa.scalar(kind)))
                     )
-                    n = rows.num_rows
                     contents[(timeline_id, kind)] = rows.select(
-                        [
-                            name
-                            for name in rows.column_names
-                            if name == "id"
-                            or (
-                                name not in NOT_CONTENT_COLUMNS
-                                and rows.column(name).null_count < n
-                            )
-                        ]
+                        _content_columns(kind, rows)
                     )
-            for extraction_id, extraction in family.extractions.items():
-                found.setdefault(extraction_id, extraction)
+            for parse_id, parse in family.parses.items():
+                found.setdefault(parse_id, parse)
         table = (
             pa.concat_tables(row_parts) if row_parts else REGISTRY_SCHEMA.empty_table()
         )
         named = {
             str(value)
-            for column in ("extraction_id", "vanished_in")
+            for column in ("parse_id", "vanished_in")
             for value in pc.unique(table.column(column)).to_pylist()
             if value is not None
         }
         return WrittenEvents(
             rows=table,
             contents=contents,
-            extractions=tuple(found[key] for key in sorted(named) if key in found),
+            parses=tuple(found[key] for key in sorted(named) if key in found),
             families=tuple(families),
         )
 
@@ -2273,17 +2309,17 @@ class EventRegistry:
         timeline_id: str,
         data: EventData,
         *,
-        extraction: Extraction | None = None,
+        parse: Parse | None = None,
     ) -> None:
         """Add *data*'s rows to the timeline *timeline_id*, after its rows.
 
         *data* is on the timeline's axis, in its own coordinates; the
         registry rows are shifted onto the root's, column-wise. The columns
-        ``locator`` and ``extraction_id``, where *data* holds them, are moved
-        into the registry rows. A row naming no extraction names
-        *extraction*, else the family's tool extraction
-        (:meth:`Extraction.of_tool`, one per family). The extractions *data*
-        carries (:attr:`EventData.extractions`) that the rows name are held
+        ``locator`` and ``parse_id``, where *data* holds them, are moved
+        into the registry rows. A row naming no parse names
+        *parse*, else the family's tool parse
+        (:meth:`Parse.of_tool`, one per family). The parses *data*
+        carries (:attr:`EventData.parses`) that the rows name are held
         with them. Taken by the registry of one family (a timeline's
         ``_registry``), not by a view.
 
@@ -2292,18 +2328,18 @@ class EventRegistry:
             TypeError: If this registry is a view.
             ValueError: If *data* lies on another axis than the family's, an
                 event ID of it is held in the family or twice in *data*, a
-                row names an extraction neither held, nor *extraction*, nor
+                row names a parse neither held, nor *parse*, nor
                 carried by *data*, a locator names two events of one
-                extraction, or a column of it holds values of a type the
+                parse, or a column of it holds values of a type the
                 timeline's column does not read; nothing changes then.
         """
-        self._family.add(timeline_id, data, extraction=extraction)
+        self._family.add(timeline_id, data, parse=parse)
 
     def add_rows(
         self,
         rows: pa.Table,
         contents: Mapping[str, pa.Table | Callable[[], pa.Table]] | None = None,
-        extractions: Iterable[Extraction] = (),
+        parses: Iterable[Parse] = (),
         *,
         registered: bool = True,
     ) -> None:
@@ -2331,7 +2367,7 @@ class EventRegistry:
                 absent is null), ``start`` and ``duration`` as storage cells.
             contents: The content of each kind, keyed by ``id``; every
                 family taking rows reads it (each its own events' rows).
-            extractions: The extractions the rows name; each family taking
+            parses: The parses the rows name; each family taking
                 rows holds them all.
             registered: The rows are a package's: a family taking them never
                 joins a parent afterwards.
@@ -2340,19 +2376,17 @@ class EventRegistry:
             KeyError: If a row names a timeline no family of this registry
                 holds.
             ValueError: If a row lies on another axis than its family's,
-                names an extraction not given or held, holds an ID held in
+                names a parse not given or held, holds an ID held in
                 the family or twice, a locator naming two events of one
-                extraction, ends past the length of a locked timeline, or a
+                parse, ends past the length of a locked timeline, or a
                 Box contradicts its shape. Nothing changes then, but the
                 lengths of timelines grown before a refusal.
         """
         rows = _as_registry(rows)
         families = [family for family, _ in self._families()]
-        extractions = list(extractions)
+        parses = list(parses)
         if len(families) == 1:
-            families[0].add_rows(
-                rows, contents or {}, extractions, registered=registered
-            )
+            families[0].add_rows(rows, contents or {}, parses, registered=registered)
             return
         timelines = rows.column("timeline_id").combine_chunks()
         if timelines.null_count:
@@ -2386,7 +2420,7 @@ class EventRegistry:
                 family.add_rows(
                     rows.take(pa.array(np.sort(np.concatenate(positions)), pa.int64())),
                     contents or {},
-                    extractions,
+                    parses,
                     registered=registered,
                 )
         except BaseException:
@@ -2397,18 +2431,18 @@ class EventRegistry:
     def update_target(
         self,
         data: EventData,
-        extraction: Extraction,
+        parse: Parse,
         *,
         timeline_id: str | None = None,
     ) -> str | None:
         """The timeline :meth:`update` would update from *data*, or None.
 
         The timeline of this registry holding most of the rows that *data*'s
-        locators name among the rows made by extractions of the same source
-        file as *extraction* (ties: the timeline met first); where they name
+        locators name among the rows made by parses of the same source
+        file as *parse* (ties: the timeline met first); where they name
         none, the timeline *timeline_id* (else the one *data* is a table of)
         if a family of this registry holds it. Read column-wise: one table
-        of each held extraction's ID and source, and set lookups.
+        of each held parse's ID and source, and set lookups.
 
         Raises:
             ValueError: If *data* gives no locators (a column ``locator``).
@@ -2419,22 +2453,22 @@ class EventRegistry:
                 "(a column 'locator')"
             )
         held = self.table
-        sources = self._extraction_sources()
+        sources = self._parse_sources()
         same_source = sources.column("id").filter(
             _filled(
                 pc.equal(
-                    sources.column("source"), pa.scalar(extraction.source, pa.string())
+                    sources.column("source"), pa.scalar(parse.source, pa.string())
                 ),
                 pa.scalar(False),
             )
-            if extraction.source is not None
+            if parse.source is not None
             else sources.column("source").is_null()
         )
         locators = pc.drop_null(_strings(data.table, "locator"))
         candidates = held.filter(
             _filled(
                 pc.and_(
-                    pc.is_in(held.column("extraction_id"), value_set=same_source),
+                    pc.is_in(held.column("parse_id"), value_set=same_source),
                     pc.is_in(held.column("locator"), value_set=locators),
                 ),
                 pa.scalar(False),
@@ -2458,26 +2492,26 @@ class EventRegistry:
     def update(
         self,
         data: EventData,
-        extraction: Extraction,
+        parse: Parse,
         *,
         timeline_id: str | None = None,
     ) -> str:
         """Update the rows of a timeline of this registry from *data*, a parser's new run.
 
-        *data* holds the rows of one extraction, local to the timeline they
+        *data* holds the rows of one parse, local to the timeline they
         were read for, each with its ``locator`` (a column). The timeline
         updated is :meth:`update_target`'s. Its rows are matched by the full
-        ``locator`` among the rows made by extractions of the same source as
-        *extraction*: a matched row keeps its ID and takes the new row's
-        content, position and *extraction*; a new row matching none is
+        ``locator`` among the rows made by parses of the same source as
+        *parse*: a matched row keeps its ID and takes the new row's
+        content, position and *parse*; a new row matching none is
         added; an old row of that source no longer found is kept, naming
-        *extraction* in ``vanished_in``. Nothing is deleted. A view (a
+        *parse* in ``vanished_in``. Nothing is deleted. A view (a
         timeline's, a group's, a bundle's) updates the family holding the
         timeline.
 
         Args:
             data: The rows read again, with their locators.
-            extraction: The run that read them.
+            parse: The run that read them.
             timeline_id: The timeline updated where no locator matches.
 
         Returns:
@@ -2489,31 +2523,31 @@ class EventRegistry:
                 lies on another axis, or an added row's ID is held; nothing
                 changes then.
         """
-        target = self.update_target(data, extraction, timeline_id=timeline_id)
+        target = self.update_target(data, parse, timeline_id=timeline_id)
         if target is None:
             named = data._timeline_id if timeline_id is None else timeline_id
             raise ValueError(
-                f"the rows of extraction {quote_id(extraction.id)} "
-                f"({extraction.source}) match no timeline of the registry, by "
+                f"the rows of parse {quote_id(parse.id)} "
+                f"({parse.source}) match no timeline of the registry, by "
                 f"locator or by ID ({named}); nothing is updated"
             )
         family = next(
             family for family, _ in self._families() if target in family.parts
         )
-        family.update(target, data, extraction)
+        family.update(target, data, parse)
         return target
 
-    def _extraction_sources(self) -> pa.Table:
-        """Every extraction the families of this registry hold: ``id`` and ``source``.
+    def _parse_sources(self) -> pa.Table:
+        """Every parse the families of this registry hold: ``id`` and ``source``.
 
         Built once per state of the families (each family's version and
-        number of extractions), then reused.
+        number of parses), then reused.
         """
         families = [family for family, _ in self._families()]
         key = tuple(
             value
             for family in families
-            for value in (id(family), family.version, len(family.extractions))
+            for value in (id(family), family.version, len(family.parses))
         )
         cached = self._sources_cache
         if cached is not None and cached[0] == key:
@@ -2521,9 +2555,9 @@ class EventRegistry:
         ids: list[str] = []
         sources: list[str | None] = []
         for family in families:
-            for extraction_id, extraction in family.extractions.items():
-                ids.append(extraction_id)
-                sources.append(extraction.source)
+            for parse_id, parse in family.parses.items():
+                ids.append(parse_id)
+                sources.append(parse.source)
         table = pa.table(
             {"id": pa.array(ids, pa.string()), "source": pa.array(sources, pa.string())}
         )

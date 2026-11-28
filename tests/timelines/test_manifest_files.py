@@ -14,6 +14,7 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+import pyarrow.parquet as pq
 import pytest
 from timetoshare import (
     FORMAT_CONTEXT,
@@ -232,10 +233,14 @@ def _assert_events_in_files(
         without, serialization=serialization
     )
     assert sorted(p.name for p in path.parent.iterdir() if p.suffix == ".parquet") == [
-        "Beat.parquet",
         "Note.parquet",
-        "extractions.parquet",
+        "parses.parquet",
         "registry.parquet",
+    ]
+    # The Beat holds nothing but its ID: its registry row alone.
+    registry = pq.read_table(path.parent / "registry.parquet").to_pylist()
+    assert [(r["id"], r["location"]) for r in registry if r["kind"] == "Beat"] == [
+        ("e1", None)
     ]
     read = AlignmentBundle.from_file(path)
     keys = [key for key in ("external_references",) if key in manifest["timelines"][1]]

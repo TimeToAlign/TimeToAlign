@@ -1058,8 +1058,9 @@ the timeline's axis (`start`, and `duration`, `None` for an instant) and
 `projection_of`, an `EventReference` `{timeline_id, event_id}` or `None`. It
 repeats nothing else of its source. These tests prove the scalar holds
 exactly that and the paired `ProjectionField` stores it without losing a
-value, and that it reads as a package holds it (its position in the
-registry, its `projection_of` in the pre-parsed Projection table); adding
+value, and that it reads as a package holds it (its position and its
+`projection_of` in its registry row; a Projection has no pre-parsed
+table); adding
 Projections to a
 timeline is tested in `tests/timelines/test_projections.py`.
 
@@ -1107,9 +1108,8 @@ timeline is tested in `tests/timelines/test_projections.py`.
 - **TimeToShare's fixture package** (`timetoshare.tables.fixture_path`,
   which the installed package holds; never skipped): its registry
   (`registry.parquet`, each event's position once on the axis of its
-  timeline's root, its `unit` and `number_type` once) and its pre-parsed
-  Projection table (`projections.parquet`, `id` and `projection_of`).
-  Read by `AlignmentBundle.from_file` of the fixture manifest, the
+  timeline's root, its `unit` and `number_type` once, and the event each
+  Projection stands for, `projection_of`; no pre-parsed table). Read by `AlignmentBundle.from_file` of the fixture manifest, the
   Projections of its timelines, each read with `Projection.from_row` on
   its own timeline's axis, equal the eleven Projections spelled out in
   the test, in the registry's order, by timeline ID and each timeline's
@@ -1122,11 +1122,12 @@ timeline is tested in `tests/timelines/test_projections.py`.
   type's Python type (`int`, `float`, `Fraction`). The registry's
   `timeline_id` column is pinned in its order (`clt_2`, `cpt_1` ×2,
   `dpt_1` ×8). `ProjectionField.from_projections` of those eleven gives,
-  in `PROJECTION_SCHEMA`'s columns, exactly the fixture's Projection table
-  (TimeToShare's `projection_problems` finds nothing), and its cells
-  written in the package form (`package_numbers` by each cell's number
-  type) give the registry's `id`, `unit`, `number_type`, `duration` and,
-  but for `clt_2`'s start (its 7/2 plus the offset 8), `start`.
+  row for row, the registry's event rows (all eleven of kind
+  `Projection`, each `location` null): their `id` and `projection_of` (in
+  TimeToShare's `projection_of` type), and its cells written in the
+  package form (`package_numbers` by each cell's number type) give the
+  registry's `unit`, `number_type`, `duration` and, but for `clt_2`'s
+  start (its 7/2 plus the offset 8), `start`.
 
 ### `test_number_storage.py` - One struct, one canonical side, one builder
 

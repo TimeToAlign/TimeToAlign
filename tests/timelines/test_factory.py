@@ -824,11 +824,11 @@ class TestTimelinesHoldTheirOwnEvents:
             assert events.has_rests is True
 
 
-class TestGroupedTimelinesKeepTheirExtractions:
-    """A timeline split by ``group_by`` keeps each loaded row's extraction and locator.
+class TestGroupedTimelinesKeepTheirParses:
+    """A timeline split by ``group_by`` keeps each loaded row's parse and locator.
 
     The expected values are read off the files the test writes: the
-    extraction's source is the file's path and its digest the SHA-256 of
+    parse's source is the file's path and its digest the SHA-256 of
     its bytes; the CSV row ``i`` stands at ``row:i``.
     """
 
@@ -843,20 +843,20 @@ class TestGroupedTimelinesKeepTheirExtractions:
     @staticmethod
     def _rows_of(timeline: Timeline, child: Timeline) -> list[tuple[str, str]]:
         """The (source, locator) of each registry row of *child*, in row order."""
-        sources = {item.id: item.source for item in timeline.registry.extractions}
+        sources = {item.id: item.source for item in timeline.registry.parses}
         table = timeline.registry.table
         return [
-            (sources[row["extraction_id"]], row["locator"])
+            (sources[row["parse_id"]], row["locator"])
             for row in table.to_pylist()
             if row["timeline_id"] == child.id
         ]
 
     @staticmethod
     def _identity(timeline: Timeline) -> list[tuple[str, str]]:
-        """The family's extractions, each by its source and its digest."""
+        """The family's parses, each by its source and its digest."""
         return [
             (item.source, item.source_integrity["digest"])
-            for item in timeline.registry.extractions
+            for item in timeline.registry.parses
         ]
 
     def test_one_file(self, tmp_path: Path) -> None:

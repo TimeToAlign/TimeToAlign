@@ -506,12 +506,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/Extraction.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Extraction</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
   <a href="../reference/flow_control_from_measures.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">flow_control_from_measures</span></a>
   </div>
@@ -926,6 +920,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/Parse.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Parse</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/PartituraLoader.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">PartituraLoader</span></a>
   </div>
@@ -1334,12 +1334,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h1>resolve</h1>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>alignment.resolve(target, <span class="bu">id</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Everything an ID names, through a manifest or a package root.</p>
-<p>An ID combined with a manifest’s persistent location names an element, an event, a MatchClaim or an extraction of its package. <em>target</em> is a manifest file or a package root (the folder of <code>package.yaml</code>), as a path or a <code>file:</code> URL; <em>id</em> is bare, or written <code>#id</code>. The resolutions are TimeToShare’s (<code>timetoshare.tables.resolve</code>): through a manifest, its element of that ID first, then the registry rows of that ID that belong to it; through a package root, every registry row of that ID, an element ID repeated across manifests once per manifest. Each is answered as a library object:</p>
+<p>An ID combined with a manifest’s persistent location names an element, an event, a MatchClaim or a parse of its package. <em>target</em> is a manifest file or a package root (the folder of <code>package.yaml</code>), as a path or a <code>file:</code> URL; <em>id</em> is bare, or written <code>#id</code>. The resolutions are TimeToShare’s (<code>timetoshare.tables.resolve</code>): through a manifest, its element of that ID first, then the registry rows of that ID that belong to it; through a package root, every registry row of that ID, an element ID repeated across manifests once per manifest. Each is answered as a library object:</p>
 <ul>
 <li>a manifest element: the :class:<code>AlignmentBundle</code> for the manifest itself, the :class:<code>~timetoalign.timelines.Timeline</code>, the :class:<code>~timetoalign.timelines.TimelineGroup</code>, the :class:<code>~timetoalign.timelines.manifest.Resource</code> or the :class:<code>~timetoalign.timelines.Region</code> of the manifest read (its events read as :meth:<code>from_file</code> reads them); any other element as its object in the manifest, IDs bare;</li>
 <li>a MatchClaim: the :class:<code>~timetoalign.alignment.MatchClaim</code>, read from its table by ID;</li>
 <li>an event: its scalar (a :class:<code>~timetoalign.core.Projection</code>, a :class:<code>~timetoalign.core.Box</code>, else an :class:<code>~timetoalign.core.Event</code>), its position on the axis of its timeline’s root as the registry states it, its content read from its pre-parsed table by ID (none for an event only re-parsable);</li>
-<li>an extraction: the :class:<code>~timetoalign.storage.Extraction</code>, its source as the library holds a source (the path of a file the package names relative to its root, or by a <code>file:</code> URI).</li>
+<li>a parse: the :class:<code>~timetoalign.storage.Parse</code>, its source as the library holds a source (the path of a file the package names relative to its root, or by a <code>file:</code> URI).</li>
 </ul>
 <section id="parameters" class="level2 doc-section doc-section-parameters">
 <h2 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h2>

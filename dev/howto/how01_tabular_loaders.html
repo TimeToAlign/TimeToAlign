@@ -478,7 +478,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="setup" class="level2">
 <h2 class="anchored" data-anchor-id="setup">Setup</h2>
-<div id="a4ffc1b5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:53:39.815808Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:53:39.815075Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:53:41.475018Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:53:41.473804Z&quot;}}" data-execution_count="1">
+<div id="ded36d3f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:20:31.608057Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:20:31.607819Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:20:32.932845Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:20:32.931524Z&quot;}}" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.testdata <span class="im">import</span> ensure_data</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>BEETHOVEN <span class="op">=</span> ensure_data(<span class="st">"score"</span>) <span class="op">/</span> <span class="st">"beethoven_woo71"</span></span>
@@ -501,7 +501,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="loading-notes-from-tsv">Loading Notes from TSV</h2>
 <p><code>TsvLoader</code> is the generic starting point for a TSV whose columns you control. Declare the coordinate columns and promote the values you want as typed fields. For a standard ms3 score export, use the score <code>Ms3Loader</code> instead; it understands its notes, measures, chords, and harmonies facets.</p>
 <p>The file gives each note’s length twice: <code>duration_qb</code> in quarters, written as a decimal (a twelfth as <code>0.08333333333333333</code>), and <code>duration</code> in whole notes, written as an exact ratio (<code>1/48</code>). On an exact (<code>Fraction</code>) axis the loader completes each end as start + duration exactly, and for a note starting at <code>529/12</code> the sum with that decimal’s binary value needs a numerator wider than the 64 bits an exact value is stored in, so a <code>duration_column = "duration_qb"</code> is refused rather than guessed back into a ratio. Complete the ends from the exact <code>duration</code> column instead, with a <code>ComputedField</code> as below, or declare <code>coordinate_type = NumberType.float</code> for a file that gives its durations only as decimals.</p>
-<div id="51ddc8df" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:53:41.477919Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:53:41.477492Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:53:45.176754Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:53:45.175735Z&quot;}}" data-execution_count="2">
+<div id="e1396ea4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:20:32.937169Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:20:32.936872Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:20:36.738549Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:20:36.737074Z&quot;}}" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fractions <span class="im">import</span> Fraction  <span class="co"># noqa: E402</span></span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pyarrow <span class="im">as</span> pa  <span class="co"># noqa: E402</span></span>
@@ -553,7 +553,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="converting-to-pandas" class="level2">
 <h2 class="anchored" data-anchor-id="converting-to-pandas">Converting to pandas</h2>
 <p>Use <code>to_dataframe()</code> to get a DataFrame with clean coordinate values:</p>
-<div id="b6f0bb76" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:53:45.179919Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:53:45.179494Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:53:45.438029Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:53:45.437122Z&quot;}}" data-execution_count="3">
+<div id="3b001b7e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:20:36.746595Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:20:36.746189Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:20:37.061459Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:20:37.060170Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>loader.events.to_dataframe().head()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="3">
 <div>
@@ -583,7 +583,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <th data-quarto-table-cell-role="th">octave</th>
 <th data-quarto-table-cell-role="th">chord_id</th>
 <th data-quarto-table-cell-role="th">locator</th>
-<th data-quarto-table-cell-role="th">extraction_id</th>
+<th data-quarto-table-cell-role="th">parse_id</th>
 </tr>
 </thead>
 <tbody>
@@ -609,7 +609,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>3</td>
 <td>3</td>
 <td>row:0</td>
-<td>extraction_1v0bc40f0b25n</td>
+<td>parse_39r2xkkb0hp9j</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">1</th>
@@ -633,7 +633,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>4</td>
 <td>2</td>
 <td>row:1</td>
-<td>extraction_1v0bc40f0b25n</td>
+<td>parse_39r2xkkb0hp9j</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">2</th>
@@ -657,7 +657,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>4</td>
 <td>0</td>
 <td>row:2</td>
-<td>extraction_1v0bc40f0b25n</td>
+<td>parse_39r2xkkb0hp9j</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">3</th>
@@ -681,7 +681,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>5</td>
 <td>0</td>
 <td>row:3</td>
-<td>extraction_1v0bc40f0b25n</td>
+<td>parse_39r2xkkb0hp9j</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">4</th>
@@ -705,7 +705,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>5</td>
 <td>1</td>
 <td>row:4</td>
-<td>extraction_1v0bc40f0b25n</td>
+<td>parse_39r2xkkb0hp9j</td>
 </tr>
 </tbody>
 </table>
@@ -718,7 +718,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="quick-statistics" class="level2">
 <h2 class="anchored" data-anchor-id="quick-statistics">Quick Statistics</h2>
 <p>The loader provides immediate access to summary information:</p>
-<div id="1f14d6d5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:53:45.440458Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:53:45.440220Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:53:45.452118Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:53:45.451096Z&quot;}}" data-execution_count="4">
+<div id="bced0c53" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:20:37.065622Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:20:37.065217Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:20:37.078475Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:20:37.077149Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"event_count"</span>: <span class="bu">len</span>(loader.events),</span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"coordinate_range"</span>: loader.events.coordinate_range(),</span>
@@ -736,7 +736,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="creating-timelines" class="level2">
 <h2 class="anchored" data-anchor-id="creating-timelines">Creating Timelines</h2>
 <p>TimeToAlign! represents temporal data as <strong>Timelines</strong>:</p>
-<div id="0c7c717d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:53:45.454309Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:53:45.454053Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:53:45.486166Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:53:45.485130Z&quot;}}" data-execution_count="5">
+<div id="9f4262b3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:20:37.083275Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:20:37.082783Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:20:37.135563Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:20:37.134319Z&quot;}}" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>timeline <span class="op">=</span> loader.create_timeline(uid<span class="op">=</span><span class="st">"beethoven_notes"</span>)</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>timeline</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="5">
@@ -749,7 +749,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="custom-loaders-for-non-standard-formats">Custom Loaders for Non-Standard Formats</h2>
 <p>For files that don’t match the ms3 format, create a custom loader by subclassing <code>TsvLoader</code> or <code>CsvLoader</code>. You point the canonical column attributes (<code>start_column</code>, <code>duration_column</code>, …) at the names in your file.</p>
 <p>Let’s load the Thoresen annotations file, which has a different column structure:</p>
-<div id="5dc9aa3f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:53:45.488883Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:53:45.488541Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:53:45.512417Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:53:45.510946Z&quot;}}" data-execution_count="6">
+<div id="ae2a64e5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:20:37.139004Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:20:37.138537Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:20:37.174305Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:20:37.172868Z&quot;}}" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd  <span class="co"># noqa: E402</span></span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>pd.read_csv(THORESEN <span class="op">/</span> <span class="st">"thoresen_test.tsv"</span>, sep<span class="op">=</span><span class="st">"</span><span class="ch">\t</span><span class="st">"</span>, nrows<span class="op">=</span><span class="dv">3</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -830,7 +830,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="the-simplest-custom-loader" class="level3">
 <h3 class="anchored" data-anchor-id="the-simplest-custom-loader">The Simplest Custom Loader</h3>
 <p>Map the core coordinate columns and nothing else. Every source column that you do <em>not</em> name survives as an opaque <strong>property column</strong> — carried alongside the event so you never lose data, but left untyped:</p>
-<div id="7e6a0b5b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:53:45.515868Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:53:45.515434Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:53:45.552056Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:53:45.551056Z&quot;}}" data-execution_count="7">
+<div id="6753ebef" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:20:37.177956Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:20:37.177594Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:20:37.250927Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:20:37.247988Z&quot;}}" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader.tabular <span class="im">import</span> TsvLoader  <span class="co"># noqa: E402</span></span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -873,7 +873,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <th data-quarto-table-cell-role="th">text_anchor_xy_json</th>
 <th data-quarto-table-cell-role="th">layer_order</th>
 <th data-quarto-table-cell-role="th">locator</th>
-<th data-quarto-table-cell-role="th">extraction_id</th>
+<th data-quarto-table-cell-role="th">parse_id</th>
 </tr>
 </thead>
 <tbody>
@@ -894,7 +894,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:0 key:annot_cue_001</td>
-<td>extraction_1y17ibu2cect2</td>
+<td>parse_3v6q5jbnzhxdx</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">1</th>
@@ -913,7 +913,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:1 key:annot_cue_002</td>
-<td>extraction_1y17ibu2cect2</td>
+<td>parse_3v6q5jbnzhxdx</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">2</th>
@@ -932,7 +932,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:2 key:annot_cue_003</td>
-<td>extraction_1y17ibu2cect2</td>
+<td>parse_3v6q5jbnzhxdx</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">3</th>
@@ -951,7 +951,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:3 key:annot_cue_004</td>
-<td>extraction_1y17ibu2cect2</td>
+<td>parse_3v6q5jbnzhxdx</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">4</th>
@@ -970,7 +970,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:4 key:annot_cue_005</td>
-<td>extraction_1y17ibu2cect2</td>
+<td>parse_3v6q5jbnzhxdx</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">5</th>
@@ -989,7 +989,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:5 key:annot_cue_006</td>
-<td>extraction_1y17ibu2cect2</td>
+<td>parse_3v6q5jbnzhxdx</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">6</th>
@@ -1008,7 +1008,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:6 key:annot_cue_007</td>
-<td>extraction_1y17ibu2cect2</td>
+<td>parse_3v6q5jbnzhxdx</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">7</th>
@@ -1027,7 +1027,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:7 key:annot_cue_008</td>
-<td>extraction_1y17ibu2cect2</td>
+<td>parse_3v6q5jbnzhxdx</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">8</th>
@@ -1046,7 +1046,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:8 key:annot_cue_009</td>
-<td>extraction_1y17ibu2cect2</td>
+<td>parse_3v6q5jbnzhxdx</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">9</th>
@@ -1065,7 +1065,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:9 key:annot_cue_010</td>
-<td>extraction_1y17ibu2cect2</td>
+<td>parse_3v6q5jbnzhxdx</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">10</th>
@@ -1084,7 +1084,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:10 key:annot_cue_011</td>
-<td>extraction_1y17ibu2cect2</td>
+<td>parse_3v6q5jbnzhxdx</td>
 </tr>
 </tbody>
 </table>
@@ -1096,7 +1096,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="promoting-columns-to-typed-fields-with-column_specs" class="level3">
 <h3 class="anchored" data-anchor-id="promoting-columns-to-typed-fields-with-column_specs">Promoting Columns to Typed Fields with <code>column_specs</code></h3>
 <p>When a property column should become a typed field, name it in <code>column_specs</code>. The keys are source-column names; the values are anything the loader can resolve to a field — a bare Python type (<code>int</code> / <code>float</code> / <code>str</code>) is the simplest form. Here we give two extra columns explicit types:</p>
-<div id="0a46d372" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:53:45.554134Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:53:45.553911Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:53:45.597361Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:53:45.595410Z&quot;}}" data-execution_count="8">
+<div id="6bfdc8a5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:20:37.260680Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:20:37.260300Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:20:37.409241Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:20:37.407967Z&quot;}}" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> ThoresenTypedLoader(TsvLoader):</span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Selected columns promoted to typed fields."""</span></span>
 <span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -1142,7 +1142,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <th data-quarto-table-cell-role="th">text_anchor_xy_json</th>
 <th data-quarto-table-cell-role="th">layer_order</th>
 <th data-quarto-table-cell-role="th">locator</th>
-<th data-quarto-table-cell-role="th">extraction_id</th>
+<th data-quarto-table-cell-role="th">parse_id</th>
 </tr>
 </thead>
 <tbody>
@@ -1163,7 +1163,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:0 key:annot_cue_001</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">1</th>
@@ -1182,7 +1182,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:1 key:annot_cue_002</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">2</th>
@@ -1201,7 +1201,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:2 key:annot_cue_003</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">3</th>
@@ -1220,7 +1220,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:3 key:annot_cue_004</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">4</th>
@@ -1239,7 +1239,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:4 key:annot_cue_005</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">5</th>
@@ -1258,7 +1258,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:5 key:annot_cue_006</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">6</th>
@@ -1277,7 +1277,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:6 key:annot_cue_007</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">7</th>
@@ -1296,7 +1296,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:7 key:annot_cue_008</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">8</th>
@@ -1315,7 +1315,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:8 key:annot_cue_009</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">9</th>
@@ -1334,7 +1334,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:9 key:annot_cue_010</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">10</th>
@@ -1353,7 +1353,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:10 key:annot_cue_011</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 </tbody>
 </table>
@@ -1369,7 +1369,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>The Thoresen data has a <code>rect_coords_json</code> column containing pixel coordinates as JSON:</p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span><span class="dt">"x"</span><span class="fu">:</span> <span class="dv">10</span><span class="fu">,</span> <span class="dt">"y"</span><span class="fu">:</span> <span class="dv">90</span><span class="fu">,</span> <span class="dt">"width"</span><span class="fu">:</span> <span class="dv">148</span><span class="fu">,</span> <span class="dt">"height"</span><span class="fu">:</span> <span class="dv">55</span><span class="fu">}</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Use <code>Field("column", "nested_field")</code> to point a coordinate attribute straight at a nested value. TimeToAlign! parses the JSON automatically. <code>ComputedField</code> lets you derive a coordinate from a small formula over those nested values:</p>
-<div id="4a715f02" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:53:45.600580Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:53:45.600369Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:53:45.620478Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:53:45.619558Z&quot;}}" data-execution_count="9">
+<div id="5be85f94" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:20:37.414998Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:20:37.414433Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:20:37.512627Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:20:37.509979Z&quot;}}" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.loader <span class="im">import</span> Field  <span class="co"># noqa: E402</span></span>
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -1401,7 +1401,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="two-coordinate-systems-from-one-file" class="level3">
 <h3 class="anchored" data-anchor-id="two-coordinate-systems-from-one-file">Two Coordinate Systems from One File</h3>
 <p>The same TSV file backs timelines in different coordinate systems — seconds from the time columns, pixels from the JSON column:</p>
-<div id="ad3680e2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:53:45.623561Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:53:45.623243Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:53:45.644576Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:53:45.643657Z&quot;}}" data-execution_count="10">
+<div id="42f240de" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:20:37.531012Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:20:37.519973Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:20:37.642544Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:20:37.638725Z&quot;}}" data-execution_count="10">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Physical timeline (seconds)</span></span>
 <span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>typed.events.to_dataframe()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="10">
@@ -1427,7 +1427,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <th data-quarto-table-cell-role="th">text_anchor_xy_json</th>
 <th data-quarto-table-cell-role="th">layer_order</th>
 <th data-quarto-table-cell-role="th">locator</th>
-<th data-quarto-table-cell-role="th">extraction_id</th>
+<th data-quarto-table-cell-role="th">parse_id</th>
 </tr>
 </thead>
 <tbody>
@@ -1448,7 +1448,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:0 key:annot_cue_001</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">1</th>
@@ -1467,7 +1467,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:1 key:annot_cue_002</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">2</th>
@@ -1486,7 +1486,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:2 key:annot_cue_003</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">3</th>
@@ -1505,7 +1505,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:3 key:annot_cue_004</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">4</th>
@@ -1524,7 +1524,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:4 key:annot_cue_005</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">5</th>
@@ -1543,7 +1543,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:5 key:annot_cue_006</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">6</th>
@@ -1562,7 +1562,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:6 key:annot_cue_007</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">7</th>
@@ -1581,7 +1581,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:7 key:annot_cue_008</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">8</th>
@@ -1600,7 +1600,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:8 key:annot_cue_009</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">9</th>
@@ -1619,7 +1619,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:9 key:annot_cue_010</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">10</th>
@@ -1638,7 +1638,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:10 key:annot_cue_011</td>
-<td>extraction_0q7ze135fhs95</td>
+<td>parse_00kc8ggawvjbo</td>
 </tr>
 </tbody>
 </table>
@@ -1646,7 +1646,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
-<div id="a5c78506" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:53:45.647136Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:53:45.646867Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:53:45.677715Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:53:45.676749Z&quot;}}" data-execution_count="11">
+<div id="795d98fc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:20:37.665409Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:20:37.664968Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:20:37.793477Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:20:37.783714Z&quot;}}" data-execution_count="11">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Graphical timeline (pixels)</span></span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>graphical.events.to_dataframe()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="11">
@@ -1675,7 +1675,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <th data-quarto-table-cell-role="th">layer_order</th>
 <th data-quarto-table-cell-role="th">description</th>
 <th data-quarto-table-cell-role="th">locator</th>
-<th data-quarto-table-cell-role="th">extraction_id</th>
+<th data-quarto-table-cell-role="th">parse_id</th>
 </tr>
 </thead>
 <tbody>
@@ -1699,7 +1699,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:0</td>
-<td>extraction_3u4qwlo24251l</td>
+<td>parse_3gnvtqul6255e</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">1</th>
@@ -1721,7 +1721,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:1</td>
-<td>extraction_3u4qwlo24251l</td>
+<td>parse_3gnvtqul6255e</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">2</th>
@@ -1743,7 +1743,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:2</td>
-<td>extraction_3u4qwlo24251l</td>
+<td>parse_3gnvtqul6255e</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">3</th>
@@ -1765,7 +1765,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:3</td>
-<td>extraction_3u4qwlo24251l</td>
+<td>parse_3gnvtqul6255e</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">4</th>
@@ -1787,7 +1787,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:4</td>
-<td>extraction_3u4qwlo24251l</td>
+<td>parse_3gnvtqul6255e</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">5</th>
@@ -1809,7 +1809,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:5</td>
-<td>extraction_3u4qwlo24251l</td>
+<td>parse_3gnvtqul6255e</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">6</th>
@@ -1831,7 +1831,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:6</td>
-<td>extraction_3u4qwlo24251l</td>
+<td>parse_3gnvtqul6255e</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">7</th>
@@ -1853,7 +1853,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:7</td>
-<td>extraction_3u4qwlo24251l</td>
+<td>parse_3gnvtqul6255e</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">8</th>
@@ -1875,7 +1875,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:8</td>
-<td>extraction_3u4qwlo24251l</td>
+<td>parse_3gnvtqul6255e</td>
 </tr>
 <tr class="even">
 <th data-quarto-table-cell-role="th">9</th>
@@ -1897,7 +1897,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:9</td>
-<td>extraction_3u4qwlo24251l</td>
+<td>parse_3gnvtqul6255e</td>
 </tr>
 <tr class="odd">
 <th data-quarto-table-cell-role="th">10</th>
@@ -1919,7 +1919,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>NaN</td>
 <td>NaN</td>
 <td>row:10</td>
-<td>extraction_3u4qwlo24251l</td>
+<td>parse_3gnvtqul6255e</td>
 </tr>
 </tbody>
 </table>
@@ -1931,7 +1931,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="creating-timelines-1" class="level3">
 <h3 class="anchored" data-anchor-id="creating-timelines-1">Creating Timelines</h3>
 <p>Use <code>create_timeline()</code> to turn loaded events into a Timeline object:</p>
-<div id="8e37a950" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:53:45.680283Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:53:45.679885Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:53:45.693444Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:53:45.692294Z&quot;}}" data-execution_count="12">
+<div id="757d5d1c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:20:37.798242Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:20:37.797921Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:20:37.869614Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:20:37.849939Z&quot;}}" data-execution_count="12">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Physical timeline (seconds)</span></span>
 <span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>physical_tl <span class="op">=</span> typed.create_timeline(uid<span class="op">=</span><span class="st">"thoresen_physical"</span>)</span>
 <span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>physical_tl</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -1940,7 +1940,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 142.5 seconds</pre>
 </div>
 </div>
-<div id="4708727c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:53:45.696407Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:53:45.695915Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:53:45.703831Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:53:45.702740Z&quot;}}" data-execution_count="13">
+<div id="b7bc63d2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:20:37.888310Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:20:37.887864Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:20:37.948842Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:20:37.944961Z&quot;}}" data-execution_count="13">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>physical_tl.get_timestamp_table()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="13">
 <pre><code>pyarrow.Table
@@ -1959,7 +1959,7 @@ thoresen_physical: [
 [1,2,2,1,2,...,35184372088832,1,2,1,2]]</code></pre>
 </div>
 </div>
-<div id="452d6e02" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:53:45.705982Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:53:45.705776Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:53:45.717839Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:53:45.716664Z&quot;}}" data-execution_count="14">
+<div id="660dbec0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:20:37.955113Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:20:37.954659Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:20:38.135992Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:20:38.134728Z&quot;}}" data-execution_count="14">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Graphical timeline (pixels)</span></span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>graphical_tl <span class="op">=</span> graphical.create_timeline(uid<span class="op">=</span><span class="st">"thoresen_graphical"</span>)</span>
 <span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>graphical_tl</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -1974,13 +1974,13 @@ thoresen_physical: [
 <section id="child-timelines-from-column-values-with-group_by" class="level3">
 <h3 class="anchored" data-anchor-id="child-timelines-from-column-values-with-group_by">Child Timelines from Column Values with <code>group_by</code></h3>
 <p>When your data carries events from <strong>multiple sources</strong> (images, pages, tracks), pass <code>group_by</code> to <code>create_timeline()</code> to split the events into one child timeline per unique value. The Thoresen data has events from five different image files:</p>
-<div id="a7520367" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:53:45.720193Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:53:45.719982Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:53:45.935391Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:53:45.933657Z&quot;}}" data-execution_count="15">
+<div id="edda19a4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:20:38.140859Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:20:38.140533Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:20:38.238755Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:20:38.237319Z&quot;}}" data-execution_count="15">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.timelines <span class="im">import</span> create_timeline  <span class="co"># noqa: E402</span></span>
 <span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>grouped_tl <span class="op">=</span> create_timeline(typed, group_by<span class="op">=</span><span class="st">"image_filename"</span>)</span>
 <span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>grouped_tl</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="15">
-<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousPhysicalTimeline[cpt_02ko73v5jgfso] (11 events, 5 children)
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousPhysicalTimeline[cpt_3uu4hgd7zi483] (11 events, 5 children)
                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 142.5 seconds
   ├─ thoresen_...     0 ~                                5.5 (3 events)
   ├─ thoresen_...     0 ~~~~~~~~~~                       48 (2 events)
@@ -1990,7 +1990,7 @@ thoresen_physical: [
 </div>
 </div>
 <p>Each child gets a minted ID (<code>cpt_…</code>) and is named after its column value, so the image a child holds is its <code>name</code>:</p>
-<div id="c71d2699" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:53:45.939198Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:53:45.938518Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:53:45.958866Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:53:45.956727Z&quot;}}" data-execution_count="16">
+<div id="79948042" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:20:38.241873Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:20:38.241428Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:20:38.256808Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:20:38.254955Z&quot;}}" data-execution_count="16">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Each child timeline represents events from one image</span></span>
 <span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"parent_id"</span>: grouped_tl.<span class="bu">id</span>,</span>
@@ -2001,17 +2001,17 @@ thoresen_physical: [
 <span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>    },</span>
 <span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="16">
-<pre><code>{'parent_id': 'cpt_02ko73v5jgfso',
+<pre><code>{'parent_id': 'cpt_3uu4hgd7zi483',
  'n_children': 5,
- 'children': {'cpt_0wekdlw2l790w': ('thoresen_2010_form-building-patterns_p90-91_page1_1.jpeg',
+ 'children': {'cpt_1yz0in8m2jpy8': ('thoresen_2010_form-building-patterns_p90-91_page1_1.jpeg',
    3),
-  'cpt_0n6c88pget25z': ('thoresen_2010_form-building-patterns_p90-91_page1_2.jpeg',
+  'cpt_0qtjhuht95crh': ('thoresen_2010_form-building-patterns_p90-91_page1_2.jpeg',
    2),
-  'cpt_2md3sif58dbaf': ('thoresen_2010_form-building-patterns_p90-91_page1_3.jpeg',
+  'cpt_25zk8d4dwfjxw': ('thoresen_2010_form-building-patterns_p90-91_page1_3.jpeg',
    2),
-  'cpt_1zjspaw5ngu66': ('thoresen_2010_form-building-patterns_p90-91_page1_4.jpeg',
+  'cpt_1jem8nfv775xs': ('thoresen_2010_form-building-patterns_p90-91_page1_4.jpeg',
    2),
-  'cpt_2tdv5kkt5jmef': ('thoresen_2010_form-building-patterns_p90-91_page2_1.jpeg',
+  'cpt_1k5a052we2zzb': ('thoresen_2010_form-building-patterns_p90-91_page2_1.jpeg',
    2)}}</code></pre>
 </div>
 </div>

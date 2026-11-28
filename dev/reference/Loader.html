@@ -506,12 +506,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/Extraction.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Extraction</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
   <a href="../reference/flow_control_from_measures.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">flow_control_from_measures</span></a>
   </div>
@@ -922,6 +916,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/ParangonadaLoader.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ParangonadaLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Parse.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Parse</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1373,12 +1373,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </thead>
 <tbody>
 <tr class="odd">
-<td><a href="#timetoalign.loader.Loader.extractions">extractions</a></td>
-<td>One :class:<code>~timetoalign.storage.Extraction</code> per source file read, in order.</td>
-</tr>
-<tr class="even">
 <td><a href="#timetoalign.loader.Loader.metadata">metadata</a></td>
 <td>Aggregated source metadata.</td>
+</tr>
+<tr class="even">
+<td><a href="#timetoalign.loader.Loader.parses">parses</a></td>
+<td>One :class:<code>~timetoalign.storage.Parse</code> per source file read, in order.</td>
 </tr>
 <tr class="odd">
 <td><a href="#timetoalign.loader.Loader.sources">sources</a></td>
@@ -1423,7 +1423,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="odd">
 <td><a href="#timetoalign.loader.Loader.from_registry">from_registry</a></td>
-<td>A loader set up from <em>registry</em>’s extractions, to refresh it with :meth:<code>update</code>.</td>
+<td>A loader set up from <em>registry</em>’s parses, to refresh it with :meth:<code>update</code>.</td>
 </tr>
 <tr class="even">
 <td><a href="#timetoalign.loader.Loader.load">load</a></td>
@@ -1509,14 +1509,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="timetoalign.loader.Loader.from_registry" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.loader.Loader.from_registry">from_registry</h3>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>loader.Loader.from_registry(registry, <span class="op">*</span>sources, root<span class="op">=</span><span class="va">None</span>, <span class="op">**</span>kwargs)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>A loader set up from <em>registry</em>’s extractions, to refresh it with :meth:<code>update</code>.</p>
-<p>The loader runs with the parameters (and the seed) the registry’s extractions of this loader’s class recorded, and reads their source files, unless <em>sources</em> names what to read (a loader reading a folder, an archive or a project is given that). Nothing is read until :meth:<code>update</code>.</p>
+<p>A loader set up from <em>registry</em>’s parses, to refresh it with :meth:<code>update</code>.</p>
+<p>The loader runs with the parameters (and the seed) the registry’s parses of this loader’s class recorded, and reads their source files, unless <em>sources</em> names what to read (a loader reading a folder, an archive or a project is given that). Nothing is read until :meth:<code>update</code>.</p>
 <section id="parameters-1" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-1">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 4%">
-<col style="width: 25%">
+<col style="width: 26%">
 <col style="width: 63%">
 <col style="width: 5%">
 </colgroup>
@@ -1538,19 +1538,19 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="even">
 <td>*sources</td>
 <td><code>SourceLike</code></td>
-<td>What the loader reads, as :meth:<code>load</code> takes it; by default the source files of the extractions, in order.</td>
+<td>What the loader reads, as :meth:<code>load</code> takes it; by default the source files of the parses, in order.</td>
 <td><code>()</code></td>
 </tr>
 <tr class="odd">
 <td>root</td>
 <td><code>Path</code> | <code>str</code> | None</td>
-<td>The folder a relative source file of an extraction lies in; by default the current one.</td>
+<td>The folder a relative source file of a parse lies in; by default the current one.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="even">
 <td>**kwargs</td>
 <td><code>Any</code></td>
-<td>The keyword-only arguments of :meth:<code>load</code>, and constructor arguments, which must leave the parameters as the extractions recorded them.</td>
+<td>The keyword-only arguments of :meth:<code>load</code>, and constructor arguments, which must leave the parameters as the parses recorded them.</td>
 <td><code>{}</code></td>
 </tr>
 </tbody>
@@ -1586,7 +1586,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <colgroup>
 <col style="width: 3%">
 <col style="width: 12%">
-<col style="width: 84%">
+<col style="width: 83%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -1599,7 +1599,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td></td>
 <td><code>ValueError</code></td>
-<td>If the extractions of this class record two sets of parameters or seeds, the loader set up runs with other parameters than they record, or neither <em>sources</em> nor an extraction names a source file.</td>
+<td>If the parses of this class record two sets of parameters or seeds, the loader set up runs with other parameters than they record, or neither <em>sources</em> nor an parse names a source file.</td>
 </tr>
 </tbody>
 </table>
@@ -1645,7 +1645,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="timetoalign.loader.Loader.update">update</h3>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>loader.Loader.update(registry)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Re-read the loader’s sources and update <em>registry</em> with what they hold now.</p>
-<p>The loader is cleared and its <code>load</code> calls are run again (those :meth:<code>from_registry</code> set up, or the loader’s own); each timeline :meth:<code>create_timelines</code> builds from them (and each descendant) then updates the registry’s timeline that holds the rows its locators name (else the one of its ID), one extraction at a time (:meth:<code>EventRegistry.update &lt;timetoalign.storage.EventRegistry.update&gt;</code>): a row found again by its locator keeps its ID and takes the new content, position and extraction; a new row is added with the ID it was given (minted from the content, as at every <code>load</code>); a row of the source no longer found is kept and marked vanished in the new extraction. Nothing is deleted. Rows that name no locator (a child’s place, events made in code) are left as they are.</p>
+<p>The loader is cleared and its <code>load</code> calls are run again (those :meth:<code>from_registry</code> set up, or the loader’s own); each timeline :meth:<code>create_timelines</code> builds from them (and each descendant) then updates the registry’s timeline that holds the rows its locators name (else the one of its ID), one parse at a time (:meth:<code>EventRegistry.update &lt;timetoalign.storage.EventRegistry.update&gt;</code>): a row found again by its locator keeps its ID and takes the new content, position and parse; a new row is added with the ID it was given (minted from the content, as at every <code>load</code>); a row of the source no longer found is kept and marked vanished in the new parse. Nothing is deleted. Rows that name no locator (a child’s place, events made in code) are left as they are.</p>
 <section id="parameters-2" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-2">Parameters</h4>
 <table class="caption-top table">

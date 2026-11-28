@@ -454,12 +454,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <section id="how-to-keep-matchclaims-projections-and-beliefs-in-a-package" class="level1">
 <h1>How to Keep MatchClaims, Projections and Beliefs in a Package</h1>
-<p>A TimeToShare manifest holds the structure of its timelines. The MatchClaims that relate them are data and live beside it, in the <strong>MatchClaim table</strong> (<code>match_claims.parquet</code>). The events that stand in for an event a timeline does not hold, Projections, are events like any other: each has a row in the <strong>registry</strong> (<code>registry.parquet</code>), which holds every event’s ID, timeline and position, and its content, the event it stands for, in the pre-parsed <strong>Projection table</strong> (<code>projections.parquet</code>); the <strong>Extraction table</strong> (<code>extractions.parquet</code>) records what made them. The manifest names the registry and the MatchClaim table in its <code>resources</code>; the manifest and the files beside it make a <strong>package</strong>.</p>
+<p>A TimeToShare manifest holds the structure of its timelines. The MatchClaims that relate them are data and live beside it, in the <strong>MatchClaim table</strong> (<code>match_claims.parquet</code>). The events that stand in for an event a timeline does not hold, Projections, are events like any other: each has a row in the <strong>registry</strong> (<code>registry.parquet</code>), which holds every event’s ID, timeline and position, and for a Projection the event it stands for (<code>projection_of</code>), all of a Projection there is; the <strong>Parse table</strong> (<code>parses.parquet</code>) records the parse that made them. The manifest names the registry and the MatchClaim table in its <code>resources</code>; the manifest and the files beside it make a <strong>package</strong>.</p>
 <p>This guide states MatchClaims between the events of a score and a recording, gives a side without an event a Projection, records who believes which claim and filters by those beliefs, writes the bundle as a package with <code>to_file()</code> and reads it back with <code>from_file()</code>, and shows why a package’s claims can be added to but never removed.</p>
 <section id="setup" class="level2">
 <h2 class="anchored" data-anchor-id="setup">Setup</h2>
 <p>Install the library with <code>pip install timetoalign</code>. Two people take part: an editor, who states claims and believes what they state, and an automatic aligner, which states how it made its claims and believes nothing. Every date is a fixed string. The helper <code>claim_rows</code> shows claims one per row with the editor’s belief, <code>files</code> lists a directory, and <code>show</code> prints part of a manifest as the file holds it.</p>
-<div id="2652c070" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:39.780934Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:39.780285Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:40.797853Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:40.797195Z&quot;}}" data-execution_count="1">
+<div id="e624788c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:41.093483Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:41.093121Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:43.150229Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:43.149122Z&quot;}}" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fractions <span class="im">import</span> Fraction</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
@@ -518,7 +518,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="two-timelines-with-events" class="level2">
 <h2 class="anchored" data-anchor-id="two-timelines-with-events">Two timelines with events</h2>
 <p>A score of eight quarters with four notes, and a recording of six seconds in which an onset detector found three onsets. The fourth note, held at the end, was played too softly for the detector.</p>
-<div id="38eb41c8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:40.799593Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:40.799333Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:40.822895Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:40.822267Z&quot;}}" data-execution_count="2">
+<div id="4a8ee13e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:43.153249Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:43.152862Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:43.191420Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:43.190461Z&quot;}}" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>score <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span>Fraction(<span class="dv">8</span>), uid<span class="op">=</span><span class="st">"score"</span>, name<span class="op">=</span><span class="st">"Score"</span>)</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>notes <span class="op">=</span> {<span class="st">"n1"</span>: (<span class="dv">0</span>, <span class="dv">1</span>), <span class="st">"n2"</span>: (<span class="dv">1</span>, <span class="dv">1</span>), <span class="st">"n3"</span>: (<span class="dv">2</span>, <span class="dv">2</span>), <span class="st">"n4"</span>: (<span class="dv">4</span>, <span class="dv">4</span>)}</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>score.add_events(</span>
@@ -566,7 +566,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="matchclaims-between-events" class="level2">
 <h2 class="anchored" data-anchor-id="matchclaims-between-events">MatchClaims between events</h2>
 <p>A MatchClaim connects two events, one on each timeline. Give <code>create_match_claims()</code> one tuple per claim, <code>(event_a, timeline_a_id, event_b, timeline_b_id)</code>, each event by its id. Its <code>provenance</code> records how the claims were made, by whom and when. <code>actor=</code> names the person stating them: a person who states a claim believes it, so the editor’s belief <code>"true"</code> is recorded in the provenance, dated <code>date=</code>. Every claim is minted its id when it is made, <code>claim_…</code>, which never changes.</p>
-<div id="3ef6b812" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:40.824635Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:40.824483Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:40.893609Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:40.893105Z&quot;}}" data-execution_count="3">
+<div id="6a7efdfe" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:43.194557Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:43.194212Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:43.305241Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:43.303938Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>stated <span class="op">=</span> Provenance(stated_by<span class="op">=</span>(EDITOR,), method<span class="op">=</span><span class="st">"manual"</span>, date<span class="op">=</span>DAY)</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>event_claims <span class="op">=</span> bundle.create_match_claims(</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    [</span>
@@ -626,7 +626,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Each claim takes its coordinates from its two events, each on its own timeline’s axis: quarters on the score, seconds on the recording.</p>
-<div id="94f87c44" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:40.895448Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:40.895280Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:40.898949Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:40.898228Z&quot;}}" data-execution_count="4">
+<div id="fc442b06" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:43.307562Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:43.307345Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:43.312781Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:43.310999Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>event_claims[<span class="dv">2</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="4">
 <div style="font-family: monospace;"><strong>MatchClaim</strong> <span style="background: #e8f5e9; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">synchronous, instant</span>
@@ -667,7 +667,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="a-side-without-an-event-a-projection" class="level2">
 <h2 class="anchored" data-anchor-id="a-side-without-an-event-a-projection">A side without an event: a Projection</h2>
 <p>The recording holds no event for <code>n4</code>, but the editor hears it begin at 3.5 seconds. Give that side as a position, a dict with <code>start</code> (and <code>end</code> for a span). A <strong>Projection</strong> is added to the recording there: an event that stands on the recording for <code>n4</code>, which its <code>projection_of</code> names. The claim then joins two events like any other.</p>
-<div id="3e06fa79" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:40.900549Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:40.900367Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:40.922840Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:40.922282Z&quot;}}" data-execution_count="5">
+<div id="63c4d7d8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:43.316289Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:43.315968Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:43.491571Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:43.490463Z&quot;}}" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>projected <span class="op">=</span> bundle.create_match_claims(</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    [(<span class="st">"n4"</span>, score.<span class="bu">id</span>, {<span class="st">"start"</span>: <span class="fl">3.5</span>}, recording.<span class="bu">id</span>)],</span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    provenance<span class="op">=</span>stated,</span>
@@ -687,7 +687,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The timeline keeps one Projection per event it stands for and position. Stating the same pair again makes a second claim with its own id, and it reuses the Projection rather than adding another.</p>
-<div id="8fbf6f9e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:40.924761Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:40.924589Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:40.944285Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:40.943598Z&quot;}}" data-execution_count="6">
+<div id="a808848c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:43.495674Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:43.494864Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:43.578600Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:43.577146Z&quot;}}" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>again <span class="op">=</span> bundle.create_match_claims(</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    [(<span class="st">"n4"</span>, score.<span class="bu">id</span>, {<span class="st">"start"</span>: <span class="fl">3.5</span>}, recording.<span class="bu">id</span>)],</span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    provenance<span class="op">=</span>stated,</span>
@@ -701,7 +701,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p><code>Timeline.add_projections()</code> is the same operation, for adding Projections yourself: a <code>Projection</code> holds its position (a <code>Coordinate</code>, converted onto the timeline’s axis like any event’s) and, in <code>projection_of</code>, an <code>EventReference</code> to the event it stands for. It returns the id of the Projection standing for each one, here the one already held.</p>
-<div id="99a72b28" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:40.945848Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:40.945592Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:40.957785Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:40.957217Z&quot;}}" data-execution_count="7">
+<div id="52f38a04" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:43.584471Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:43.584034Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:43.723286Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:43.722132Z&quot;}}" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>recording.add_projections(</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    Projection(</span>
 <span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>        start<span class="op">=</span>Coordinate(<span class="fl">3.5</span>, <span class="st">"seconds"</span>),</span>
@@ -716,7 +716,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="who-believes-a-claim" class="level2">
 <h2 class="anchored" data-anchor-id="who-believes-a-claim">Who believes a claim</h2>
 <p>The aligner proposes two claims. Software records how it made a claim and believes nothing, so the aligner gives a <code>provenance</code> and no <code>actor</code>. One claim matches the third note to the second onset. The other places quarter 6, where the score has no event, at 5 seconds, where the recording has none: both sides are positions, so neither gets a Projection. Each side is the sentinel CHUNK, whose coordinate the claim’s anchor states.</p>
-<div id="afadf51b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:40.959315Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:40.959166Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:40.971588Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:40.970881Z&quot;}}" data-execution_count="8">
+<div id="356de912" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:43.725993Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:43.725715Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:43.753972Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:43.752966Z&quot;}}" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>proposed <span class="op">=</span> Provenance(service<span class="op">=</span>ALIGNER, method<span class="op">=</span><span class="st">"inferred"</span>, date<span class="op">=</span>DAY)</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>rejected, doubted <span class="op">=</span> bundle.create_match_claims(</span>
 <span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    [</span>
@@ -765,7 +765,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The editor reviews the proposals later. <code>add_match_claim_belief()</code> records a belief in a claim the bundle holds, named by its id: the editor believes the first <code>"false"</code> and finds the second <code>"unlikely"</code>. A belief replaces the actor’s earlier one in that claim and leaves every other actor’s belief as it is. It changes only the claim’s provenance and never removes the claim.</p>
-<div id="164451ea" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:40.973391Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:40.973214Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:40.984803Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:40.984184Z&quot;}}" data-execution_count="9">
+<div id="18c33506" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:43.756570Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:43.756337Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:43.782211Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:43.778299Z&quot;}}" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>bundle.add_match_claim_belief(rejected.<span class="bu">id</span>, actor<span class="op">=</span>EDITOR, belief<span class="op">=</span><span class="st">"false"</span>, date<span class="op">=</span>DAY)</span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>bundle.add_match_claim_belief(doubted.<span class="bu">id</span>, actor<span class="op">=</span>EDITOR, belief<span class="op">=</span><span class="st">"unlikely"</span>, date<span class="op">=</span>DAY)</span>
 <span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>claim_rows(bundle.get_match_claims())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -848,7 +848,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Every reader of claims takes the belief filter: <code>believer=</code> names an actor, and <code>beliefs=</code> lists the states kept for that actor: <code>"true"</code>, <code>"undecided"</code> (the actor holds no belief on the claim), <code>"unlikely"</code> and <code>"false"</code>. The default keeps every state but <code>"false"</code>, so <code>"unlikely"</code> passes. Without a <code>believer=</code> nothing is filtered.</p>
-<div id="2cdcd0fd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:40.987466Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:40.987267Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:40.997774Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:40.997069Z&quot;}}" data-execution_count="10">
+<div id="2da77ebc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:43.790572Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:43.789302Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:43.819463Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:43.817739Z&quot;}}" data-execution_count="10">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"every claim"</span>: <span class="bu">len</span>(bundle.get_match_claims()),</span>
 <span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"not believed false by the editor"</span>: <span class="bu">len</span>(bundle.get_match_claims(believer<span class="op">=</span>EDITOR)),</span>
@@ -867,7 +867,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>MatchStamps read the same filter, and so do the bundle’s coordinate getters (<code>get_coordinate_at</code> and the rest of its row). At quarter 6, the doubted claim reaches the recording under the default filter; with <code>beliefs=["true"]</code> the stamp holds the score alone.</p>
-<div id="e0fde440" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:40.999655Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:40.999508Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:41.026504Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:41.025964Z&quot;}}" data-execution_count="11">
+<div id="be72ea71" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:43.822487Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:43.822149Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:43.869399Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:43.868332Z&quot;}}" data-execution_count="11">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>[</span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    bundle.get_matchstamp_at(Fraction(<span class="dv">6</span>), score.<span class="bu">id</span>, believer<span class="op">=</span>EDITOR),</span>
 <span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    bundle.get_matchstamp_at(Fraction(<span class="dv">6</span>), score.<span class="bu">id</span>, believer<span class="op">=</span>EDITOR, beliefs<span class="op">=</span>[<span class="st">"true"</span>]),</span>
@@ -880,22 +880,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="write-the-package" class="level2">
 <h2 class="anchored" data-anchor-id="write-the-package">Write the package</h2>
-<p><code>to_file()</code> writes the MatchClaim table, the registry, the Extraction table and the Projection table beside the manifest, then the manifest naming the registry and the MatchClaim table. A manifest names no event: the claims name the score’s notes and the recording’s onsets by their ids, and by default those events stay with the sources they came from, here the score and the onset list. The package holds the events it made itself, the Projections. To keep the notes and onsets in the package as well, <code>to_file(events=True)</code> writes them into the registry and a pre-parsed table per event type, never into the manifest itself: see <a href="../howto/how03_registry_and_packages.html">How to Write the Registry and Share Tables in a Package</a>.</p>
-<div id="b2ce07d3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:41.028626Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:41.028440Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:41.211223Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:41.210604Z&quot;}}" data-execution_count="12">
+<p><code>to_file()</code> writes the MatchClaim table, the registry and the Parse table beside the manifest, then the manifest naming the registry and the MatchClaim table. A manifest names no event: the claims name the score’s notes and the recording’s onsets by their ids, and by default those events stay with the sources they came from, here the score and the onset list. The package holds the events it made itself, the Projections. To keep the notes and onsets in the package as well, <code>to_file(events=True)</code> writes them into the registry, and the content of each event type whose events hold more than their ID and position into a pre-parsed table, never into the manifest itself: see <a href="../howto/how03_registry_and_packages.html">How to Write the Registry and Share Tables in a Package</a>.</p>
+<div id="3d60c107" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:43.872595Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:43.872250Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:44.238507Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:44.237359Z&quot;}}" data-execution_count="12">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>package <span class="op">=</span> FILES <span class="op">/</span> <span class="st">"song"</span></span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>package.mkdir()</span>
 <span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>manifest_path <span class="op">=</span> bundle.to_file(package <span class="op">/</span> <span class="st">"song.yaml"</span>)</span>
 <span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>files(package)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="12">
-<pre><code>['extractions.parquet',
- 'match_claims.parquet',
- 'projections.parquet',
- 'registry.parquet',
- 'song.yaml']</code></pre>
+<pre><code>['match_claims.parquet', 'parses.parquet', 'registry.parquet', 'song.yaml']</code></pre>
 </div>
 </div>
 <p>The manifest’s <code>resources</code> names the registry and the MatchClaim table: each its <code>id</code>, its <code>type</code> (what its rows are: <code>Registry</code> or <code>MatchClaim</code>), the <code>timelines</code> it holds rows for, its <code>url</code> relative to the manifest, and its media type, size in bytes and SHA-256 digest.</p>
-<div id="de23261b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:41.213068Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:41.212877Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:41.222789Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:41.221963Z&quot;}}" data-execution_count="13">
+<div id="54e2724a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:44.240601Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:44.240388Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:44.254328Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:44.253253Z&quot;}}" data-execution_count="13">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>show(manifest_path, <span class="st">"resources"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>resources:
@@ -913,9 +909,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     id: "#resource_2y5pre4ecy3nq"
     integrity:
       algorithm: SHA-256
-      digest: "2b29b112625fcbf254bd840d858bfdf259009c18b1d7b480e1a6f2bbbe62ad8b"
+      digest: f717e4d60c00599b77c1557aa76d257933332efb18c92c18484f1cbdfc8fa9bf
     media_type: application/vnd.apache.parquet
-    size: 5344
+    size: 5973
     timelines: ["#recording"]
     type: Registry
     url: registry.parquet</code></pre>
@@ -925,7 +921,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="what-the-tables-hold" class="level2">
 <h2 class="anchored" data-anchor-id="what-the-tables-hold">What the tables hold</h2>
 <p>The MatchClaim table has one row per claim and one column per property of a MatchClaim: its two timelines and two events, the anchors’ coordinates, its provenance with the beliefs, and more. An event ID cell is never empty: a side without an event holds a sentinel, <code>NOMATCH_SENTINEL</code> for the absent side of a NOMATCH and <code>CHUNK_SENTINEL</code> for a side whose coordinate the anchor states, as on both sides of the doubted claim. Its identifying columns:</p>
-<div id="3aa98672" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:41.224509Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:41.224348Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:41.233707Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:41.233108Z&quot;}}" data-execution_count="14">
+<div id="1304c083" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:44.256399Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:44.256169Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:44.273454Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:44.272521Z&quot;}}" data-execution_count="14">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>pq.read_table(package <span class="op">/</span> <span class="st">"match_claims.parquet"</span>).select(</span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    [<span class="st">"id"</span>, <span class="st">"timeline_a_id"</span>, <span class="st">"event_a_id"</span>, <span class="st">"timeline_b_id"</span>, <span class="st">"event_b_id"</span>]</span>
 <span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>).to_pandas()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -1007,49 +1003,52 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 </div>
-<p>A Projection’s registry row holds its id, its timeline and its position on the axis of the timeline’s root (<code>start</code>, and <code>duration</code> for a span), with that axis’s unit and number type once, each number written once, as that number type says: an int as its numerator alone, a fraction as numerator and denominator, a float as its value alone. The registry’s other rows, its non-event rows, name the manifest’s elements, the MatchClaims and the extraction.</p>
-<div id="ddb1631b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:41.235170Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:41.235015Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:41.241183Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:41.240624Z&quot;}}" data-execution_count="15">
+<p>A Projection’s registry row holds its id, its timeline and its position on the axis of the timeline’s root (<code>start</code>, and <code>duration</code> for a span), with that axis’s unit and number type once, each number written once, as that number type says: an int as its numerator alone, a fraction as numerator and denominator, a float as its value alone. Its <code>projection_of</code> names the event it stands for, if any, by its timeline and ID. That is all a Projection holds, so it has no pre-parsed table: its <code>location</code> is empty. The registry’s other rows, its non-event rows, name the manifest’s elements, the MatchClaims and the parse.</p>
+<div id="cef611ff" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:44.275989Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:44.275729Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:44.300476Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:44.298946Z&quot;}}" data-execution_count="15">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>[</span>
 <span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    {</span>
 <span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>        name: row[name]</span>
-<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> name <span class="kw">in</span> (<span class="st">"id"</span>, <span class="st">"kind"</span>, <span class="st">"timeline_id"</span>, <span class="st">"unit"</span>, <span class="st">"number_type"</span>, <span class="st">"start"</span>)</span>
-<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>    }</span>
-<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> row <span class="kw">in</span> pq.read_table(package <span class="op">/</span> <span class="st">"registry.parquet"</span>).to_pylist()</span>
-<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> row[<span class="st">"kind"</span>] <span class="op">==</span> <span class="st">"Projection"</span></span>
-<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> name <span class="kw">in</span> (</span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>            <span class="st">"id"</span>,</span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>            <span class="st">"kind"</span>,</span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>            <span class="st">"timeline_id"</span>,</span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>            <span class="st">"unit"</span>,</span>
+<span id="cb22-9"><a href="#cb22-9" aria-hidden="true" tabindex="-1"></a>            <span class="st">"number_type"</span>,</span>
+<span id="cb22-10"><a href="#cb22-10" aria-hidden="true" tabindex="-1"></a>            <span class="st">"start"</span>,</span>
+<span id="cb22-11"><a href="#cb22-11" aria-hidden="true" tabindex="-1"></a>            <span class="st">"location"</span>,</span>
+<span id="cb22-12"><a href="#cb22-12" aria-hidden="true" tabindex="-1"></a>            <span class="st">"projection_of"</span>,</span>
+<span id="cb22-13"><a href="#cb22-13" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb22-14"><a href="#cb22-14" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb22-15"><a href="#cb22-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> row <span class="kw">in</span> pq.read_table(package <span class="op">/</span> <span class="st">"registry.parquet"</span>).to_pylist()</span>
+<span id="cb22-16"><a href="#cb22-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> row[<span class="st">"kind"</span>] <span class="op">==</span> <span class="st">"Projection"</span></span>
+<span id="cb22-17"><a href="#cb22-17" aria-hidden="true" tabindex="-1"></a>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="15">
 <pre><code>[{'id': 'projection_1drob75w08pcl',
   'kind': 'Projection',
   'timeline_id': 'recording',
   'unit': 'seconds',
   'number_type': 'float',
-  'start': {'numerator': None, 'denominator': None, 'value': 3.5}}]</code></pre>
-</div>
-</div>
-<p>The Projection table holds the content of each Projection, keyed by its id: the event it stands for, if any.</p>
-<div id="45707208" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:41.242670Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:41.242526Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:41.246438Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:41.246014Z&quot;}}" data-execution_count="16">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>pq.read_table(package <span class="op">/</span> <span class="st">"projections.parquet"</span>).to_pylist()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="16">
-<pre><code>[{'id': 'projection_1drob75w08pcl',
+  'start': {'numerator': None, 'denominator': None, 'value': 3.5},
+  'location': None,
   'projection_of': {'timeline_id': 'score', 'event_id': 'n4'}}]</code></pre>
 </div>
 </div>
-<p>An event’s id is unique among all the events of the package, whichever timeline holds it, so the registry and the table name each id once. Here they hold one Projection, the recording’s for the fourth note (its <code>projection_of</code> names the note); the claim between two positions added none. Each id is minted (<code>projection_…</code>) and never re-minted, and a Projection given an id another timeline’s Projection holds is refused.</p>
+<p>An event’s id is unique among all the events of the package, whichever timeline holds it, so the registry names each id once. Here it holds one Projection, the recording’s for the fourth note; the claim between two positions added none. Each id is minted (<code>projection_…</code>) and never re-minted, and a Projection given an id another timeline’s Projection holds is refused.</p>
 </section>
 <section id="read-the-package" class="level2">
 <h2 class="anchored" data-anchor-id="read-the-package">Read the package</h2>
-<p><code>from_file()</code> reads the manifest, then the tables it names: each Projection’s registry row onto its timeline (its content read from the Projection table when the timeline’s events are read), then the MatchClaim table. The bundle read holds the same claims and the same manifest, and its belief filter gives the same answers. Its timelines hold their Projections but not the notes and onsets, which the manifest does not carry (the score read holds no event at all). Each claim keeps the coordinates of its two sides, so MatchStamps need no event: under the editor’s beliefs the third note, at quarter 2, still lies at 1.75 seconds.</p>
-<div id="aaca9c01" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:41.248351Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:41.248209Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:41.295194Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:41.294639Z&quot;}}" data-execution_count="17">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>read <span class="op">=</span> AlignmentBundle.from_file(manifest_path)</span>
-<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"same MatchClaim table"</span>: read.match_claim_table <span class="op">==</span> bundle.match_claim_table,</span>
-<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"same manifest"</span>: read.to_dict() <span class="op">==</span> bundle.to_dict(),</span>
-<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"believed true by the editor"</span>: [</span>
-<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a>        claim.<span class="bu">id</span> <span class="cf">for</span> claim <span class="kw">in</span> read.get_match_claims(believer<span class="op">=</span>EDITOR, beliefs<span class="op">=</span>[<span class="st">"true"</span>])</span>
-<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a>    ],</span>
-<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"events of the score read"</span>: <span class="bu">len</span>(read.get_timeline(score.<span class="bu">id</span>).get_events()),</span>
-<span id="cb26-9"><a href="#cb26-9" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="17">
+<p><code>from_file()</code> reads the manifest, then the tables it names: each Projection’s registry row onto its timeline, the event it stands for with it, then the MatchClaim table. The bundle read holds the same claims and the same manifest, and its belief filter gives the same answers. Its timelines hold their Projections but not the notes and onsets, which the manifest does not carry (the score read holds no event at all). Each claim keeps the coordinates of its two sides, so MatchStamps need no event: under the editor’s beliefs the third note, at quarter 2, still lies at 1.75 seconds.</p>
+<div id="6a5bea0b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:44.302923Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:44.302708Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:44.399940Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:44.398827Z&quot;}}" data-execution_count="16">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>read <span class="op">=</span> AlignmentBundle.from_file(manifest_path)</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"same MatchClaim table"</span>: read.match_claim_table <span class="op">==</span> bundle.match_claim_table,</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"same manifest"</span>: read.to_dict() <span class="op">==</span> bundle.to_dict(),</span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"believed true by the editor"</span>: [</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>        claim.<span class="bu">id</span> <span class="cf">for</span> claim <span class="kw">in</span> read.get_match_claims(believer<span class="op">=</span>EDITOR, beliefs<span class="op">=</span>[<span class="st">"true"</span>])</span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>    ],</span>
+<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"events of the score read"</span>: <span class="bu">len</span>(read.get_timeline(score.<span class="bu">id</span>).get_events()),</span>
+<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="16">
 <pre><code>{'same MatchClaim table': True,
  'same manifest': True,
  'believed true by the editor': ['claim_10kiuc0cdryby',
@@ -1060,9 +1059,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
  'events of the score read': 0}</code></pre>
 </div>
 </div>
-<div id="3d159745" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:41.296613Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:41.296475Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:41.307854Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:41.307378Z&quot;}}" data-execution_count="18">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>read.get_matchstamp_at(Fraction(<span class="dv">2</span>), score.<span class="bu">id</span>, believer<span class="op">=</span>EDITOR)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="18">
+<div id="fa1d4684" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:44.402309Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:44.402067Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:44.425589Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:44.424507Z&quot;}}" data-execution_count="17">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>read.get_matchstamp_at(Fraction(<span class="dv">2</span>), score.<span class="bu">id</span>, believer<span class="op">=</span>EDITOR)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="17">
 <div style="font-family: monospace;"><strong>MatchStamp</strong> <span style="background: #e3f2fd; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">2 timelines, 1 edges</span>
 <table class="caption-top table table-sm table-striped small">
 <thead>
@@ -1089,18 +1088,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>Writing the bundle read gives the same bytes, file by file.</p>
-<div id="1f493d63" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:41.309777Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:41.309636Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:41.330181Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:41.329549Z&quot;}}" data-execution_count="19">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>copy <span class="op">=</span> FILES <span class="op">/</span> <span class="st">"copy"</span></span>
-<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>copy.mkdir()</span>
-<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>read.to_file(copy <span class="op">/</span> <span class="st">"song.yaml"</span>)</span>
-<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>    name: (package <span class="op">/</span> name).read_bytes() <span class="op">==</span> (copy <span class="op">/</span> name).read_bytes()</span>
-<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> name <span class="kw">in</span> files(package)</span>
-<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="19">
-<pre><code>{'extractions.parquet': True,
- 'match_claims.parquet': True,
- 'projections.parquet': True,
+<div id="b7581f5a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:44.428855Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:44.428462Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:44.468051Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:44.466940Z&quot;}}" data-execution_count="18">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>copy <span class="op">=</span> FILES <span class="op">/</span> <span class="st">"copy"</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>copy.mkdir()</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>read.to_file(copy <span class="op">/</span> <span class="st">"song.yaml"</span>)</span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>    name: (package <span class="op">/</span> name).read_bytes() <span class="op">==</span> (copy <span class="op">/</span> name).read_bytes()</span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> name <span class="kw">in</span> files(package)</span>
+<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="18">
+<pre><code>{'match_claims.parquet': True,
+ 'parses.parquet': True,
  'registry.parquet': True,
  'song.yaml': True}</code></pre>
 </div>
@@ -1109,14 +1107,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="add-to-a-package-never-remove-from-it" class="level2">
 <h2 class="anchored" data-anchor-id="add-to-a-package-never-remove-from-it">Add to a package, never remove from it</h2>
 <p>A MatchClaim is never deleted and its id never changes; whoever disagrees states a belief instead. So writing over a package’s MatchClaim table obeys the succession rule: every claim of the old table is in the new one, with the same timelines, events and anchors; only its provenance may differ. Adding a claim, stating a belief and writing the bundle back is fine. The editor goes on in the bundle that holds the events: a conceptual claim between the second note and the second onset, and a change of mind about the doubted claim.</p>
-<div id="5efd5a41" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:41.331623Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:41.331482Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:41.405796Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:41.405111Z&quot;}}" data-execution_count="20">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>bundle.create_match_claims(</span>
-<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>    [(<span class="st">"n2"</span>, score.<span class="bu">id</span>, <span class="st">"o2"</span>, recording.<span class="bu">id</span>)], synchronous<span class="op">=</span><span class="va">False</span>, actor<span class="op">=</span>EDITOR, date<span class="op">=</span>DAY</span>
-<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>bundle.add_match_claim_belief(doubted.<span class="bu">id</span>, actor<span class="op">=</span>EDITOR, belief<span class="op">=</span><span class="st">"false"</span>, date<span class="op">=</span>DAY)</span>
-<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a>bundle.to_file(manifest_path)</span>
-<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a>claim_rows(AlignmentBundle.from_file(manifest_path).get_match_claims())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="20">
+<div id="ea8dccb8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:44.470845Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:44.470538Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:44.660538Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:44.659651Z&quot;}}" data-execution_count="19">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>bundle.create_match_claims(</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>    [(<span class="st">"n2"</span>, score.<span class="bu">id</span>, <span class="st">"o2"</span>, recording.<span class="bu">id</span>)], synchronous<span class="op">=</span><span class="va">False</span>, actor<span class="op">=</span>EDITOR, date<span class="op">=</span>DAY</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>bundle.add_match_claim_belief(doubted.<span class="bu">id</span>, actor<span class="op">=</span>EDITOR, belief<span class="op">=</span><span class="st">"false"</span>, date<span class="op">=</span>DAY)</span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>bundle.to_file(manifest_path)</span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>claim_rows(AlignmentBundle.from_file(manifest_path).get_match_claims())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="19">
 <div>
 
 
@@ -1203,18 +1201,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>A bundle that lacks claims the table holds cannot be written over it. Here a draft is built from the manifest alone (<code>from_dict()</code> reads no tables, and the manifest holds no event) and states one claim between two positions: the write is refused before any file is touched, and the package keeps its claims.</p>
-<div id="7fff675e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:41.407219Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:41.407068Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:41.468183Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:41.467538Z&quot;}}" data-execution_count="21">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>draft <span class="op">=</span> AlignmentBundle.from_dict(read.to_dict())</span>
-<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>draft.create_match_claims([({<span class="st">"start"</span>: <span class="dv">0</span>}, score.<span class="bu">id</span>, {<span class="st">"start"</span>: <span class="fl">0.25</span>}, recording.<span class="bu">id</span>)])</span>
-<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
-<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>    draft.to_file(manifest_path)</span>
-<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> refusal:</span>
-<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(refusal)</span>
-<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(AlignmentBundle.from_file(manifest_path).get_match_claims())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="f19a2ab5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T12:01:44.668577Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T12:01:44.668252Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T12:01:44.830990Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T12:01:44.826916Z&quot;}}" data-execution_count="20">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>draft <span class="op">=</span> AlignmentBundle.from_dict(read.to_dict())</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>draft.create_match_claims([({<span class="st">"start"</span>: <span class="dv">0</span>}, score.<span class="bu">id</span>, {<span class="st">"start"</span>: <span class="fl">0.25</span>}, recording.<span class="bu">id</span>)])</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>    draft.to_file(manifest_path)</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> refusal:</span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(refusal)</span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(AlignmentBundle.from_file(manifest_path).get_match_claims())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>The new MatchClaim table lacks the MatchClaim 'claim_10kiuc0cdryby' of the existing one: a MatchClaim is never removed; record the belief 'false' in it instead (AlignmentBundle.add_match_claim_belief).</code></pre>
 </div>
-<div class="cell-output cell-output-display" data-execution_count="21">
+<div class="cell-output cell-output-display" data-execution_count="20">
 <pre><code>8</code></pre>
 </div>
 </div>

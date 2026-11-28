@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>extraction – TimeToAlign!</title>
+<title>parse – TimeToAlign!</title>
 <style>
 /* Default styles provided by pandoc.
 ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
@@ -159,7 +159,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
       <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
         <i class="bi bi-layout-text-sidebar-reverse"></i>
       </button>
-        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">API Reference</a></li><li class="breadcrumb-item"><a href="../reference/Extraction.html">Extraction</a></li></ol></nav>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">API Reference</a></li><li class="breadcrumb-item"><a href="../reference/Parse.html">Parse</a></li></ol></nav>
         <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
         </a>
     </div>
@@ -502,12 +502,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventType</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../reference/Extraction.html" class="sidebar-item-text sidebar-link active">
- <span class="menu-text">Extraction</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -926,6 +920,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/Parse.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">Parse</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/PartituraLoader.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">PartituraLoader</span></a>
   </div>
@@ -1314,37 +1314,37 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#timetoalign.Extraction" id="toc-timetoalign.Extraction" class="nav-link active" data-scroll-target="#timetoalign.Extraction">Extraction</a>
+  <li><a href="#timetoalign.Parse" id="toc-timetoalign.Parse" class="nav-link active" data-scroll-target="#timetoalign.Parse">Parse</a>
   <ul>
   <li><a href="#attributes" id="toc-attributes" class="nav-link" data-scroll-target="#attributes">Attributes</a></li>
   <li><a href="#raises" id="toc-raises" class="nav-link" data-scroll-target="#raises">Raises</a></li>
   <li><a href="#methods" id="toc-methods" class="nav-link" data-scroll-target="#methods">Methods</a>
   <ul class="collapse">
-  <li><a href="#timetoalign.Extraction.from_row" id="toc-timetoalign.Extraction.from_row" class="nav-link" data-scroll-target="#timetoalign.Extraction.from_row">from_row</a></li>
-  <li><a href="#timetoalign.Extraction.of_source" id="toc-timetoalign.Extraction.of_source" class="nav-link" data-scroll-target="#timetoalign.Extraction.of_source">of_source</a>
+  <li><a href="#timetoalign.Parse.from_row" id="toc-timetoalign.Parse.from_row" class="nav-link" data-scroll-target="#timetoalign.Parse.from_row">from_row</a></li>
+  <li><a href="#timetoalign.Parse.of_source" id="toc-timetoalign.Parse.of_source" class="nav-link" data-scroll-target="#timetoalign.Parse.of_source">of_source</a>
   <ul class="collapse">
   <li><a href="#parameters" id="toc-parameters" class="nav-link" data-scroll-target="#parameters">Parameters</a></li>
   <li><a href="#raises-1" id="toc-raises-1" class="nav-link" data-scroll-target="#raises-1">Raises</a></li>
   </ul></li>
-  <li><a href="#timetoalign.Extraction.of_tool" id="toc-timetoalign.Extraction.of_tool" class="nav-link" data-scroll-target="#timetoalign.Extraction.of_tool">of_tool</a>
+  <li><a href="#timetoalign.Parse.of_tool" id="toc-timetoalign.Parse.of_tool" class="nav-link" data-scroll-target="#timetoalign.Parse.of_tool">of_tool</a>
   <ul class="collapse">
   <li><a href="#parameters-1" id="toc-parameters-1" class="nav-link" data-scroll-target="#parameters-1">Parameters</a></li>
   </ul></li>
-  <li><a href="#timetoalign.Extraction.to_row" id="toc-timetoalign.Extraction.to_row" class="nav-link" data-scroll-target="#timetoalign.Extraction.to_row">to_row</a></li>
+  <li><a href="#timetoalign.Parse.to_row" id="toc-timetoalign.Parse.to_row" class="nav-link" data-scroll-target="#timetoalign.Parse.to_row">to_row</a></li>
   </ul></li>
   </ul></li>
   </ul>
 </nav>
     </div>
 <!-- main -->
-<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">API Reference</a></li><li class="breadcrumb-item"><a href="../reference/Extraction.html">Extraction</a></li></ol></nav></header>
+<main class="content" id="quarto-document-content"><header id="title-block-header" class="quarto-title-block"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../reference/index.html">API Reference</a></li><li class="breadcrumb-item"><a href="../reference/Parse.html">Parse</a></li></ol></nav></header>
 
 
 
 
-<section id="timetoalign.Extraction" class="level1">
-<h1>Extraction</h1>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>Extraction(</span>
+<section id="timetoalign.Parse" class="level1">
+<h1>Parse</h1>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>Parse(</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span>,</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    source<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    source_integrity<span class="op">=</span><span class="va">None</span>,</span>
@@ -1356,8 +1356,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    date<span class="op">=</span>_now(),</span>
 <span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>One run of a parser over one source file: what made a set of events.</p>
-<p>A row of the Extraction table (CRMdig’s D10 Software Execution): the source file and its digest, the parser and its version, the parameters it ran with, and the ID minter’s algorithm, length and seed, so that a run again over the same file mints the same IDs. Events made without a source file (in code, by a script) name the tool’s extraction (:meth:<code>of_tool</code>). Extractions sharing an ID hash alike.</p>
+<p>One run of a parser over one source file (or of a tool without one) that made events.</p>
+<p>A row of the Parse table (CRMdig’s D10 Software Execution): the source file and its digest, the parser and its version, the parameters it ran with, and the ID minter’s algorithm, length and seed, so that a run again over the same file mints the same IDs. Events made without a source file (in code, by a script) name the tool’s parse (:meth:<code>of_tool</code>). Parses sharing an ID hash alike.</p>
 <section id="attributes" class="level2 doc-section doc-section-attributes">
 <h2 class="doc-section doc-section-attributes anchored" data-anchor-id="attributes">Attributes</h2>
 <table class="caption-top table">
@@ -1377,7 +1377,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>id</td>
 <td><code>str</code></td>
-<td>The extraction’s ID (<code>extraction_…</code>).</td>
+<td>The parse’s ID (<code>parse_…</code>).</td>
 </tr>
 <tr class="even">
 <td>source</td>
@@ -1462,31 +1462,31 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </thead>
 <tbody>
 <tr class="odd">
-<td><a href="#timetoalign.Extraction.from_row">from_row</a></td>
-<td>The extraction of a row of the Extraction table (:meth:<code>to_row</code>).</td>
+<td><a href="#timetoalign.Parse.from_row">from_row</a></td>
+<td>The parse of a row of the Parse table (:meth:<code>to_row</code>).</td>
 </tr>
 <tr class="even">
-<td><a href="#timetoalign.Extraction.of_source">of_source</a></td>
-<td>The extraction of a parser’s run over the file <em>path</em>.</td>
+<td><a href="#timetoalign.Parse.of_source">of_source</a></td>
+<td>The parse of a parser’s run over the file <em>path</em>.</td>
 </tr>
 <tr class="odd">
-<td><a href="#timetoalign.Extraction.of_tool">of_tool</a></td>
-<td>The extraction of events made without a source file.</td>
+<td><a href="#timetoalign.Parse.of_tool">of_tool</a></td>
+<td>The parse of events made without a source file.</td>
 </tr>
 <tr class="even">
-<td><a href="#timetoalign.Extraction.to_row">to_row</a></td>
-<td>The extraction as a row of the Extraction table.</td>
+<td><a href="#timetoalign.Parse.to_row">to_row</a></td>
+<td>The parse as a row of the Parse table.</td>
 </tr>
 </tbody>
 </table>
-<section id="timetoalign.Extraction.from_row" class="level3">
-<h3 class="anchored" data-anchor-id="timetoalign.Extraction.from_row">from_row</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>Extraction.from_row(row)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>The extraction of a row of the Extraction table (:meth:<code>to_row</code>).</p>
+<section id="timetoalign.Parse.from_row" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Parse.from_row">from_row</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>Parse.from_row(row)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The parse of a row of the Parse table (:meth:<code>to_row</code>).</p>
 </section>
-<section id="timetoalign.Extraction.of_source" class="level3">
-<h3 class="anchored" data-anchor-id="timetoalign.Extraction.of_source">of_source</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>Extraction.of_source(</span>
+<section id="timetoalign.Parse.of_source" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Parse.of_source">of_source</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>Parse.of_source(</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    path,</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
 <span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    source<span class="op">=</span><span class="va">None</span>,</span>
@@ -1499,7 +1499,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span><span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    date<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>The extraction of a parser’s run over the file <em>path</em>.</p>
+<p>The parse of a parser’s run over the file <em>path</em>.</p>
 <p>The file’s SHA-256 digest is read from its bytes. The ID, when minted, is seeded from the digest, the parser and its version, the parameters, the minter’s algorithm and length and the seed, never from where the file lies: a run over the same bytes with the same parser and parameters has the same ID on every machine, in every run and every process.</p>
 <section id="parameters" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h4>
@@ -1570,7 +1570,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>id</td>
 <td><code>str</code> | None</td>
-<td>The extraction’s ID; minted when None.</td>
+<td>The parse’s ID; minted when None.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="even">
@@ -1612,9 +1612,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </table>
 </section>
 </section>
-<section id="timetoalign.Extraction.of_tool" class="level3">
-<h3 class="anchored" data-anchor-id="timetoalign.Extraction.of_tool">of_tool</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>Extraction.of_tool(</span>
+<section id="timetoalign.Parse.of_tool" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Parse.of_tool">of_tool</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>Parse.of_tool(</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    parser<span class="op">=</span><span class="st">'timetoalign'</span>,</span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    parser_version<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
@@ -1622,7 +1622,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span><span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>    date<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>The extraction of events made without a source file.</p>
+<p>The parse of events made without a source file.</p>
 <p>A registry makes one of its own (for its root timeline) when events made in code join it.</p>
 <section id="parameters-1" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-1">Parameters</h4>
@@ -1630,7 +1630,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <colgroup>
 <col style="width: 9%">
 <col style="width: 13%">
-<col style="width: 67%">
+<col style="width: 66%">
 <col style="width: 10%">
 </colgroup>
 <thead>
@@ -1657,13 +1657,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>scope</td>
 <td><code>str</code> | None</td>
-<td>What the extraction is one of (a root timeline’s ID); a minted ID is seeded from it, the parser and its version.</td>
+<td>What the parse is one of (a root timeline’s ID); a minted ID is seeded from it, the parser and its version.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="even">
 <td>id</td>
 <td><code>str</code> | None</td>
-<td>The extraction’s ID; minted when None.</td>
+<td>The parse’s ID; minted when None.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="odd">
@@ -1676,10 +1676,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </table>
 </section>
 </section>
-<section id="timetoalign.Extraction.to_row" class="level3">
-<h3 class="anchored" data-anchor-id="timetoalign.Extraction.to_row">to_row</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>Extraction.to_row()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>The extraction as a row of the Extraction table.</p>
+<section id="timetoalign.Parse.to_row" class="level3">
+<h3 class="anchored" data-anchor-id="timetoalign.Parse.to_row">to_row</h3>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>Parse.to_row()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>The parse as a row of the Parse table.</p>
 <p><code>parameters</code> is canonical JSON text (sorted keys, no spaces).</p>
 
 

@@ -506,12 +506,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
-  <a href="../reference/Extraction.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">Extraction</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
   <a href="../reference/flow_control_from_measures.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">flow_control_from_measures</span></a>
   </div>
@@ -922,6 +916,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/ParangonadaLoader.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ParangonadaLoader</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Parse.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Parse</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1396,7 +1396,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="even">
 <td>data</td>
 <td><a href="../reference/EventData.html#timetoalign.EventData">EventData</a></td>
-<td>The root’s events, on its axis; their class is the class of the family’s events. The extractions it carries (:attr:<code>EventData.extractions</code>) are held with them.</td>
+<td>The root’s events, on its axis; their class is the class of the family’s events. The parses it carries (:attr:<code>EventData.parses</code>) are held with them.</td>
 <td><em>required</em></td>
 </tr>
 <tr class="odd">
@@ -1412,9 +1412,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="doc-section doc-section-raises anchored" data-anchor-id="raises">Raises</h2>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 6%">
-<col style="width: 24%">
-<col style="width: 68%">
+<col style="width: 7%">
+<col style="width: 25%">
+<col style="width: 66%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -1427,7 +1427,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td></td>
 <td><code>ValueError</code></td>
-<td>If <em>data</em> holds one event ID twice, or names an extraction it does not carry.</td>
+<td>If <em>data</em> holds one event ID twice, or names a parse it does not carry.</td>
 </tr>
 </tbody>
 </table>
@@ -1457,8 +1457,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </thead>
 <tbody>
 <tr class="odd">
-<td><a href="#timetoalign.EventRegistry.extractions">extractions</a></td>
-<td>The extractions the rows of this view name, in the families’ order.</td>
+<td><a href="#timetoalign.EventRegistry.parses">parses</a></td>
+<td>The parses the rows of this view name, in the families’ order.</td>
 </tr>
 <tr class="even">
 <td><a href="#timetoalign.EventRegistry.table">table</a></td>
@@ -1517,16 +1517,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </table>
 <section id="timetoalign.EventRegistry.add" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.EventRegistry.add">add</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>EventRegistry.add(timeline_id, data, <span class="op">*</span>, extraction<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>EventRegistry.add(timeline_id, data, <span class="op">*</span>, parse<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Add <em>data</em>’s rows to the timeline <em>timeline_id</em>, after its rows.</p>
-<p><em>data</em> is on the timeline’s axis, in its own coordinates; the registry rows are shifted onto the root’s, column-wise. The columns <code>locator</code> and <code>extraction_id</code>, where <em>data</em> holds them, are moved into the registry rows. A row naming no extraction names <em>extraction</em>, else the family’s tool extraction (:meth:<code>Extraction.of_tool</code>, one per family). The extractions <em>data</em> carries (:attr:<code>EventData.extractions</code>) that the rows name are held with them. Taken by the registry of one family (a timeline’s <code>_registry</code>), not by a view.</p>
+<p><em>data</em> is on the timeline’s axis, in its own coordinates; the registry rows are shifted onto the root’s, column-wise. The columns <code>locator</code> and <code>parse_id</code>, where <em>data</em> holds them, are moved into the registry rows. A row naming no parse names <em>parse</em>, else the family’s tool parse (:meth:<code>Parse.of_tool</code>, one per family). The parses <em>data</em> carries (:attr:<code>EventData.parses</code>) that the rows name are held with them. Taken by the registry of one family (a timeline’s <code>_registry</code>), not by a view.</p>
 <section id="raises-1" class="level4 doc-section doc-section-raises">
 <h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises-1">Raises</h4>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 2%">
 <col style="width: 7%">
-<col style="width: 90%">
+<col style="width: 89%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -1549,7 +1549,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td></td>
 <td><code>ValueError</code></td>
-<td>If <em>data</em> lies on another axis than the family’s, an event ID of it is held in the family or twice in <em>data</em>, a row names an extraction neither held, nor <em>extraction</em>, nor carried by <em>data</em>, a locator names two events of one extraction, or a column of it holds values of a type the timeline’s column does not read; nothing changes then.</td>
+<td>If <em>data</em> lies on another axis than the family’s, an event ID of it is held in the family or twice in <em>data</em>, a row names a parse neither held, nor <em>parse</em>, nor carried by <em>data</em>, a locator names two events of one parse, or a column of it holds values of a type the timeline’s column does not read; nothing changes then.</td>
 </tr>
 </tbody>
 </table>
@@ -1557,7 +1557,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="timetoalign.EventRegistry.add_rows" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.EventRegistry.add_rows">add_rows</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>EventRegistry.add_rows(rows, contents<span class="op">=</span><span class="va">None</span>, extractions<span class="op">=</span>(), <span class="op">*</span>, registered<span class="op">=</span><span class="va">True</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>EventRegistry.add_rows(rows, contents<span class="op">=</span><span class="va">None</span>, parses<span class="op">=</span>(), <span class="op">*</span>, registered<span class="op">=</span><span class="va">True</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Hold registry rows already on the root’s axis, as read from a package.</p>
 <p>Each row joins the family of the timeline it names, among the families this registry (a view too: a timeline’s, a group’s, a bundle’s) reads. A row the family holds already, on the same timeline, of the same kind, at the same root position (<code>start</code> and <code>duration</code> compared cell for cell), is passed over: it is the event a manifest states inline. Each timeline taking rows is held long enough for them, as for the rows it adds itself (an unlocked timeline grows to the last end, made local by its ancestors’ offsets; a locked one refuses). The rows’ content is read lazily: the family’s events are built from its rows and <em>contents</em> (per kind, a table keyed by <code>id</code> or a callable giving one) when a timeline’s events are first read, positions made local (the root position less the offsets of the timeline’s ancestors), each timeline’s in the order of its rows; a timeline taking a Box reads its events at once and checks every Box against its shape, as a Box added is checked.</p>
 <section id="parameters-1" class="level4 doc-section doc-section-parameters">
@@ -1585,9 +1585,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><code>None</code></td>
 </tr>
 <tr class="odd">
-<td>extractions</td>
-<td><code>Iterable</code>[<a href="../reference/Extraction.html#timetoalign.Extraction">Extraction</a>]</td>
-<td>The extractions the rows name; each family taking rows holds them all.</td>
+<td>parses</td>
+<td><code>Iterable</code>[<a href="../reference/Parse.html#timetoalign.Parse">Parse</a>]</td>
+<td>The parses the rows name; each family taking rows holds them all.</td>
 <td><code>()</code></td>
 </tr>
 <tr class="even">
@@ -1605,7 +1605,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <colgroup>
 <col style="width: 2%">
 <col style="width: 7%">
-<col style="width: 90%">
+<col style="width: 89%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -1623,7 +1623,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="even">
 <td></td>
 <td><code>ValueError</code></td>
-<td>If a row lies on another axis than its family’s, names an extraction not given or held, holds an ID held in the family or twice, a locator naming two events of one extraction, ends past the length of a locked timeline, or a Box contradicts its shape. Nothing changes then, but the lengths of timelines grown before a refusal.</td>
+<td>If a row lies on another axis than its family’s, names a parse not given or held, holds an ID held in the family or twice, a locator naming two events of one parse, ends past the length of a locked timeline, or a Box contradicts its shape. Nothing changes then, but the lengths of timelines grown before a refusal.</td>
 </tr>
 </tbody>
 </table>
@@ -1699,7 +1699,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>EventRegistry.<span class="bu">filter</span>(</span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    within<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    kinds<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    extractions<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    parses<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    vanished<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    min_coord<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    max_coord<span class="op">=</span><span class="va">None</span>,</span>
@@ -1709,7 +1709,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-2">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 2%">
+<col style="width: 1%">
 <col style="width: 12%">
 <col style="width: 83%">
 <col style="width: 1%">
@@ -1736,9 +1736,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><code>None</code></td>
 </tr>
 <tr class="odd">
-<td>extractions</td>
+<td>parses</td>
 <td><code>str</code> | <code>Iterable</code>[<code>str</code>] | None</td>
-<td>Keep the rows made by these extractions (IDs).</td>
+<td>Keep the rows made by these parses (IDs).</td>
 <td><code>None</code></td>
 </tr>
 <tr class="even">
@@ -1789,9 +1789,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="timetoalign.EventRegistry.update" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.EventRegistry.update">update</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>EventRegistry.update(data, extraction, <span class="op">*</span>, timeline_id<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>EventRegistry.update(data, parse, <span class="op">*</span>, timeline_id<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Update the rows of a timeline of this registry from <em>data</em>, a parser’s new run.</p>
-<p><em>data</em> holds the rows of one extraction, local to the timeline they were read for, each with its <code>locator</code> (a column). The timeline updated is :meth:<code>update_target</code>’s. Its rows are matched by the full <code>locator</code> among the rows made by extractions of the same source as <em>extraction</em>: a matched row keeps its ID and takes the new row’s content, position and <em>extraction</em>; a new row matching none is added; an old row of that source no longer found is kept, naming <em>extraction</em> in <code>vanished_in</code>. Nothing is deleted. A view (a timeline’s, a group’s, a bundle’s) updates the family holding the timeline.</p>
+<p><em>data</em> holds the rows of one parse, local to the timeline they were read for, each with its <code>locator</code> (a column). The timeline updated is :meth:<code>update_target</code>’s. Its rows are matched by the full <code>locator</code> among the rows made by parses of the same source as <em>parse</em>: a matched row keeps its ID and takes the new row’s content, position and <em>parse</em>; a new row matching none is added; an old row of that source no longer found is kept, naming <em>parse</em> in <code>vanished_in</code>. Nothing is deleted. A view (a timeline’s, a group’s, a bundle’s) updates the family holding the timeline.</p>
 <section id="parameters-3" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-3">Parameters</h4>
 <table class="caption-top table">
@@ -1811,8 +1811,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><em>required</em></td>
 </tr>
 <tr class="even">
-<td>extraction</td>
-<td><a href="../reference/Extraction.html#timetoalign.Extraction">Extraction</a></td>
+<td>parse</td>
+<td><a href="../reference/Parse.html#timetoalign.Parse">Parse</a></td>
 <td>The run that read them.</td>
 <td><em>required</em></td>
 </tr>
@@ -1871,9 +1871,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="timetoalign.EventRegistry.update_target" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.EventRegistry.update_target">update_target</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>EventRegistry.update_target(data, extraction, <span class="op">*</span>, timeline_id<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>EventRegistry.update_target(data, parse, <span class="op">*</span>, timeline_id<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>The timeline :meth:<code>update</code> would update from <em>data</em>, or None.</p>
-<p>The timeline of this registry holding most of the rows that <em>data</em>’s locators name among the rows made by extractions of the same source file as <em>extraction</em> (ties: the timeline met first); where they name none, the timeline <em>timeline_id</em> (else the one <em>data</em> is a table of) if a family of this registry holds it. Read column-wise: one table of each held extraction’s ID and source, and set lookups.</p>
+<p>The timeline of this registry holding most of the rows that <em>data</em>’s locators name among the rows made by parses of the same source file as <em>parse</em> (ties: the timeline met first); where they name none, the timeline <em>timeline_id</em> (else the one <em>data</em> is a table of) if a family of this registry holds it. Read column-wise: one table of each held parse’s ID and source, and set lookups.</p>
 <section id="raises-6" class="level4 doc-section doc-section-raises">
 <h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises-6">Raises</h4>
 <table class="caption-top table">
@@ -1903,7 +1903,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="timetoalign.EventRegistry.written">written</h3>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>EventRegistry.written(kinds<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>What a writer stores of the events of the families this view reads.</p>
-<p>Every family this view reads, whole (a package holds a family whole: a child’s events lie on its root’s axis), its rows and contents read when asked. The rows recording where a child lies (a <code>Segment</code> row named by a timeline of the family) are left out; a user’s <code>Segment</code> row, an event like any other, is kept, naming the family’s extraction of events made in code (:meth:<code>Extraction.of_tool</code>) where it names none.</p>
+<p>Every family this view reads, whole (a package holds a family whole: a child’s events lie on its root’s axis), its rows and contents read when asked. The rows recording where a child lies (a <code>Segment</code> row named by a timeline of the family) are left out; a user’s <code>Segment</code> row, an event like any other, is kept, naming the family’s parse of events made in code (:meth:<code>Parse.of_tool</code>) where it names none.</p>
 <section id="parameters-4" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-4">Parameters</h4>
 <table class="caption-top table">
@@ -1935,9 +1935,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-2">Returns</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 5%">
-<col style="width: 47%">
-<col style="width: 47%">
+<col style="width: 6%">
+<col style="width: 48%">
+<col style="width: 44%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -1950,7 +1950,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td></td>
 <td><code>WrittenEvents</code></td>
-<td>The rows, the contents per timeline and kind, the extractions</td>
+<td>The rows, the contents per timeline and kind, the parses</td>
 </tr>
 <tr class="even">
 <td></td>

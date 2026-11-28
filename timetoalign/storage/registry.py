@@ -9,11 +9,11 @@ holds two things for every event:
 - a **registry row** in the columns of :data:`REGISTRY_SCHEMA`: the event's
   ID, its kind (its event type), the timeline holding it, its ``start`` and
   ``duration`` on the axis of the family's **root**, the axis's unit and
-  number type, its name, and the :class:`Extraction` that made it, with
+  number type, and the :class:`Extraction` that made it, with
   the parser's ``locator`` of the event in its source and, after an
   update, the extraction that no longer found it (``vanished_in``);
-- its **content**, the event's own columns (a note's pitch, a Box's shape),
-  in the timeline's own coordinates: :attr:`Timeline.events
+- its **content**, the event's own columns (its name, a note's pitch, a
+  Box's shape), in the timeline's own coordinates: :attr:`Timeline.events
   <timetoalign.timelines.Timeline.events>` is an :class:`EventData` of
   them, positions local to the timeline.
 
@@ -118,7 +118,6 @@ REGISTRY_SCHEMA = pa.schema(
         pa.field("number_type", pa.string()),
         pa.field("start", RATIONAL_STRUCT_TYPE),
         pa.field("duration", RATIONAL_STRUCT_TYPE),
-        pa.field("name", pa.string()),
         pa.field("extraction_id", pa.string()),
         pa.field("locator", pa.string()),
         pa.field("vanished_in", pa.string()),
@@ -138,13 +137,13 @@ _REGISTRY_COLUMNS = tuple(REGISTRY_SCHEMA.names)
 _RESERVED_COLUMNS = ("locator", "extraction_id")
 
 NOT_CONTENT_COLUMNS = frozenset(
-    {"start", "end", "duration", "instant", "temporal_type", "event_type", "name"}
+    {"start", "end", "duration", "instant", "temporal_type", "event_type"}
 )
 """The columns of an event that are its registry row's, never its content.
 
-Its position, its type and its name: an event's content
+Its position and its type: an event's content
 (:meth:`EventRegistry.content`, a pre-parsed table) is every other column
-but ``id``, which keys it.
+but ``id``, which keys it, its name among them.
 """
 
 EXTRACTION_SCHEMA = pa.schema(
@@ -1049,7 +1048,6 @@ class _Family:
                 _repeated_string(self.number_type.name, n),
                 _shifted(_cells(table, "start"), path, self.number_type),
                 _cells(table, "duration"),
-                _strings(table, "name"),
                 stated,
                 locator,
                 vanished,
@@ -1526,7 +1524,8 @@ class _Family:
         base = make_base_schema(self.unit, number_type=number_type)
         columns: dict[str, pa.Array] = {
             "id": rows.column("id").combine_chunks(),
-            "name": _strings(rows, "name"),
+            # The name is content: filled from each kind's content below.
+            "name": pa.nulls(rows.num_rows, pa.string()),
             "temporal_type": pc.if_else(
                 duration.is_valid(), pa.scalar("interval"), pa.scalar("instant")
             ),
@@ -1548,6 +1547,17 @@ class _Family:
                     table.column("id"), value_set=content.column("id").combine_chunks()
                 )
                 for field_ in content.schema:
+                    if field_.name == "name":
+                        place = table.schema.get_field_index("name")
+                        table = table.set_column(
+                            place,
+                            table.schema.field(place),
+                            content.column("name")
+                            .combine_chunks()
+                            .take(found)
+                            .cast(pa.string()),
+                        )
+                        continue
                     if field_.name == "id" or field_.name in columns:
                         continue
                     table = table.append_column(
@@ -2105,8 +2115,8 @@ class EventRegistry:
         """The content of this view's events of *kind*, keyed by ``id``.
 
         The columns of the events' own (a pre-parsed table's): ``id`` first,
-        then every column an event of *kind* holds a value in, without its
-        position, type, name or registry columns. One row per event of
+        then every column an event of *kind* holds a value in (its name
+        among them), without its position, type or registry columns. One row per event of
         *kind* this view holds (of *ids* only, if given), in the view's
         order.
         """

@@ -1948,23 +1948,6 @@ def test_a_float_child_ends_at_the_double_sum(manifest: dict[str, Any]) -> None:
         ),
         (
             _root(
-                unit="points",
-                length=PAGE,
-                children=[
-                    {
-                        "id": "system",
-                        "unit": "points",
-                        "number_type": "fraction",
-                        "offset": AT,
-                        "length": _pair(SYSTEM),
-                    }
-                ],
-            ),
-            "child 'system' ends at [65600040932999587, 70368744177664], beyond the "
-            "length 932.2326510101616 of its parent 'page'",
-        ),
-        (
-            _root(
                 unit="ticks",
                 length=2**53,
                 children=[
@@ -1975,7 +1958,7 @@ def test_a_float_child_ends_at_the_double_sum(manifest: dict[str, Any]) -> None:
             "9007199254740992 of its parent 'page'",
         ),
     ],
-    ids=["fraction", "mixed", "int"],
+    ids=["fraction", "int"],
 )
 def test_any_other_child_ends_at_the_exact_sum(
     manifest: dict[str, Any], message: str
@@ -1986,6 +1969,30 @@ def test_any_other_child_ends_at_the_exact_sum(
         "child_end",
         "#/timelines/0/children/0/length",
         message,
+    )
+
+
+def test_a_child_of_another_number_type_is_refused_before_its_end() -> None:
+    manifest = _root(
+        unit="points",
+        length=PAGE,
+        children=[
+            {
+                "id": "system",
+                "unit": "points",
+                "number_type": "fraction",
+                "offset": AT,
+                "length": _pair(SYSTEM),
+            }
+        ],
+    )
+    with pytest.raises(ValueError) as refused:
+        Timeline.from_dict(filed(manifest))
+    assert refusal(refused.value) == (
+        "child_number_type",
+        "#/timelines/0/children/0/number_type",
+        "child 'system' has the number type 'fraction', its parent 'page' has "
+        "'float'",
     )
 
 

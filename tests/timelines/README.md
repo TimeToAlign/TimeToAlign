@@ -447,13 +447,17 @@ the library writes back against the same literal text.
   of length `855.5289364103584` ends, in doubles, exactly at the page's
   length, while the exact sum lies one rounding beyond it: the page is read,
   and so is a segment line whose second segment ends there. The same values
-  as Fraction pairs on a `fraction` page, and the same float page holding a
-  `fraction` child, are refused with the exact end
+  as Fraction pairs on a `fraction` page are refused with the exact end
   `[65600040932999587, 70368744177664]`; a `ticks` parent of length `2**53`
   holding a child at offset 1 of length `2**53` is refused with `ends at
   9007199254740993`, although the double sum would round back to `2**53`.
   A reader summing exactly everywhere fails the first two cases, one summing
-  in doubles everywhere the last three.
+  in doubles everywhere the last two. The same float page holding a
+  `fraction` child is refused before any end is summed, since a child has
+  its parent's number type (`child_number_type` at
+  `#/timelines/0/children/0/number_type`: `child 'system' has the number
+  type 'fraction', its parent 'page' has 'float'`); a reader accepting it
+  and summing the mixed pair fails.
 - **Ids are free; a length is not negative.** An id is any non-empty
   string without a control character, so the words that name the parts and
   facets of a drawn timeline are ids like any other: `start` as a root id,

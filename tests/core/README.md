@@ -1105,7 +1105,7 @@ timeline is tested in `tests/timelines/test_projections.py`.
   trip every Projection equals the one written and every cell names its own
   unit and number type. An empty field has the field's struct type.
 - **TimeToShare's fixture package** (`timetoshare.tables.fixture_path`,
-  shipped with the installed package; never skipped): its registry
+  which the installed package holds; never skipped): its registry
   (`registry.parquet`, each event's position once on the axis of its
   timeline's root, its `unit` and `number_type` once) and its pre-parsed
   Projection table (`projections.parquet`, `id` and `projection_of`).

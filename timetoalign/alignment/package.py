@@ -17,7 +17,6 @@ import re
 import shutil
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
-from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote, unquote, urlsplit
@@ -32,8 +31,8 @@ from timetoshare import loads
 from timetoshare.tables import (
     ELEMENT_KINDS,
     EXTRACTION_SCHEMA,
-    INDEX_KINDS,
-    INDEX_PART,
+    NON_EVENT_KINDS,
+    NON_EVENT_PART,
     PACKAGE_FILE,
     PROVENANCE_METADATA_KEY,
     REGISTRY_SCHEMA,
@@ -47,15 +46,15 @@ from timetoshare.tables import (
 from timetoshare.tables import resolve as timetoshare_resolve
 from timetoshare.tables import (
     table_files,
-    write_index,
+    write_non_event_rows,
 )
-from timetoshare.tables.package import index_rows_of, table_index_rows
+from timetoshare.tables.package import non_event_rows_of, table_non_event_rows
 from timetoshare.validation.diagnostics import manifest_ids
 
 from timetoalign.alignment.claim_store import _refuse_shared_claim_ids
 from timetoalign.alignment.claims import MatchClaimField
 from timetoalign.core import NumberType, TimeUnit
-from timetoalign.core.fields import _filled, _null_column
+from timetoalign.core.fields import _filled
 from timetoalign.core.ids import (
     IdMinter,
     _refuse_held_ids,
@@ -64,11 +63,8 @@ from timetoalign.core.ids import (
     seed_from,
     table_seed_part,
 )
-from timetoalign.core.time import combine_number_columns
-from timetoalign.storage.events import BOX_EVENT_TYPE, _extreme_coordinate
-from timetoalign.storage.registry import Extraction, _runs, extraction_table
+from timetoalign.storage.registry import Extraction, extraction_table
 from timetoalign.timelines import TimelineGroup
-from timetoalign.timelines.groups import _held_ids
 from timetoalign.timelines.manifest import (
     _NEW_FILE,
     ALWAYS_WRITTEN_KINDS,
@@ -84,8 +80,10 @@ from timetoalign.timelines.manifest import (
     _validated_by_the_file,
     _write_package_file,
     content_in_memory,
+    distinct_strings,
     event_tables,
-    index_table,
+    joined_parts,
+    non_event_table,
     pre_parsed_file_name,
     pre_parsed_schema,
     registry_rows_in_memory,
@@ -130,12 +128,14 @@ def _merged_resources(
             carried.append((bundle, resource))
     if not carried:
         return []
-    taken = _held_ids(
-        member for bundle in bundles for member in bundle._scope_members()
-    )
+    taken: dict[str, str] = {}
     for bundle in bundles:
-        for group_id in bundle.groups:
-            taken.setdefault(group_id, f"group {quote_id(group_id)}")
+        # Every ID of the bundle's trees and groups; the bundle's own ID is
+        # not carried into the merge.
+        itself = f"bundle {quote_id(bundle.id)}"
+        for held_id, holder in bundle._scope_ids().items():
+            if held_id != bundle.id or holder != itself:
+                taken.setdefault(held_id, holder)
     taken.setdefault(merged.id, f"bundle {quote_id(merged.id)}")
     _refuse_held_ids(
         [
@@ -259,53 +259,158 @@ def _location_path(root: Path, location: str) -> Path | None:
     return resource_path(root, location)
 
 
-def _string_values(column: pa.ChunkedArray | pa.Array) -> list[str]:
-    """The distinct strings of *column*, nulls left out, sorted."""
-    return sorted(
-        str(value) for value in pc.unique(column).to_pylist() if value is not None
+def _reference(path: Path, root: Path) -> str:
+    """*path* as a source a package lying at *root* names: its path from
+    *root* (a URI reference resolved against it) where it lies under it,
+    else its ``file:`` URI."""
+    absolute = path.resolve()
+    try:
+        inside = absolute.relative_to(root.resolve())
+    except ValueError:
+        return absolute.as_uri()
+    return quote(inside.as_posix(), safe="/")
+
+
+def _file_path(text: str) -> Path | None:
+    """The local path a source *text* names (a path, or a ``file:`` URI),
+    None for a URI of another scheme."""
+    parts = urlsplit(text)
+    if parts.scheme and len(parts.scheme) > 1:
+        if parts.scheme != "file" or parts.netloc not in ("", "localhost"):
+            return None
+        return Path(url2pathname(parts.path))
+    return Path(text)
+
+
+def _source_written(source: str | None, root: Path) -> str | None:
+    """An extraction's *source* as a package lying at *root* (a manifest
+    alone: its folder) writes it, so that the package names no path of the
+    machine that wrote it where its source lies in it.
+
+    A file lying under *root* is written as its path from *root*, a URI
+    reference resolved against it; any other file as its ``file:`` URI; a
+    member of a ZIP archive (``jar:<archive URI>!/<member>``) keeps its
+    member, its archive written by the same rule; a URI of any other scheme
+    as it stands. A source as the library holds it is a path (absolute, or
+    relative to the current folder) or a ``jar:`` URI
+    (:meth:`Extraction.of_source <timetoalign.storage.Extraction.of_source>`).
+
+    Examples:
+        >>> from pathlib import Path
+        >>> root = Path("/data/package")
+        >>> _source_written("/data/package/scores/a b.mid", root)
+        'scores/a%20b.mid'
+        >>> _source_written("/elsewhere/a.mid", root)
+        'file:///elsewhere/a.mid'
+        >>> _source_written("jar:file:///data/package/MTD.zip!/MTD/x.mid", root)
+        'jar:MTD.zip!/MTD/x.mid'
+    """
+    if source is None:
+        return None
+    if source.startswith("jar:"):
+        archive, mark, member = source.removeprefix("jar:").partition("!/")
+        path = _file_path(archive)
+        if path is None or not mark:
+            return source
+        return f"jar:{_reference(path, root)}{mark}{member}"
+    path = _file_path(source)
+    return source if path is None else _reference(path, root)
+
+
+def _source_read(source: str | None, root: Path) -> str | None:
+    """An extraction's *source* read from a package lying at *root*, as the
+    library holds a source (the inverse of :func:`_source_written`): a
+    reference resolved against *root*, a ``file:`` URI as its path, an
+    archive's member with its archive's ``file:`` URI; a URI of any other
+    scheme as it stands.
+
+    Examples:
+        >>> from pathlib import Path
+        >>> root = Path("/data/package")
+        >>> _source_read("scores/a%20b.mid", root)
+        '/data/package/scores/a b.mid'
+        >>> _source_read("file:///elsewhere/a.mid", root)
+        '/elsewhere/a.mid'
+        >>> _source_read("jar:MTD.zip!/MTD/x.mid", root)
+        'jar:file:///data/package/MTD.zip!/MTD/x.mid'
+    """
+    if source is None:
+        return None
+    if source.startswith("jar:"):
+        archive, mark, member = source.removeprefix("jar:").partition("!/")
+        if not mark or urlsplit(archive).scheme:
+            return source
+        return f"jar:{(root / unquote(archive)).as_uri()}{mark}{member}"
+    parts = urlsplit(source)
+    if parts.scheme and len(parts.scheme) > 1:
+        path = _file_path(source)
+        return source if path is None else path.as_posix()
+    return (root / unquote(source)).as_posix()
+
+
+def _extraction_written(extraction: Extraction, root: Path) -> Extraction:
+    """*extraction* with its source as a package lying at *root* writes it."""
+    source = _source_written(extraction.source, root)
+    return (
+        extraction
+        if source == extraction.source
+        else replace(extraction, source=source)
+    )
+
+
+def _extraction_read(extraction: Extraction, root: Path) -> Extraction:
+    """*extraction* read from a package lying at *root*, its source as the
+    library holds it."""
+    source = _source_read(extraction.source, root)
+    return (
+        extraction
+        if source == extraction.source
+        else replace(extraction, source=source)
     )
 
 
 def _read_extractions(
     registries: Sequence[Path], root: Path, named: Sequence[str], what: str
 ) -> dict[str, Extraction]:
-    """The extractions *named*, read from the Extraction tables the index
-    rows of the registries lying at *registries* (every one the manifest
-    names) locate, each by ID.
+    """The extractions *named*, read from the Extraction tables the
+    non-event rows of the registries lying at *registries* (every one the
+    manifest names) locate, each by ID.
 
     Raises:
-        ValueError: If an extraction is located by no index row, or its
+        ValueError: If an extraction is located by no non-event row, or its
             table holds no row of it.
         timetoshare.tables.TableError: If an Extraction table breaks a rule.
     """
     if not named:
         return {}
-    index = pa.concat_tables(
+    located = pa.concat_tables(
         [read_table(path, ids=named, type="Registry") for path in registries],
         promote_options="default",
     )
-    index = index.filter(
+    located = located.filter(
         _filled(
-            pc.equal(index.column("kind"), pa.scalar("Extraction")), pa.scalar(False)
+            pc.equal(located.column("kind"), pa.scalar("Extraction")), pa.scalar(False)
         )
     )
     found: dict[str, Extraction] = {}
-    for location in _string_values(index.column("location")):
+    for location in distinct_strings(located.column("location")):
         path = _location_path(root, location)
         if path is None or not path.exists():
             continue
-        ids = index.filter(pc.equal(index.column("location"), pa.scalar(location)))
+        ids = located.filter(pc.equal(located.column("location"), pa.scalar(location)))
         table = read_table(
-            path, ids=_string_values(ids.column("id")), type="Extraction"
+            path, ids=distinct_strings(ids.column("id")), type="Extraction"
         )
         check_extractions(table)
         for row in table.to_pylist():
-            found.setdefault(row["id"], Extraction.from_row(row))
+            found.setdefault(
+                row["id"], _extraction_read(Extraction.from_row(row), root)
+            )
     missing = [extraction_id for extraction_id in named if extraction_id not in found]
     if missing:
         raise ValueError(
             f"The events of {what} name the extraction {quote_id(missing[0])}, which "
-            f"no Extraction table its index locates holds: an event names the "
+            f"no Extraction table its non-event rows locate holds: an event names the "
             f"extraction that made it."
         )
     return found
@@ -313,7 +418,7 @@ def _read_extractions(
 
 def _content_reader(
     kind: str,
-    entries: list[tuple[Path, list[str]]],
+    entries: list[tuple[Path, pa.Array]],
     unit: Any,
     number_type: Any,
     manifest: Mapping[str, Any] | None,
@@ -352,37 +457,6 @@ def _content_reader(
     return read
 
 
-def _fit_lengths(bundle: AlignmentBundle, rows: pa.Table, family: Any) -> None:
-    """Hold each timeline of *rows* (one family's, on its root's axis) long
-    enough for its rows, as a source's rows are held
-    (``Timeline._ensure_capacity``): the largest end of each, made local by
-    the offsets of the timeline's ancestors.
-
-    Raises:
-        ValueError: If a row ends past the length of a locked timeline.
-    """
-    number_type = family.number_type
-    for timeline_id in _string_values(rows.column("timeline_id")):
-        part = rows.filter(pc.equal(rows.column("timeline_id"), pa.scalar(timeline_id)))
-        start = part.column("start").combine_chunks()
-        duration = part.column("duration").combine_chunks()
-        ends = combine_number_columns(start, duration, "add", number_type)
-        ends = pc.if_else(duration.is_valid(), ends, start)
-        values = pc.struct_field(ends, "value")
-        if values.null_count == len(values):
-            continue
-        end = _extreme_coordinate(
-            pa.chunked_array([ends]),
-            pa.chunked_array([values]),
-            pc.max(values),
-            number_type,
-            max,
-        )
-        for offset in family.paths[timeline_id]:
-            end = end - offset
-        bundle._require_known_timeline(timeline_id)._ensure_capacity(end)
-
-
 def _install_registry(
     bundle: AlignmentBundle,
     resource: Resource,
@@ -394,7 +468,14 @@ def _install_registry(
 ) -> bool:
     """Install the event rows of the registry *resource* names (lying at
     *path*) in the families of the bundle's timelines (``_read_tables``),
-    their extractions located by the index rows of *registries*.
+    their extractions located by the non-event rows of *registries*.
+
+    Each family takes its rows through its registry
+    (:meth:`EventRegistry.add_rows <timetoalign.storage.EventRegistry.add_rows>`),
+    which passes over a row the manifest states already, holds each
+    timeline long enough for its rows and checks every Box against its
+    shape; its content is read from the pre-parsed tables the rows locate
+    when the family's events are first read.
 
     Returns:
         Whether a row is of a kind other than Projection and Box.
@@ -403,34 +484,26 @@ def _install_registry(
     rows = read_table(
         path, timelines=resource.timelines if filtered else None, type="Registry"
     )
-    events = rows.filter(
-        pc.invert(
-            _filled(
-                pc.is_in(rows.column("kind"), value_set=pa.array(INDEX_KINDS)),
-                pa.scalar(False),
-            )
-        )
-    )
+    events = rows.filter(pc.invert(_is_non_event(rows)))
     check_registry(events, manifest)
     if not events.num_rows:
         return False
     memory = registry_rows_in_memory(events, what)
     named = sorted(
         {
-            *_string_values(memory.column("extraction_id")),
-            *_string_values(memory.column("vanished_in")),
+            *distinct_strings(memory.column("extraction_id")),
+            *distinct_strings(memory.column("vanished_in")),
         }
     )
     extractions = _read_extractions(registries, root, named, what)
     timelines = memory.column("timeline_id").combine_chunks()
-    families: dict[int, tuple[Any, list[np.ndarray]]] = {}
-    for timeline_id, at in _runs(timelines):
-        family = bundle._require_known_timeline(str(timeline_id))._registry._family
-        families.setdefault(id(family), (family, []))[1].append(at)
-    for family, positions in families.values():
-        at = np.sort(np.concatenate(positions))
-        own = _not_stated_already(memory.take(pa.array(at, pa.int64())), family)
-        located: dict[str, list[tuple[Path, list[str]]]] = {}
+    held = pc.unique(timelines)
+    roots = [bundle._root_of(str(timeline_id)) for timeline_id in held.to_pylist()]
+    root_ids = pa.array([family.id for family in roots], pa.string())
+    family_of = root_ids.take(pc.index_in(timelines, value_set=held))
+    for family in {family.id: family for family in roots}.values():
+        own = memory.filter(pc.equal(family_of, pa.scalar(family.id)))
+        located: dict[str, list[tuple[Path, pa.Array]]] = {}
         stored = own.filter(own.column("location").is_valid())
         for (kind, location), where in _pairs(stored):
             target = _location_path(root, location)
@@ -444,9 +517,7 @@ def _install_registry(
                     f"{location!r}, where no table lies in the package."
                 )
             ids = stored.column("id").combine_chunks().take(pa.array(where, pa.int64()))
-            located.setdefault(kind, []).append(
-                (target, [str(value) for value in ids.to_pylist()])
-            )
+            located.setdefault(kind, []).append((target, ids))
         contents = {
             kind: _content_reader(
                 kind,
@@ -460,73 +531,17 @@ def _install_registry(
             for kind, entries in located.items()
         }
         own_named = {
-            *_string_values(own.column("extraction_id")),
-            *_string_values(own.column("vanished_in")),
+            *distinct_strings(own.column("extraction_id")),
+            *distinct_strings(own.column("vanished_in")),
         }
-        _fit_lengths(bundle, own, family)
-        bundle._require_known_timeline(family.root_id)._registry.add_rows(
+        family.registry.add_rows(
             own,
             contents,
             [extractions[key] for key in sorted(own_named)],
             registered=True,
         )
-        boxes = own.filter(pc.equal(own.column("kind"), pa.scalar(BOX_EVENT_TYPE)))
-        for timeline_id in _string_values(boxes.column("timeline_id")):
-            # A Box read passes the check every Box added passes: its shape
-            # read with it, never trusted over its position.
-            timeline = bundle._require_known_timeline(timeline_id)
-            events = timeline.events
-            timeline._refuse_boxes_off_their_shapes(
-                events, events.table.column("id").to_pylist()
-            )
-    kinds = set(_string_values(memory.column("kind")))
+    kinds = set(distinct_strings(memory.column("kind")))
     return bool(kinds - set(ALWAYS_WRITTEN_KINDS))
-
-
-def _not_stated_already(rows: pa.Table, family: Any) -> pa.Table:
-    """The registry *rows* of one family but those its timelines hold already:
-    a row whose ID the family holds on the same timeline, as the same kind at
-    the same root position (``start`` and ``duration`` compared exactly), is
-    the event a manifest's own event rows state, which is kept; a row whose
-    ID the family holds otherwise is refused (by ``add_rows``)."""
-    held = family.table()
-    if not held.num_rows or not rows.num_rows:
-        return rows
-    held_ids = held.column("id").combine_chunks()
-    hits = _flat(
-        _filled(pc.is_in(rows.column("id"), value_set=held_ids), pa.scalar(False))
-    )
-    if not pc.any(hits).as_py():
-        return rows
-    at = pc.index_in(rows.column("id"), value_set=held_ids)
-
-    def flags(array: Any) -> np.ndarray:
-        return np.asarray(
-            _flat(_filled(array, pa.scalar(False))).to_numpy(zero_copy_only=False),
-            dtype=bool,
-        )
-
-    same = flags(hits)
-    for name in ("timeline_id", "kind"):
-        same &= flags(pc.equal(rows.column(name), held.column(name).take(at)))
-    for name in ("start", "duration"):
-        mine = rows.column(name).combine_chunks()
-        theirs = held.column(name).combine_chunks().take(at)
-        both_null = flags(pc.and_(mine.is_null(), theirs.is_null()))
-        equal = flags(
-            pc.and_(
-                pc.equal(
-                    pc.struct_field(mine, "numerator"),
-                    pc.struct_field(theirs, "numerator"),
-                ),
-                pc.equal(
-                    pc.struct_field(mine, "denominator"),
-                    pc.struct_field(theirs, "denominator"),
-                ),
-            )
-        )
-        same &= both_null | equal
-    return rows.filter(pa.array(~same))
 
 
 def _pairs(rows: pa.Table) -> list[tuple[tuple[str, str], np.ndarray]]:
@@ -597,46 +612,69 @@ def _held_entry(tabled: Sequence[Resource], table_type: str) -> Resource | None:
     return next((resource for resource in tabled if resource.type == table_type), None)
 
 
-def _index_of(
+def _non_event_rows_of(
     manifest: Mapping[str, Any],
     location: str,
     claims: tuple[pa.Array, str] | None,
     extractions: tuple[pa.Array, str] | None,
 ) -> pa.Table:
-    """The index rows of a manifest written (in the file form) at
+    """The non-event rows of a manifest written (in the file form) at
     *location*, of its MatchClaims and of its extractions (their IDs and
     their table's URL), in the Registry's columns, sorted by ``location``,
     then ``id``."""
-    parts = [index_rows_of(timetoshare.with_bare_ids(manifest), location)]
+    parts = [non_event_rows_of(timetoshare.with_bare_ids(manifest), location)]
     for given, kind in ((claims, "MatchClaim"), (extractions, "Extraction")):
         if given is not None:
-            parts.append(table_index_rows(given[0], kind, given[1]))
+            parts.append(table_non_event_rows(given[0], kind, given[1]))
     joined = pa.concat_tables(parts).sort_by(
         [("location", "ascending"), ("id", "ascending")]
     )
-    return index_table(joined)
+    return non_event_table(joined)
 
 
-def _kept_extractions(tables: EventTables, target: Path) -> pa.Table:
-    """The Extraction table of *tables* to write at *target*: an extraction
-    the table lying there holds under its ID, of the same content but its
-    date, is that extraction, written with the date it was first written
-    with; every other as the bundle holds it."""
+def _kept_extractions(tables: EventTables, target: Path, root: Path) -> pa.Table:
+    """The Extraction table of *tables* to write at *target*, for a manifest
+    alone in the folder *root*: each source written as that folder holds it
+    (:func:`_source_written`); an extraction the table lying there holds
+    under its ID, of the same content but its date, is that extraction,
+    written with the date it was first written with; every other as the
+    bundle holds it."""
     held: dict[str, Extraction] = {}
     if target.is_file():
         for row in read_table(target, type="Extraction").to_pylist():
             held.setdefault(row["id"], Extraction.from_row(row))
-    rows = [
-        (
-            held[extraction.id]
-            if extraction.id in held
-            and _undated(held[extraction.id]) == _undated(extraction)
-            else extraction
-        )
-        for extraction in tables.extractions
-    ]
+    rows = []
+    for extraction in tables.extractions:
+        extraction = _extraction_written(extraction, root)
+        kept = held.get(extraction.id)
+        same = kept is not None and _undated(kept) == _undated(extraction)
+        rows.append(kept if kept is not None and same else extraction)
     table = extraction_table(rows).cast(EXTRACTION_SCHEMA)
     return table.replace_schema_metadata({TYPE_METADATA_KEY: "Extraction"})
+
+
+def _stale_pre_parsed(registry: Path, root: Path, written: set[Path]) -> list[Path]:
+    """The pre-parsed files the registry lying at *registry* (a manifest's
+    alone in the folder *root*) locates that the write replacing it does not
+    write (*written*): the files of the kinds the new registry no longer
+    holds, which nothing would name once it is written. A file outside the
+    folder is never one of them."""
+    if not registry.is_file():
+        return []
+    names = pq.read_schema(registry).names
+    if "location" not in names or "kind" not in names:
+        return []
+    rows = pq.read_table(registry, columns=["kind", "location"])
+    rows = rows.filter(pc.invert(_is_non_event(rows)))
+    stale: list[Path] = []
+    for location in distinct_strings(rows.column("location")):
+        target = _location_path(root, location)
+        if target is None or target in written or not target.is_file():
+            continue
+        if not target.resolve().is_relative_to(root.resolve()):
+            continue
+        stale.append(target)
+    return stale
 
 
 def _write_tables(self: AlignmentBundle, path: Path, *, events: bool = False) -> bool:
@@ -728,23 +766,35 @@ def _write_tables(self: AlignmentBundle, path: Path, *, events: bool = False) ->
         extraction_ids = pa.array(
             [extraction.id for extraction in tables.extractions], pa.string()
         )
-        index = _index_of(
+        non_events = _non_event_rows_of(
             manifest,
             quote(path.name),
             claim_ids,
             (extraction_ids, extraction_url) if len(extraction_ids) else None,
         )
-        registry = pa.concat_tables([index, rows]).replace_schema_metadata(
+        registry = pa.concat_tables([non_events, rows]).replace_schema_metadata(
             {TYPE_METADATA_KEY: "Registry"}
         )
         files.append((resource_path(directory, planned["Registry"].url), registry, ()))
         if len(extraction_ids):
             target = resource_path(directory, extraction_url)
-            files.append((target, _kept_extractions(tables, target), ()))
+            files.append((target, _kept_extractions(tables, target, directory), ()))
         for kind, content in tables.contents.items():
             files.append((resource_path(directory, urls[kind]), content, ()))
+    stale = (
+        _stale_pre_parsed(
+            resource_path(directory, planned["Registry"].url),
+            directory,
+            {target for target, _, _ in files},
+        )
+        if with_events
+        else []
+    )
     undo = _Undo()
     try:
+        for target in stale:
+            undo.keep(target)
+            target.unlink()
         hidden: list[tuple[Path, Path]] = []
         for target, table, sorted_by in files:
             undo.folder(target.parent)
@@ -960,13 +1010,6 @@ class _Written:
     removed: frozenset[str]
     carried: dict[str, _Copy]
 
-    @cached_property
-    def id_pairs(self) -> dict[bool, list[tuple[str, str]]]:
-        """The IDs of the events (``False``) and of the MatchClaims
-        (``True``), each with its timeline (:func:`_id_pairs`), converted
-        once."""
-        return {claims: _id_pairs(self, claims) for claims in (False, True)}
-
 
 def _collision(
     what: str, held_id: str, timeline: str, url: str, holder: str, place: str
@@ -995,59 +1038,149 @@ def _id_columns(written: _Written, claims: bool) -> tuple[pa.Array, pa.Array]:
     )
 
 
-def _id_pairs(written: _Written, claims: bool) -> list[tuple[str, str]]:
-    """Each ID of *written*'s MatchClaims (with *claims*) or of its events
-    with the timeline it lies on, in table order (no ID is null)."""
-    ids, timelines = _id_columns(written, claims)
-    return [
-        (held_id, timeline_id)
-        for held_id, timeline_id in zip(
-            ids.to_pylist(), timelines.to_pylist(), strict=True
-        )
-        if isinstance(held_id, str) and isinstance(timeline_id, str)
-    ]
-
-
 @dataclass(frozen=True)
-class _Ids:
-    """The IDs a package holds on disk besides a bundle being written: its
-    rows' (``id`` and the timeline each lies on) and each holder's place."""
+class _Level:
+    """One sorted run of the IDs an :class:`_Ids` holds.
 
-    ids: pa.Array
+    Attributes:
+        ids: The IDs, sorted (code point order, Arrow's and Python's alike),
+            as a NumPy array of strings for binary search.
+        timelines: Row for row, the timeline each lies on.
+        place: Row for row, the index of its holder's place.
+    """
+
+    ids: np.ndarray
     timelines: pa.Array
-    places: list[str]
-    place: pa.Array
+    place: np.ndarray
+
+    @classmethod
+    def of(cls, ids: pa.Array, timelines: pa.Array, place: pa.Array) -> _Level:
+        """The level of *ids* (with their timelines and places), sorted."""
+        order = pc.sort_indices(ids)
+        return cls(
+            np.asarray(ids.take(order).to_numpy(zero_copy_only=False), dtype=object),
+            timelines.take(order),
+            np.asarray(place.take(order).to_numpy(zero_copy_only=False)),
+        )
+
+    def __len__(self) -> int:
+        return len(self.ids)
+
+
+class _Ids:
+    """IDs held in a package besides a bundle being written, each with the
+    timeline it lies on and its holder's place: those of the files on disk,
+    or of the bundles staged.
+
+    The IDs are held in sorted levels, whose sizes at least halve from one
+    to the next: adding a holder's IDs adds a level and joins the last
+    levels while one is at most twice the size of the next, so each ID is
+    sorted again a logarithmic number of times, and refusing a bundle's IDs
+    searches each level once (a binary search per ID), whatever the number
+    of holders. Removing a holder filters every level.
+    """
+
+    def __init__(self) -> None:
+        self._levels: list[_Level] = []
+        self._places: list[str] = []
+        self._place_of: dict[str, int] = {}
 
     @classmethod
     def of(cls, parts: list[tuple[pa.Table, str]], column: str) -> _Ids:
         """The IDs of *parts*, each a table of ``id`` and *column* with the
-        place its rows lie in."""
-        ids = [table.column("id").combine_chunks() for table, _ in parts]
-        timelines = [table.column(column).combine_chunks() for table, _ in parts]
-        place = [
-            pa.repeat(pa.scalar(index, pa.int64()), table.num_rows)
-            for index, (table, _) in enumerate(parts)
+        place its rows lie in, in one level."""
+        held = cls()
+        if not parts:
+            return held
+        places = [
+            pa.repeat(pa.scalar(held._place(where), pa.int64()), table.num_rows)
+            for table, where in parts
         ]
-        return cls(
-            pa.concat_arrays(ids) if ids else pa.array([], pa.string()),
-            pa.concat_arrays(timelines) if timelines else pa.array([], pa.string()),
-            [where for _, where in parts],
-            pa.concat_arrays(place) if place else pa.array([], pa.int64()),
+        held._push(
+            _Level.of(
+                pa.concat_arrays(
+                    [table.column("id").combine_chunks() for table, _ in parts]
+                ),
+                pa.concat_arrays(
+                    [table.column(column).combine_chunks() for table, _ in parts]
+                ),
+                pa.concat_arrays(places),
+            )
         )
+        return held
 
-    def refuse(self, ids: pa.Array, timelines: pa.Array, what: str, url: str) -> None:
+    def _place(self, where: str) -> int:
+        """The index of the place *where*, held from now on."""
+        if where not in self._place_of:
+            self._place_of[where] = len(self._places)
+            self._places.append(where)
+        return self._place_of[where]
+
+    def _push(self, level: _Level) -> None:
+        """Hold *level*, joining the last levels while one is not more than
+        twice the next."""
+        if not len(level):
+            return
+        self._levels.append(level)
+        while len(self._levels) > 1 and len(self._levels[-2]) <= 2 * len(
+            self._levels[-1]
+        ):
+            last, before = self._levels.pop(), self._levels.pop()
+            self._levels.append(
+                _Level.of(
+                    pa.array(np.concatenate([before.ids, last.ids]), pa.string()),
+                    pa.concat_arrays([before.timelines, last.timelines]),
+                    pa.array(np.concatenate([before.place, last.place]), pa.int64()),
+                )
+            )
+
+    def add(self, ids: pa.Array, timelines: pa.Array, where: str) -> None:
+        """Hold *ids*, each on the timeline of *timelines*, held at *where*."""
+        place = pa.repeat(pa.scalar(self._place(where), pa.int64()), len(ids))
+        self._push(_Level.of(ids, timelines, place))
+
+    def remove(self, where: str) -> None:
+        """Hold none of the IDs held at *where* any more."""
+        place = self._place_of.get(where)
+        if place is None:
+            return
+        levels = self._levels
+        self._levels = []
+        for level in levels:
+            kept = level.place != place
+            if kept.all():
+                self._levels.append(level)
+            elif kept.any():
+                self._levels.append(
+                    _Level(
+                        level.ids[kept],
+                        level.timelines.filter(pa.array(kept)),
+                        level.place[kept],
+                    )
+                )
+
+    def refuse(
+        self,
+        ids: pa.Array,
+        timelines: pa.Array,
+        what: str,
+        url: str,
+        *,
+        twice: bool = True,
+    ) -> None:
         """Refuse *ids* (each on the timeline of *timelines*, of the manifest
-        at *url*) where one is held here or two of them are one.
+        at *url*) where one is held here at another place than the manifest
+        at *url*, or (with *twice*) two of them are one.
 
         Raises:
             ValueError: Naming the first such ID and both holders.
         """
-        order = pc.sort_indices(ids).to_numpy()
-        ordered = ids.take(order)
-        if len(ordered) > 1:
-            twice = pc.equal(ordered.slice(1), ordered.slice(0, len(ordered) - 1))
-            if pc.any(twice).as_py():
-                at = pc.index(twice, True).as_py()
+        if twice and len(ids) > 1:
+            order = pc.sort_indices(ids).to_numpy()
+            ordered = ids.take(order)
+            repeated = pc.equal(ordered.slice(1), ordered.slice(0, len(ordered) - 1))
+            if pc.any(repeated).as_py():
+                at = pc.index(repeated, True).as_py()
                 first, again = sorted((int(order[at]), int(order[at + 1])))
                 raise _collision(
                     what,
@@ -1057,20 +1190,30 @@ class _Ids:
                     timelines[first].as_py(),
                     f"the same manifest {url!r}",
                 )
-        if not len(self.ids):
+        if not self._levels or not len(ids):
             return
-        held = pc.is_in(ids, value_set=self.ids)
-        if not pc.any(held).as_py():
+        own = np.asarray(ids.to_numpy(zero_copy_only=False), dtype=object)
+        itself = self._place_of.get(f"the manifest {url!r}")
+        found: tuple[int, _Level, int] | None = None
+        for level in self._levels:
+            at = np.searchsorted(level.ids, own)
+            near = np.minimum(at, len(level) - 1)
+            hit = (at < len(level)) & (level.ids[near] == own)
+            if itself is not None:
+                hit &= level.place[near] != itself
+            hits = np.flatnonzero(hit)
+            if hits.size and (found is None or hits[0] < found[0]):
+                found = (int(hits[0]), level, int(near[hits[0]]))
+        if found is None:
             return
-        at = pc.index(held, True).as_py()
-        found = pc.index(self.ids, ids[at]).as_py()
+        first, level, holder = found
         raise _collision(
             what,
-            ids[at].as_py(),
-            timelines[at].as_py(),
+            ids[first].as_py(),
+            timelines[first].as_py(),
             url,
-            self.timelines[found].as_py(),
-            self.places[self.place[found].as_py()],
+            level.timelines[holder].as_py(),
+            self._places[int(level.place[holder])],
         )
 
 
@@ -1082,12 +1225,13 @@ class _Staged:
     Attributes:
         owners: The manifest URL owning each timeline ID staged.
         ids: Of the events (``False``) and of the MatchClaims (``True``),
-            the timeline and the manifest URL of each ID staged.
+            each ID staged with its timeline, held at the place
+            ``the manifest '<url>'`` (:class:`_Ids`).
     """
 
     def __init__(self) -> None:
         self.owners: dict[str, str] = {}
-        self.ids: dict[bool, dict[str, tuple[str, str]]] = {False: {}, True: {}}
+        self.ids: dict[bool, _Ids] = {False: _Ids(), True: _Ids()}
         self._staged: dict[str, _Written] = {}
 
     def refuse(self, written: _Written) -> None:
@@ -1113,22 +1257,14 @@ class _Staged:
             scope="the package",
         )
         for claims in (False, True):
-            held = self.ids[claims]
-            pairs = written.id_pairs[claims]
-            hits = held.keys() & {held_id for held_id, _ in pairs}
-            if not hits:
-                continue
-            for held_id, timeline_id in pairs:
-                if held_id in hits and held[held_id][1] != written.url:
-                    holder, url = held[held_id]
-                    raise _collision(
-                        "MatchClaim" if claims else "event",
-                        held_id,
-                        timeline_id,
-                        written.url,
-                        holder,
-                        f"the manifest {url!r}",
-                    )
+            ids, timelines = _id_columns(written, claims)
+            self.ids[claims].refuse(
+                ids,
+                timelines,
+                "MatchClaim" if claims else "event",
+                written.url,
+                twice=False,
+            )
 
     def add(self, written: _Written) -> _Written | None:
         """Stage *written*, in place of the bundle staged at its URL, which is
@@ -1137,10 +1273,8 @@ class _Staged:
         self._staged[written.url] = written
         self.owners.update(dict.fromkeys(written.timelines, written.url))
         for claims in (False, True):
-            self.ids[claims].update(
-                (held_id, (timeline_id, written.url))
-                for held_id, timeline_id in written.id_pairs[claims]
-            )
+            ids, timelines = _id_columns(written, claims)
+            self.ids[claims].add(ids, timelines, f"the manifest {written.url!r}")
         return previous
 
     def remove(self, url: str) -> _Written | None:
@@ -1152,10 +1286,7 @@ class _Staged:
             if self.owners.get(timeline_id) == url:
                 del self.owners[timeline_id]
         for claims in (False, True):
-            held = self.ids[claims]
-            for held_id, _ in previous.id_pairs[claims]:
-                if held.get(held_id, ("", ""))[1] == url:
-                    del held[held_id]
+            self.ids[claims].remove(f"the manifest {url!r}")
         return previous
 
 
@@ -1212,7 +1343,8 @@ class Package:
 
     ``package.yaml`` at the folder's root lists the package's manifests and
     its tables: the **registry** (``registry/``, as this class writes it: an
-    index part ``index.parquet`` of every manifest element, MatchClaim and
+    part of the non-event rows ``non_events.parquet``, one per manifest
+    element, MatchClaim and
     extraction, and one part per extraction of its event rows, each
     position on the axis of its timeline's root), the **Extraction table**
     (``tables/extractions.parquet``), one **pre-parsed table** per kind of
@@ -1400,8 +1532,13 @@ class Package:
         one seeded from the table's content), listed in ``package.yaml``,
         and its resource names the copy; one lying in the package already
         stays where it lies, and equal content lying at its name is that
-        copy. A table resource of a type the bundle holds no rows of and
-        does not carry is refused: the writer has no file to copy.
+        copy. The format reads such a table as the pre-parsed table of its
+        type, keyed by ``id``: a Parquet table without an ``id`` column of
+        strings is the package check's ``foreign_table``, so writing the
+        package raises it and restores the package, while a folder holding
+        no Parquet file (scans, recordings) is carried. A table resource of
+        a type the bundle holds no rows of and does not carry is refused:
+        the writer has no file to copy.
 
         Its events of every kind (:func:`~timetoalign.timelines.manifest.event_tables`)
         go into the registry: one part per extraction, ``registry/<extraction
@@ -1410,16 +1547,23 @@ class Package:
         every manifest, sorted by ``timeline_id``, exact ``start`` and
         ``id``; a part holding the extraction already takes the new rows in,
         rewritten whole. Their extractions go into the Extraction table
-        (``tables/extractions.parquet``, each extraction once), their
+        (``tables/extractions.parquet``, each extraction once, its source
+        written as a path from the package's root where the file lies under
+        it, else as its ``file:`` URI, so that the package names no path of
+        the machine that wrote it; read back, the source is the file's path
+        again), their
         content into the pre-parsed table of their kind and their
         MatchClaims (each row with its own provenance) into the MatchClaim
         table: each write adds one new file per kind and one of MatchClaims,
         ``tables/<Type>/part_<13 base-36 characters>.parquet``, holding the
         rows of every bundle it writes (:meth:`to_file` writes every bundle
         staged at once), named from its content through the library's ID
-        minter, so that a rebuild names its files again. Last, the
-        registry's index part is written from the manifests and tables
-        (``timetoshare.tables.write_index``). A manifest the package holds
+        minter, so that a rebuild names its files again; a column two
+        bundles hold in two types is held in the one type holding both
+        exactly (an ``int8`` and an ``int64`` column as ``int64``), never
+        in a type that may change a value. Last, the
+        registry's non-event rows are written from the manifests and tables
+        (``timetoshare.tables.write_non_event_rows``). A manifest the package holds
         at *url* already is replaced: the rows of its timelines and of the
         bundle's leave the files holding them (a pre-parsed row by the ID
         of its event), each such file rewritten whole (one left without a
@@ -1865,9 +2009,9 @@ class Package:
                     _rows_of(rows, _CLAIM_TIMELINES if claims else (column,), removed)
                 )
                 if not claims and "kind" in columns:
-                    # The index rows hold the IDs of elements, MatchClaims
+                    # The non-event rows hold the IDs of elements, MatchClaims
                     # and extractions, not events.
-                    keep = pc.and_(keep, pc.invert(_is_index(rows)))
+                    keep = pc.and_(keep, pc.invert(_is_non_event(rows)))
                 parts.append((rows.filter(keep).select(["id", column]), f"'{name}'"))
             ids, timelines = _id_columns(written, claims)
             _Ids.of(parts, column).refuse(
@@ -1906,7 +2050,7 @@ class Package:
 
     def _write(self) -> None:
         """Write every bundle staged, then ``package.yaml``, then the
-        registry's index, then check the package whole; restore the package
+        registry's non-event rows, then check the package whole; restore the package
         where anything fails.
 
         In order: the format version of an opened package is checked; the
@@ -1919,8 +2063,8 @@ class Package:
         timelines replaced leave the pre-parsed and MatchClaim files holding
         them (:meth:`_remove_rows`); the new files are renamed into place;
         the tables the bundles carry are copied in and listed; the
-        manifests and ``package.yaml`` are written; the index part is
-        written from them (``timetoshare.tables.write_index``); the package
+        manifests and ``package.yaml`` are written; the non-event rows are
+        written from them (``timetoshare.tables.write_non_event_rows``); the package
         is checked. Where a step raises, every file changed gets its bytes
         back, every file and folder created is removed, and the package's
         document is as it was; the bundles stay staged.
@@ -2024,12 +2168,12 @@ class Package:
             self._path.write_text(
                 timetoshare.dumps(document), encoding="utf-8", newline=""
             )
-            index = resource_path(root, registry_url)
+            non_events = resource_path(root, registry_url)
             if registry_url.endswith("/"):
-                undo.folder(index)
-                index = index / INDEX_PART
-            undo.keep(index)
-            write_index(root)
+                undo.folder(non_events)
+                non_events = non_events / NON_EVENT_PART
+            undo.keep(non_events)
+            write_non_event_rows(root)
             problems = package_problems(self._path)
             if problems:
                 problem = problems[0]
@@ -2081,6 +2225,7 @@ class Package:
         new: dict[str, Extraction] = {}
         for written in pending:
             for extraction in written.extractions:
+                extraction = _extraction_written(extraction, root)
                 known = held.get(extraction.id) or new.get(extraction.id)
                 if known is None:
                     new[extraction.id] = extraction
@@ -2116,7 +2261,7 @@ class Package:
         whole under a hidden name (recorded in *placed*, renamed into place
         later), sorted by ``timeline_id``, exact ``start`` and ``id``, and
         a part left without a row is removed. A registry that is one file
-        is one part, its index rows kept for ``write_index``.
+        is one part, its non-event rows kept for ``write_non_event_rows``.
 
         Returns:
             The IDs of the event rows removed, whose pre-parsed rows go too.
@@ -2129,7 +2274,7 @@ class Package:
             if new
             else REGISTRY_SCHEMA.empty_table()
         )
-        new_extractions = _string_values(rows.column("extraction_id"))
+        new_extractions = distinct_strings(rows.column("extraction_id"))
         if not folder:
             # One file: its rows kept but the timelines removed, the new
             # rows joining them.
@@ -2151,14 +2296,14 @@ class Package:
         parts = [
             file
             for file in (table_files(target) if target.is_dir() else [])
-            if file.name != INDEX_PART
+            if file.name != NON_EVENT_PART
         ]
         removed_ids: list[pa.Array] = []
         taken: set[str] = set()
         for part in parts:
             held = pq.read_table(part, columns=["timeline_id", "extraction_id"])
             gone = _rows_of(held, ("timeline_id",), removed) if removed else None
-            holds = set(_string_values(held.column("extraction_id"))) & (
+            holds = set(distinct_strings(held.column("extraction_id"))) & (
                 set(new_extractions) - taken
             )
             if not holds and (gone is None or not pc.any(gone).as_py()):
@@ -2195,7 +2340,7 @@ class Package:
             name = (
                 f"{extraction_id}.parquet"
                 if _PART_NAME.fullmatch(extraction_id)
-                and f"{extraction_id}.parquet" != INDEX_PART
+                and f"{extraction_id}.parquet" != NON_EVENT_PART
                 and not (target / f"{extraction_id}.parquet").exists()
                 else _file_name("Registry", table, target)
             )
@@ -2212,13 +2357,15 @@ class Package:
     ) -> None:
         """Write the registry part *table* under the hidden name of *part*,
         its event rows sorted, recorded in *placed*."""
-        index = table.filter(_is_index(table))
-        events = _sorted_rows(table.filter(pc.invert(_is_index(table))))
-        joined = pa.concat_tables([index, events], promote_options="default")
+        non_events = table.filter(_is_non_event(table))
+        events = _sorted_rows(table.filter(pc.invert(_is_non_event(table))))
+        joined = pa.concat_tables([non_events, events], promote_options="default")
         joined = joined.replace_schema_metadata({TYPE_METADATA_KEY: "Registry"})
         hidden = part.with_name(f".{part.name}")
         undo.keep(hidden)
-        _write_package_file(joined, hidden, () if index.num_rows else ("timeline_id",))
+        _write_package_file(
+            joined, hidden, () if non_events.num_rows else ("timeline_id",)
+        )
         placed.append((hidden, part))
 
     def _remove_rows(
@@ -2288,11 +2435,11 @@ def _flat(array: Any) -> pa.Array:
     return array.combine_chunks() if isinstance(array, pa.ChunkedArray) else array
 
 
-def _is_index(rows: pa.Table) -> pa.Array:
-    """Row for row, whether a registry row is an index row (its ``kind`` one of
-    the registry's index kinds)."""
+def _is_non_event(rows: pa.Table) -> pa.Array:
+    """Row for row, whether a registry row is a non-event row (its ``kind``
+    one of the registry's non-event kinds)."""
     return _filled(
-        pc.is_in(rows.column("kind"), value_set=pa.array(INDEX_KINDS, pa.string())),
+        pc.is_in(rows.column("kind"), value_set=pa.array(NON_EVENT_KINDS, pa.string())),
         pa.scalar(False),
     )
 
@@ -2360,14 +2507,16 @@ def _sorted(table: pa.Table, kind: str) -> pa.Table:
 def _joined_tables(pending: Sequence[_Written]) -> dict[str, pa.Table]:
     """The pre-parsed table of each kind and the MatchClaim table a package
     writes for the bundles *pending*: the rows of every bundle holding one,
-    in one table, sorted (:func:`_sorted`). The timelines of two bundles are
-    distinct, so each timeline's rows keep the order its bundle's table
-    gives them; a further column joins the declared ones in the order first
-    met.
+    in one table (:func:`~timetoalign.timelines.manifest.joined_parts`, a
+    column two bundles hold in two integer widths widened losslessly),
+    sorted (:func:`_sorted`). The timelines of two bundles are distinct, so
+    each timeline's rows keep the order its bundle's table gives them; a
+    further column joins the first bundle's in the order first met.
 
     Raises:
-        ValueError: If two bundles hold a column of one name in two types,
-            naming the column and both manifests.
+        ValueError: If two bundles hold a column of one name in two types no
+            type holds both of exactly, naming the column and both
+            manifests.
     """
     by_kind: dict[str, list[tuple[str, pa.Table]]] = {}
     for written in pending:
@@ -2375,59 +2524,13 @@ def _joined_tables(pending: Sequence[_Written]) -> dict[str, pa.Table]:
         if written.claims is not None:
             tables["MatchClaim"] = written.claims
         for kind, table in tables.items():
-            by_kind.setdefault(kind, []).append((written.url, table))
-    joined: dict[str, pa.Table] = {}
-    for kind, parts in by_kind.items():
-        schema = _joined_schema(parts[0][1].schema, parts, kind)
-        table = pa.concat_tables(
-            [
-                pa.Table.from_arrays(
-                    [
-                        (
-                            part.column(field.name)
-                            if field.name in part.column_names
-                            else _null_column(part.num_rows, field.type)
-                        )
-                        for field in schema
-                    ],
-                    schema=schema,
-                )
-                for _, part in parts
-            ]
-        )
-        joined[kind] = _sorted(table, kind)
-    return joined
-
-
-def _joined_schema(
-    declared: pa.Schema, parts: list[tuple[str, pa.Table]], kind: str
-) -> pa.Schema:
-    """The columns of the parts of a table of *kind* in one, each part a
-    manifest's (its URL given): the first part's columns, then every
-    further one in the order first met.
-
-    Raises:
-        ValueError: If two parts hold a column of one name in two types.
-    """
-    fields: dict[str, tuple[pa.Field, str | None]] = {
-        column.name: (column, None) for column in declared
+            by_kind.setdefault(kind, []).append(
+                (f"the manifest {written.url!r}", table)
+            )
+    return {
+        kind: _sorted(joined_parts(parts, kind), kind)
+        for kind, parts in by_kind.items()
     }
-    for url, part in parts:
-        for column in part.schema:
-            held = fields.get(column.name)
-            if held is None:
-                fields[column.name] = (column, url)
-            elif held[0].type != column.type:
-                raise ValueError(
-                    f"The {kind} table cannot hold the column {column.name!r} of "
-                    f"the manifest {url!r} ({column.type}): the manifest "
-                    f"{held[1] or parts[0][0]!r} holds it as {held[0].type}, and a "
-                    f"column has one type in a table."
-                )
-    metadata: dict[bytes | str, bytes | str] = {
-        key: value for key, value in (declared.metadata or {}).items()
-    }
-    return pa.schema([column for column, _ in fields.values()], metadata=metadata)
 
 
 def _file_name(kind: str, table: pa.Table, folder: Path) -> str:
@@ -2564,7 +2667,10 @@ def _resolve(target: str | os.PathLike[str], id: str) -> list[Any]:
             table = read_table(
                 resource_path(root, str(location)), ids=[bare], type="Extraction"
             )
-            answers.extend(Extraction.from_row(item) for item in table.to_pylist())
+            answers.extend(
+                _extraction_read(Extraction.from_row(item), root)
+                for item in table.to_pylist()
+            )
         else:
             content = None
             where = None if location is None else _location_path(root, location)

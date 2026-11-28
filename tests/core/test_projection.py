@@ -307,7 +307,7 @@ class TestAxesPerCell:
 
 
 def _fixture_projections() -> pa.Table:
-    """TimeToShare's fixture pre-parsed Projection table, shipped with the installed package."""
+    """TimeToShare's fixture pre-parsed Projection table, which the installed package holds."""
     return pq.read_table(fixture_path("projections.parquet"))
 
 

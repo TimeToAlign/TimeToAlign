@@ -117,8 +117,7 @@ from timetoalign.storage.events import (
     _DECLARED_EXTRA_FIELDS,
     _build_extra_field_schema,
 )
-from timetoalign.storage.registry import REGISTRY_SCHEMA as _MEMORY_REGISTRY
-from timetoalign.storage.registry import SEGMENT_KIND, Extraction
+from timetoalign.storage.registry import Extraction
 
 from .statements import (
     STATE_KEYS,
@@ -1111,73 +1110,110 @@ def _all_null(content: pa.Table) -> pa.Array:
     return mask.combine_chunks() if isinstance(mask, pa.ChunkedArray) else mask
 
 
-#: The columns of an event that are its registry row's, never content of a
-#: pre-parsed table: its position, its type, its name.
-_NOT_CONTENT = frozenset(
-    {"start", "end", "duration", "instant", "temporal_type", "event_type", "name"}
-)
+def _widened(held: pa.DataType, joining: pa.DataType) -> pa.DataType | None:
+    """The one type holding every value of *held* and of *joining* exactly,
+    or None where none does.
+
+    Equal types join as they are; a column without values (``null``) takes
+    the other's type; integers of one signedness take the wider, an
+    unsigned one joins a wider signed one; a float joins a wider float;
+    ``large_string`` joins ``string`` as ``string``; structs of the same
+    members join member by member. Anything else (an integer and a float,
+    a string and a number) has no such type: a widening that may change a
+    value is never taken.
+    """
+    if held == joining:
+        return held
+    if pa.types.is_null(held):
+        return joining
+    if pa.types.is_null(joining):
+        return held
+    if pa.types.is_integer(held) and pa.types.is_integer(joining):
+        held_signed = pa.types.is_signed_integer(held)
+        joining_signed = pa.types.is_signed_integer(joining)
+        if held_signed == joining_signed:
+            return held if held.bit_width >= joining.bit_width else joining
+        signed, unsigned = (held, joining) if held_signed else (joining, held)
+        return signed if signed.bit_width > unsigned.bit_width else None
+    if pa.types.is_floating(held) and pa.types.is_floating(joining):
+        return held if held.bit_width >= joining.bit_width else joining
+    strings = (pa.types.is_string, pa.types.is_large_string)
+    if any(test(held) for test in strings) and any(test(joining) for test in strings):
+        return pa.string()
+    if pa.types.is_struct(held) and pa.types.is_struct(joining):
+        names = [member.name for member in held]
+        if names != [member.name for member in joining]:
+            return None
+        members = []
+        for mine, theirs in zip(held, joining, strict=True):
+            joined = _widened(mine.type, theirs.type)
+            if joined is None:
+                return None
+            members.append(pa.field(mine.name, joined))
+        return pa.struct(members)
+    return None
 
 
-def _kinds(table: pa.Table) -> pa.Array:
-    """The kind of each event of *table*: its event type, ``Event`` where it
-    states none."""
-    if "event_type" not in table.column_names:
-        return _repeated("Event", table.num_rows)
-    types = table.column("event_type").combine_chunks()
-    if isinstance(types, pa.DictionaryArray):
-        types = types.dictionary_decode()
-    return _filled(types.cast(pa.string()), pa.scalar("Event"))
+def joined_parts(
+    parts: Sequence[tuple[str, pa.Table]],
+    kind: str,
+    declared: pa.Schema | None = None,
+) -> pa.Table:
+    """The parts of one table of *kind* in one, each part named by its holder.
 
+    The columns are the *declared* ones (else the first part's), then
+    every further one in the order the parts first hold it; a column a part
+    lacks is null there. A column the parts hold in two types is held in
+    the one type holding both exactly (an ``int8`` and an ``int64`` as
+    ``int64``, :func:`_widened`), each part's column cast to it, which
+    loses nothing. The metadata is the declared schema's, else the first
+    part's. Both writers join through this: a manifest's pre-parsed parts
+    of several timelines, a package's of several manifests.
 
-def _places(table: pa.Table, kinds: pa.Array, timelines: Iterable[str]) -> pa.Array:
-    """Which rows of *table* record a child's place: a ``Segment`` row whose
-    ID is a timeline of the family (*timelines*). A ``Segment`` row of any
-    other ID is an event like every other."""
-    return _filled(
-        pc.and_(
-            pc.equal(kinds, pa.scalar(SEGMENT_KIND)),
-            pc.is_in(
-                table.column("id"), value_set=pa.array(sorted(timelines), pa.string())
-            ),
-        ),
-        pa.scalar(False),
-    )
-
-
-def _joined_content(parts: list[tuple[str, pa.Table]], kind: str) -> pa.Table:
-    """The pre-parsed tables of one kind of several timelines (each with its
-    ID) in one: the declared columns, then every further one in the order
-    first met, a column a part lacks null there.
+    Args:
+        parts: Each part with its holder as a message names it
+            (``timeline 'score'``, ``the manifest 'a/manifest.yaml'``).
+        kind: The table's kind, as a message names it.
+        declared: The declared columns, which the parts hold in their
+            declared types.
 
     Raises:
-        ValueError: If two timelines hold a column of one name in two types.
+        ValueError: If two parts hold a column of one name in two types no
+            type holds both of exactly, naming the column, both holders
+            and both types.
     """
-    declared = pre_parsed_schema(kind)
-    fields: dict[str, tuple[pa.Field, str | None]] = {
-        column.name: (column, None) for column in declared
-    }
-    for timeline_id, part in parts:
+    fields: dict[str, tuple[pa.Field, str | None]] = {}
+    if declared is not None:
+        fields.update((column.name, (column, None)) for column in declared)
+    for holder, part in parts:
         for column in part.schema:
             held = fields.get(column.name)
             if held is None:
-                fields[column.name] = (column, timeline_id)
-            elif held[0].type != column.type:
+                fields[column.name] = (column, holder)
+                continue
+            joined = _widened(held[0].type, column.type)
+            if joined is None:
+                first = (
+                    f"the {kind} table declares"
+                    if held[1] is None
+                    else f"{held[1]} holds"
+                )
                 raise ValueError(
                     f"The {kind} table cannot hold the column {column.name!r} of "
-                    f"timeline {quote_id(timeline_id)} ({column.type}): timeline "
-                    f"{quote_id(held[1] or '')} holds it as {held[0].type}, and a "
-                    f"column has one type in a table."
+                    f"{holder} ({column.type}): {first} it as {held[0].type}, and "
+                    f"a column has one type in a table."
                 )
-    metadata: dict[bytes | str, bytes | str] = {
-        key: value for key, value in (declared.metadata or {}).items()
-    }
+            if joined != held[0].type:
+                fields[column.name] = (held[0].with_type(joined), held[1])
+    source = declared if declared is not None else parts[0][1].schema
+    metadata: dict[bytes | str, bytes | str] = dict((source.metadata or {}).items())
     schema = pa.schema([column for column, _ in fields.values()], metadata=metadata)
     return pa.concat_tables(
         [
             pa.Table.from_arrays(
                 [
                     (
-                        part.column(field.name)
+                        part.column(field.name).cast(field.type)
                         if field.name in part.column_names
                         else _null_column(part.num_rows, field.type)
                     )
@@ -1190,26 +1226,74 @@ def _joined_content(parts: list[tuple[str, pa.Table]], kind: str) -> pa.Table:
     )
 
 
+def _refuse_repeated_locators(rows: pa.Table) -> None:
+    """Refuse a locator naming two events of one extraction among *rows*.
+
+    A locator names one event of its extraction's source (the format's
+    ``duplicate_locator``). Each family refuses a repeat among its own
+    rows as they join it; rows of two families meet first in a writer,
+    which refuses the repeat before anything is written.
+
+    Raises:
+        ValueError: Naming the locator, the extraction and the timelines
+            of its first two events.
+    """
+    named = pc.and_(
+        rows.column("locator").is_valid(), rows.column("extraction_id").is_valid()
+    )
+    if not pc.any(named).as_py():
+        return
+    pairs = rows.select(["extraction_id", "locator", "timeline_id"]).filter(named)
+    pairs = pairs.take(
+        pc.sort_indices(
+            pairs,
+            sort_keys=[("extraction_id", "ascending"), ("locator", "ascending")],
+        )
+    )
+    if pairs.num_rows < 2:
+        return
+    extraction = pairs.column("extraction_id").combine_chunks()
+    locator = pairs.column("locator").combine_chunks()
+    n = pairs.num_rows
+    twice = pc.and_(
+        pc.equal(extraction.slice(1), extraction.slice(0, n - 1)),
+        pc.equal(locator.slice(1), locator.slice(0, n - 1)),
+    )
+    if not pc.any(twice).as_py():
+        return
+    at = pc.index(twice, True).as_py()
+    timelines = pairs.column("timeline_id")
+    raise ValueError(
+        f"The locator {locator[at].as_py()!r} of the extraction "
+        f"{quote_id(str(extraction[at].as_py()))} names an event on the timeline "
+        f"{quote_id(str(timelines[at].as_py()))} and one on "
+        f"{quote_id(str(timelines[at + 1].as_py()))}: a locator names one event "
+        f"of its extraction's source; nothing is written."
+    )
+
+
 def event_tables(registry: EventRegistry, *, events: bool) -> EventTables:
     """What a package holds of the events of the families *registry* reads.
 
-    Every family the registry (a bundle's, a group's) reads, whole: the
-    event rows of :data:`ALWAYS_WRITTEN_KINDS` (Projections and Boxes) and,
-    with *events*, of every other kind, a user's ``Segment`` rows among them
+    Every family the registry (a bundle's, a group's) reads, whole, as the
+    registry gives it to a writer (:meth:`EventRegistry.written
+    <timetoalign.storage.EventRegistry.written>`): the event rows of
+    :data:`ALWAYS_WRITTEN_KINDS` (Projections and Boxes) and, with
+    *events*, of every other kind, a user's ``Segment`` rows among them
     (the rows recording a child's place are the manifest's, never written),
     each in the Registry columns on the axis of its timeline's root, its
     numbers in the package form
     (:func:`~timetoalign.core.time.package_numbers`), sorted as a writer
     sorts the parts of a registry; each kind's content (every column of
-    its events but the registry's, a column none of a timeline's events of
-    the kind holds a value in left out), keyed by ``id`` and without
-    positions, as its pre-parsed table, the columns of its type declared
-    (:func:`pre_parsed_schema`) and the further ones in the order the
-    timelines first hold them; and the extractions the rows name. An event
-    with no content to store (every column but ``id`` null) whose
-    extraction names a source file is not written into a pre-parsed table:
-    it stays re-parsable, its ``location`` null. Nothing passes through a
-    float that is not one.
+    its events but the registry's, its name among them, a column none of a
+    timeline's events of the kind holds a value in left out), keyed by
+    ``id`` and without positions, as its pre-parsed table, the columns of
+    its type declared (:func:`pre_parsed_schema`) and the further ones in
+    the order the timelines first hold them (:func:`joined_parts`); and the
+    extractions the rows name. An event with no content to store (every
+    column but ``id`` null) whose extraction names a source file is not
+    written into a pre-parsed table: it stays re-parsable, its ``location``
+    null. Nothing passes through a float that is not one.
 
     Args:
         registry: The registry view of a bundle (or of any object).
@@ -1218,91 +1302,45 @@ def event_tables(registry: EventRegistry, *, events: bool) -> EventTables:
     Raises:
         ValueError: If an event ID names two events (two timelines that
             minted it before they joined one bundle), naming both
-            timelines, nothing renamed, since a MatchClaim may name it; or
-            if two timelines hold a further column of one name in two
-            types, naming the column, both timelines and both types.
+            timelines, nothing renamed, since a MatchClaim may name it; if
+            a locator names two events of one extraction on timelines of
+            two families, naming the locator and both timelines; or if two
+            timelines hold a further column of one name in two types no
+            type holds both of exactly, naming the column, both timelines
+            and both types.
     """
-    written = set(ALWAYS_WRITTEN_KINDS)
-    row_parts: list[pa.Table] = []
-    content_parts: dict[str, list[tuple[str, pa.Table]]] = {}
-    found: dict[str, Extraction] = {}
-    for family, _ in registry._families():
-        held = family.table()
-        if held.num_rows:
-            kinds = held.column("kind").combine_chunks()
-            keep = pc.invert(_places(held, kinds, family.paths))
-            if not events:
-                keep = pc.and_(
-                    keep, pc.is_in(kinds, value_set=pa.array(sorted(written)))
-                )
-            rows = held.filter(keep)
-            unnamed = rows.column("extraction_id").is_null()
-            if pc.any(unnamed).as_py():
-                # A user's Segment row names no extraction in memory (the
-                # registry keeps Segment rows as its own): the family's
-                # extraction of events made in code made it.
-                tool = family.tool or Extraction.of_tool(scope=family.root_id)
-                found.setdefault(tool.id, tool)
-                at = rows.schema.get_field_index("extraction_id")
-                rows = rows.set_column(
-                    at,
-                    rows.schema.field(at),
-                    _filled(rows.column("extraction_id"), pa.scalar(tool.id)),
-                )
-            row_parts.append(rows)
-        number_type = family.number_type
-        for timeline_id in family.parts:
-            table = family.events_of(timeline_id).table
-            if not table.num_rows:
-                continue
-            kinds = _kinds(table)
-            own = pc.invert(_places(table, kinds, family.paths))
-            for kind in _string_values(kinds):
-                if not events and kind not in written:
-                    continue
-                rows = table.filter(pc.and_(own, pc.equal(kinds, pa.scalar(kind))))
-                n = rows.num_rows
-                if not n:
-                    continue
-                content = rows.select(
-                    [
-                        name
-                        for name in rows.column_names
-                        if name == "id"
-                        or (
-                            name not in _NOT_CONTENT
-                            and rows.column(name).null_count < n
-                        )
-                    ]
-                )
-                content_parts.setdefault(kind, []).append(
-                    (
-                        timeline_id,
-                        _content_table(
-                            content, kind, _repeated(number_type.name, n), number_type
-                        ),
-                    )
-                )
-        for extraction_id, extraction in family.extractions.items():
-            found.setdefault(extraction_id, extraction)
-    table = pa.concat_tables(row_parts) if row_parts else _MEMORY_REGISTRY.empty_table()
+    written = registry.written(None if events else ALWAYS_WRITTEN_KINDS)
+    table = written.rows
     _refuse_shared_event_ids(table)
-    named = {
-        str(value)
-        for column in ("extraction_id", "vanished_in")
-        for value in pc.unique(table.column(column)).to_pylist()
-        if value is not None
+    _refuse_repeated_locators(table)
+    number_types_of = {
+        timeline_id: family.number_type
+        for family in written.families
+        for timeline_id in family.timelines
     }
-    extractions = {key: value for key, value in found.items() if key in named}
+    content_parts: dict[str, list[tuple[str, pa.Table]]] = {}
+    for (timeline_id, kind), content in written.contents.items():
+        number_type = number_types_of[timeline_id]
+        content_parts.setdefault(kind, []).append(
+            (
+                f"timeline {quote_id(timeline_id)}",
+                _content_table(
+                    content,
+                    kind,
+                    _repeated(number_type.name, content.num_rows),
+                    number_type,
+                ),
+            )
+        )
     sourced = pa.array(
-        sorted(key for key, value in extractions.items() if value.source is not None),
+        sorted(e.id for e in written.extractions if e.source is not None),
         pa.string(),
     )
     rows = _sorted_rows(table)
     contents: dict[str, pa.Table] = {}
     stored_ids: list[pa.Array] = []
     for kind, parts in content_parts.items():
-        joined = _joined_content(parts, kind)
+        joined = joined_parts(parts, kind, pre_parsed_schema(kind))
         # In the order of the registry's rows, so equal events give equal bytes.
         joined = joined.take(
             pc.sort_indices(
@@ -1363,26 +1401,32 @@ def event_tables(registry: EventRegistry, *, events: bool) -> EventTables:
         rows=packaged.replace_schema_metadata({TYPE_METADATA_KEY: "Registry"}),
         pre_parsed=pre_parsed,
         contents=contents,
-        extractions=tuple(extractions[key] for key in sorted(extractions)),
+        extractions=written.extractions,
     )
 
 
-def _string_values(column: pa.Array | pa.ChunkedArray) -> list[str]:
-    """The distinct strings of *column*, nulls left out, sorted."""
+def distinct_strings(column: pa.Array | pa.ChunkedArray) -> list[str]:
+    """The distinct strings of *column*, nulls left out, sorted.
+
+    Examples:
+        >>> import pyarrow as pa
+        >>> distinct_strings(pa.array(["b", None, "a", "b"]))
+        ['a', 'b']
+    """
     return sorted(
         str(value) for value in pc.unique(column).to_pylist() if value is not None
     )
 
 
-def index_table(index: pa.Table) -> pa.Table:
-    """Index rows (``id``, ``kind``, ``location``, ``timeline_id``,
-    ``name``) in TimeToShare's Registry columns, every other column null."""
+def non_event_table(rows: pa.Table) -> pa.Table:
+    """Non-event rows (``id``, ``kind``, ``location``, ``timeline_id``) in
+    TimeToShare's Registry columns, every other column null."""
     return pa.Table.from_arrays(
         [
             (
-                index.column(field.name).cast(field.type)
-                if field.name in index.column_names
-                else _null_column(index.num_rows, field.type)
+                rows.column(field.name).cast(field.type)
+                if field.name in rows.column_names
+                else _null_column(rows.num_rows, field.type)
             )
             for field in REGISTRY_SCHEMA
         ],

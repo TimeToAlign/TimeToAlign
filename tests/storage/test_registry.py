@@ -297,6 +297,50 @@ class TestRootPositions:
         assert _exact([row["start"]]) == [Fraction(5, 2)]
         assert row["location"] == "tables/Note/part.parquet"
 
+    def test_a_name_is_content_never_a_registry_column(self) -> None:
+        root = _quarters("clt_n", 4)
+        root.add_events(
+            [{"id": "n1", "event_type": "Note", "start": Fraction(0), "name": "C4"}]
+        )
+
+        assert root.registry.table.column_names == REGISTRY_SCHEMA.names
+        assert "name" not in root.registry.table.column_names
+        assert root.registry.content("Note").to_pylist() == [{"id": "n1", "name": "C4"}]
+
+    @pytest.mark.parametrize(
+        ("content", "name"),
+        [
+            (pa.table({"id": ["p1"], "name": ["D4"], "pitch": [62]}), "D4"),
+            (pa.table({"id": ["p1"], "pitch": [62]}), None),
+        ],
+        ids=["named", "unnamed"],
+    )
+    def test_a_name_read_from_a_package_is_the_contents(
+        self, content: pa.Table, name: str | None
+    ) -> None:
+        root = _quarters("clt_p", 8)
+        child = _quarters("clt_pc", 4)
+        root.add_child(child, offset=2)
+        rows = _registry_rows(
+            [
+                {
+                    "id": "p1",
+                    "kind": "Note",
+                    "location": "tables/Note/part.parquet",
+                    "timeline_id": "clt_pc",
+                    "start": Fraction(5, 2),
+                    "extraction_id": "extraction_p",
+                }
+            ],
+            "quarters",
+            "fraction",
+        )
+
+        root._registry.add_rows(rows, {"Note": content}, [_package_extraction()])
+
+        (event,) = child.events.table.to_pylist()
+        assert (event["id"], event["name"], event["pitch"]) == ("p1", name, 62)
+
     def test_rows_read_from_a_package_on_an_int_axis(self) -> None:
         root = DiscreteLogicalTimeline(length=100, uid="dlt_p")
         child = DiscreteLogicalTimeline(length=20, uid="dlt_pc")
@@ -535,7 +579,7 @@ class TestViews:
             registry.counts("start")
         assert refusal.value.args[0] == (
             "No registry column 'start' to count by. Available columns: ['id', "
-            "'kind', 'location', 'timeline_id', 'unit', 'number_type', 'name', "
+            "'kind', 'location', 'timeline_id', 'unit', 'number_type', "
             "'extraction_id', 'locator', 'vanished_in']"
         )
 

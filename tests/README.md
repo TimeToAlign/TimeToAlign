@@ -127,8 +127,9 @@ a child holding a Note and a Projection, a recording holding a Box)
 written with `to_file(events=True)` gives a registry, an Extraction table
 and a Projection table that the package's table checks accept against the
 manifest written (`registry_problems`, `extraction_problems`,
-`projection_problems` all `[]`), and a registry whose index is the
-package's `index_rows` of the manifest read as a package of one manifest.
+`projection_problems` all `[]`), and a registry whose non-event rows are
+the package's `non_event_rows` of the manifest read as a package of one
+manifest.
 
 **The unit table is the package's.** For every `TimeUnit`, its domain,
 modality (`is_discrete`), default number type and admitted number types

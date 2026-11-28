@@ -683,6 +683,15 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             roots.setdefault(root.id, root)
         return list(roots.values())
 
+    def _root_of(self, timeline_id: str) -> "Timeline":
+        """Return the root of the tree holding the timeline *timeline_id*:
+        the timeline whose registry holds the tree's events (its family's).
+
+        Raises:
+            KeyError: If no timeline of the bundle's trees has this id.
+        """
+        return _root(self._require_known_timeline(timeline_id))
+
     def _known_timelines(self) -> dict[str, "Timeline"]:
         """Return every timeline the bundle answers for, by id.
 
@@ -3167,7 +3176,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         <timetoalign.storage.EventRegistry.add_rows>`), their positions on
         the axis of the root: a family read so never becomes a child. The
         extractions they name are read from the Extraction table their
-        index rows locate; each event's content is read from the pre-parsed
+        non-event rows locate; each event's content is read from the pre-parsed
         table its ``location`` names, by ID, when the events of its family
         are first read (a Projection table checked against the manifest
         then, ``timetoshare.tables.check_projections``); an event without a
@@ -3228,7 +3237,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         written between a first writing of the manifest, which validates and
         serializes it before any file is written, and the writing that names
         them. Beside the manifest: the registry (``registry.parquet``, the
-        index rows of the manifest's elements, its MatchClaims and its
+        non-event rows of the manifest's elements, its MatchClaims and its
         extractions, then one event row per event on the axis of its
         timeline's root), the Extraction table (``extractions.parquet``),
         one pre-parsed table per kind (``projections.parquet``,
@@ -3271,14 +3280,18 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         The events of the bundle's registry (:attr:`registry`), Projections
         and Boxes always and, with *events*, every kind
         (:func:`~timetoalign.timelines.manifest.event_tables`): the
-        registry, one file of the index rows (the manifest's elements, as
+        registry, one file of the non-event rows (the manifest's elements, as
         the manifest written names them, its MatchClaims and its
         extractions, each at its location from the manifest's folder,
         sorted by location and ID) followed by the event rows (sorted by
-        extraction, timeline, exact start and ID); the Extraction table; one
-        pre-parsed table per kind, each event's ``location`` naming it (an
-        event with nothing to store whose extraction names a source file
-        stays re-parsable, its ``location`` null). A bundle holding
+        extraction, timeline, exact start and ID); the Extraction table,
+        each source written as its path from the manifest's folder where the
+        file lies under it, else as its ``file:`` URI; one pre-parsed table
+        per kind, each event's ``location`` naming it (an event with nothing
+        to store whose extraction names a source file stays re-parsable, its
+        ``location`` null). A pre-parsed file the registry replaced located
+        and the new one does not (a kind no longer written) is deleted, so
+        no file is left that nothing names. A bundle holding
         MatchClaims writes its MatchClaim table
         (:attr:`match_claim_table`, :meth:`MatchClaimField.to_parquet`, so
         that a table already lying there must be succeeded). The registry
@@ -3298,7 +3311,7 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         removed). A bundle writing no table keeps its :attr:`resources` as
         they are. Every file is written under a hidden name and renamed
         into place once all are written; a failing write restores the files
-        it replaced.
+        it replaced and those it deleted.
 
         Args:
             path: The manifest file.
@@ -3521,7 +3534,9 @@ def resolve(target: str | PathLike[str], id: str) -> list[Any]:
       :class:`~timetoalign.core.Event`), its position on the axis of its
       timeline's root as the registry states it, its content read from its
       pre-parsed table by ID (none for an event only re-parsable);
-    - an extraction: the :class:`~timetoalign.storage.Extraction`.
+    - an extraction: the :class:`~timetoalign.storage.Extraction`, its
+      source as the library holds a source (the path of a file the package
+      names relative to its root, or by a ``file:`` URI).
 
     Args:
         target: A manifest file or a package root.

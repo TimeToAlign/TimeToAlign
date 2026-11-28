@@ -331,12 +331,6 @@ def _refuse_shape_off_the_axis(
         )
 
 
-#: The keys a package's Box table states once per row beside a Box's
-#: properties: the timeline holding it and that timeline's axis. A Box row
-#: may state them; they are checked and never become columns of the events.
-_BOX_ROW_AXIS_KEYS = frozenset({"timeline_id", "unit", "number_type"})
-
-
 def box_rows_on_the_axis(
     rows: Sequence[dict[str, Any]],
     unit: TimeUnit,
@@ -351,65 +345,31 @@ def box_rows_on_the_axis(
     <timetoalign.timelines.Timeline.add_events>` converts positions through
     a C-Map afterwards, :meth:`EventData.from_dicts` builds the table): a
     shape given as a :class:`~timetoalign.core.Shape` is in *unit* and
-    *number_type*. A Box row may also state the keys a package's Box table
-    holds once per row: ``unit`` and ``number_type`` (the axis of its
-    numbers) must be the events' (a missing one reads as the events'),
-    ``timeline_id`` the timeline the rows are added to; each is checked and
-    left out of the row, so it never becomes a column of the events.
+    *number_type*. A Box row states no axis of its own: its timeline and
+    that timeline's axis are its registry row's.
 
     Args:
         rows: The event rows.
         unit: The events' unit.
         number_type: The events' number type.
-        timeline_id: The ID of the timeline the rows are added to; ``None``
-            where they belong to no timeline yet (:meth:`EventData.from_dicts`),
-            which then refuses a Box row giving ``timeline_id``.
+        timeline_id: The ID of the timeline the rows are added to, ``None``
+            where they belong to no timeline yet (:meth:`EventData.from_dicts`);
+            no rule reads it.
 
     Returns:
-        The rows, a Box row without ``unit``, ``number_type`` and
-        ``timeline_id``; every other row as given.
+        The rows as given.
 
     Raises:
-        ValueError: If a shape, or a Box row's ``unit`` or ``number_type``,
-            names another axis than the events' (``The event's bounding_box
-            is in seconds as float, the events are in pixels as int; ...``),
-            or a Box row's ``timeline_id`` names another timeline, or any
-            where *timeline_id* is ``None``.
+        ValueError: If a shape names another axis than the events'
+            (``The event's bounding_box is in seconds as float, the events
+            are in pixels as int; ...``).
     """
-    checked = []
     for row in rows:
-        shapes = [key for key in SHAPE_FIELDS if row.get(key) is not None]
-        for key in shapes:
-            value = row[key]
+        for key in SHAPE_FIELDS:
+            value = row.get(key)
             if isinstance(value, Shape):
                 _refuse_shape_off_the_axis(value, key, unit, number_type)
-        if row.get("event_type") != BOX_EVENT_TYPE or not (
-            _BOX_ROW_AXIS_KEYS & row.keys()
-        ):
-            checked.append(row)
-            continue
-        stated_unit = row.get("unit", unit)
-        stated_type = row.get("number_type", number_type)
-        if (str(stated_unit), str(stated_type)) != (str(unit), str(number_type)):
-            raise ValueError(
-                f"The event's {shapes[0] if shapes else 'shape'} is in "
-                f"{stated_unit} as {stated_type}, the events are in {unit} as "
-                f"{number_type}; a shape is never converted onto the events' axis."
-            )
-        named = row.get("timeline_id")
-        if named is not None and named != timeline_id:
-            box = _box_named(row.get("id"))
-            raise ValueError(
-                f"{box} names the timeline {quote_id(str(named))} (timeline_id), "
-                + (
-                    "but events read without a timeline hold no timeline ID: add "
-                    "the Box to its timeline with Timeline.add_events."
-                    if timeline_id is None
-                    else f"but is added to the timeline {quote_id(timeline_id)}."
-                )
-            )
-        checked.append({k: v for k, v in row.items() if k not in _BOX_ROW_AXIS_KEYS})
-    return checked
+    return list(rows)
 
 
 def _box_named(box_id: Any) -> str:
@@ -1956,9 +1916,7 @@ class EventData(SemanticFieldAccessMixin):
                 another event type than Box gives a shape column, or a Box
                 gives one a value that is neither its shape nor its cell, a
                 cell holding a number the axis cannot hold exactly or two
-                numbers; if a Box row's ``unit`` or ``number_type`` is not
-                the table's, or it gives a ``timeline_id`` (a table holds no
-                timeline: :func:`box_rows_on_the_axis`).
+                numbers (:func:`box_rows_on_the_axis`).
 
         Examples:
             >>> data = EventData.from_dicts([

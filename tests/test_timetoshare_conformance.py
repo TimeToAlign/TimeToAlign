@@ -34,7 +34,7 @@ from timetoshare import (
 )
 from timetoshare.tables import (
     extraction_problems,
-    index_rows,
+    non_event_rows,
     package_fixture_path,
     projection_problems,
     registry_problems,
@@ -908,14 +908,14 @@ def test_the_tables_written_pass_the_package_s_checks(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    def index(table: Any) -> list[tuple[Any, ...]]:
+    def non_events(table: Any) -> list[tuple[Any, ...]]:
         return sorted(
-            (row["id"], row["kind"], row["location"], row["timeline_id"], row["name"])
+            (row["id"], row["kind"], row["location"], row["timeline_id"])
             for row in table.to_pylist()
             if row["start"] is None
         )
 
-    assert index(registry) == index(index_rows(copy))
+    assert non_events(registry) == non_events(non_event_rows(copy))
 
 
 # endregion

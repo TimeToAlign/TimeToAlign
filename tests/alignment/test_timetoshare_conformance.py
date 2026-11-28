@@ -35,7 +35,7 @@ from timetoalign.timelines.types import (
     DiscretePhysicalTimeline,
 )
 
-#: TimeToShare's fixture MatchClaim table, shipped with the installed package.
+#: TimeToShare's fixture MatchClaim table, which the installed package holds.
 _FIXTURE = fixture_path("match_claims.parquet")
 
 SCORE = ContinuousLogicalTimeline(length=16, uid="score")

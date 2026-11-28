@@ -447,7 +447,6 @@ class TestWriting:
                 **axis,
                 "start": start,
                 "duration": duration,
-                "name": None,
                 "extraction_id": extraction_id,
                 "locator": None,
                 "vanished_in": None,
@@ -1505,7 +1504,7 @@ def _held_boxes(bundle: AlignmentBundle) -> dict[str, list[Box]]:
 
 
 class TestBoxes:
-    def test_the_projection_table_is_the_event_table_of_projection(self) -> None:
+    def test_the_projection_table_is_the_pre_parsed_table_of_projection(self) -> None:
         assert pre_parsed_schema("Projection").remove_metadata() == PROJECTION_SCHEMA
 
     def test_the_box_table_schema(self) -> None:
@@ -1750,10 +1749,10 @@ def _read_back(timeline: Timeline, directory: Path) -> list[dict[str, Any]]:
     return table.select(names).to_pylist()
 
 
-class TestBoxRowsAsTheBoxTableStatesThem:
+class TestBoxRowsThroughThePackage:
     """Values in tests/alignment/README.md ("Nothing is accepted in memory that
-    the package would write otherwise", "Box rows as the Box table states
-    them", "The package never drops data silently")."""
+    the package would write otherwise", "The package never drops data
+    silently")."""
 
     @pytest.mark.parametrize(
         ("y", "message"),
@@ -1790,54 +1789,6 @@ class TestBoxRowsAsTheBoxTableStatesThem:
 
         assert _read_back(seg_2, tmp_path) == seg_2.events.table.to_pylist()
 
-    def test_a_row_off_the_axis_is_refused_as_the_scalar_is(self) -> None:
-        in_seconds = BoundingBox.from_xywh(
-            385.0, 46.0, 139.0, 20.0, unit="seconds", number_type="float"
-        )
-        with pytest.raises(ValueError) as scalar:
-            _seg_2().add_events(Box.from_shape(in_seconds, origin=7.0, id="a"))
-        seg_2 = _seg_2()
-        with pytest.raises(ValueError) as row:
-            seg_2.add_events([_rect_h2_row(unit="seconds", number_type="float")])
-
-        assert (
-            str(row.value)
-            == str(scalar.value)
-            == (
-                "The event's bounding_box is in seconds as float, the events are in "
-                "pixels as int; a shape is never converted onto the events' axis."
-            )
-        )
-        assert seg_2.n_events == 0
-
-    def test_a_row_naming_another_timeline_is_refused(self) -> None:
-        seg_2 = _seg_2()
-        with pytest.raises(ValueError) as refused:
-            seg_2.add_events([_rect_h2_row(timeline_id="other")])
-
-        assert str(refused.value) == (
-            "Box 'a' names the timeline 'other' (timeline_id), but is added to the "
-            "timeline 'seg_2'."
-        )
-        assert seg_2.n_events == 0
-
-    def test_a_row_stating_its_timeline_and_axis_is_stored_without_them(
-        self, tmp_path: Path
-    ) -> None:
-        plain = _seg_2()
-        plain.add_events([_rect_h2_row()])
-        seg_2 = _seg_2()
-
-        seg_2.add_events(
-            [_rect_h2_row(timeline_id="seg_2", unit="pixels", number_type="int")]
-        )
-
-        assert seg_2.events.table.schema == plain.events.table.schema
-        assert seg_2.events.table.to_pylist() == plain.events.table.to_pylist()
-        (written,) = seg_2.to_dict(events=True)["timelines"][0]["events"]
-        assert {"timeline_id", "unit", "number_type"}.isdisjoint(written)
-        assert _read_back(seg_2, tmp_path) == seg_2.events.table.to_pylist()
-
     @pytest.mark.parametrize(
         ("given", "column", "type_"),
         [({"name": "crop"}, "name", pa.string()), ({"staff": 1}, "staff", pa.int64())],
@@ -1852,15 +1803,11 @@ class TestBoxRowsAsTheBoxTableStatesThem:
 
         table = pq.read_table(tmp_path / "boxes.parquet")
         (row,) = _registry_rows(tmp_path)
-        if column == "name":
-            # The name is every event's, the registry's.
-            assert table.column_names == pre_parsed_schema("Box").names
-            assert row["name"] == "crop"
-        else:
-            assert table.column_names == [*pre_parsed_schema("Box").names, column]
-            assert table.schema.field(column).type == type_
-            assert table.column(column).to_pylist() == list(given.values())
-            assert row["name"] is None
+        # A name is content, as every further column: no registry row holds one.
+        assert "name" not in row
+        assert table.column_names == [*pre_parsed_schema("Box").names, column]
+        assert table.schema.field(column).type == type_
+        assert table.column(column).to_pylist() == list(given.values())
         assert read == seg_2.events.table.to_pylist()
 
 

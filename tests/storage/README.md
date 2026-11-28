@@ -358,24 +358,10 @@ so a shape is never converted or rounded on its way into a table.
   What would show it broken: a refusal naming the cell's decoder instead of
   the shape's rule, or an accepted cell whose table differs from the
   scalar's.
-- **A Box row states its axis as the package's Box table does, or not at
-  all.** Design: a Box enters only on its timeline's axis; the package's
-  Box table states `timeline_id`, `unit` and `number_type` once per row,
-  and nothing else of the events holds them. So a Box dict row giving
-  `unit` or `number_type` is checked as a shape scalar is: `unit "seconds"`,
-  `number_type "float"` on a `pixels` `int` table is refused with the
-  sentence the scalar path gives, `The event's bounding_box is in seconds as
-  float, the events are in pixels as int; a shape is never converted onto
-  the events' axis.`; `unit "seconds"` alone reads the number type as the
-  table's (`... is in seconds as int, ...`). Equal keys (`"pixels"`,
-  `"int"`, or the enums) are accepted and not stored: the table equals the
-  one of the row without them (no `unit` or `number_type` column). A table
-  of `from_dicts` belongs to no timeline, so a Box row giving `timeline_id`
-  is refused there: `Box 'a' names the timeline 'seg_2' (timeline_id), but
-  events read without a timeline hold no timeline ID: add the Box to its
-  timeline with Timeline.add_events.` (`Timeline.add_events` checks it
-  against its own ID: `tests/alignment/README.md`, "Box rows as the Box
-  table states them").
+- **A Box row states no axis of its own.** A Box lies on its timeline's
+  axis, which its registry row names; a shape given as a scalar is checked
+  against the table's axis (above), and nothing else of a Box row is read
+  as an axis.
 - The shape leaves are reduced at the doors like every coordinate cell: on
   a `user_units` table written as fractions, a quadrilateral corner `x`
   cell stating `2442/2` is held as `1221/1` after `EventData(table)`, the
@@ -647,7 +633,8 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
 - **Root storage** (`TestRootPositions`). The root's registry view holds
   its 5 events in the columns of `REGISTRY_SCHEMA` (`id`, `kind`,
   `location`, `timeline_id`, `unit`, `number_type`, `start`, `duration`,
-  `name`, `extraction_id`, `locator`, `vanished_in`), the timelines in
+  `extraction_id`, `locator`, `vanished_in`: no `name`, which is an
+  event's content), the timelines in
   joining order, each timeline's rows in the order they came: IDs `r1`,
   `a1`, `a2`, `g1`, `b1`; kinds `Beat`, `Beat`, `Beat`, `Note`, `Beat`;
   timelines `clt_root`, `clt_a`, `clt_a`, `clt_g`, `clt_b`; every `unit`
@@ -675,6 +662,16 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   ending at `1`, lasting `1/2`, an `interval` `Note` with `pitch` 62; on the
   root's axis the row stays at `5/2`. On a ticks root the row at `10` gives
   the child at 7 the start `3`.
+- **A name is content, never a registry column** (`TestRootPositions`).
+  An event added with `name` "C4" (a Note `n1` at 0 on a quarters root)
+  gives a registry row without a `name` column (the view's columns are
+  `REGISTRY_SCHEMA`'s), and `content("Note")` holds `id` `n1`, `name`
+  "C4". Read from a package, the name comes from the content: the
+  registry row `p1` with the content `{id: p1, name: "D4", pitch: 62}`
+  gives the child's event `p1` the name "D4"; a row whose content holds
+  no name (`{id: p1, pitch: 62}`) gives the name null. What would show it
+  broken: a `name` column in the registry, a name lost on reading, or a
+  name read from anywhere but the content.
 - **Rows read from a package keep their order.** Registry rows `n1` (a Note,
   locator `L1`), `b1` (a Beat, `L2`), `n2` (a Note, `L3`) at `1`, `2`, `3`,
   with the contents `{n1: 60, n2: 64}` (pitch) and `{b1: 1}` (strength),
@@ -731,7 +728,8 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   descendants**: a group of `clt_a` and the seconds timeline reads `a1`,
   `a2`, `g1`, `o1`, never the root's `r1` or the sibling's `b1`.
   `content("Note")` is the Note's own columns keyed by `id`: `id` `g1`,
-  `pitch` 60, no position, type, name or registry column; `content("Beat",
+  `pitch` 60, no position, type or registry column (a name, where an
+  event holds one, is content too); `content("Beat",
   ids=["a1"])` the one column `id`, `a1`; `content("Beat")` reads `r1`,
   `a1`, `a2`, `b1` in the view's order. `extractions` lists the tool
   extraction once.
@@ -775,7 +773,7 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   `(timeline, kind)`, the family's timelines in order and a timeline's
   kinds sorted: `(clt_root, Beat)`, `(clt_a, Beat)`, `(clt_g, Note)`,
   `(clt_b, Beat)`, `(clt_b, Segment)`, each `id` first then the columns in
-  which one of its events holds a value, no position, type or name
+  which one of its events holds a value, no position or type
   (`(clt_g, Note)` is `id` `g1`, `pitch` 60; `(clt_a, Beat)` the one column
   `id`, `a1`, `a2`); its extractions the tool extraction alone; its one
   family `clt_root` on quarters in `fraction`, the timelines `clt_root`,

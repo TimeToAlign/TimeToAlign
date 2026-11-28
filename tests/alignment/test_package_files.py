@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import re
 import shutil
+import zipfile
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -19,7 +20,7 @@ import timetoshare
 from timetoshare.tables import (
     PackageProblem,
     TableError,
-    index_rows,
+    non_event_rows,
     package_fixture_path,
     package_problems,
 )
@@ -38,7 +39,7 @@ from timetoalign.core import (
     Provenance,
     TimeUnit,
 )
-from timetoalign.storage import Extraction
+from timetoalign.storage import EventData, Extraction
 from timetoalign.timelines import Timeline
 from timetoalign.timelines.manifest import (
     PARQUET_MEDIA_TYPE,
@@ -214,18 +215,18 @@ def _event_rows(registry: pa.Table) -> list[dict[str, Any]]:
     return [row for row in registry.to_pylist() if row["start"] is not None]
 
 
-def _index(registry: pa.Table) -> list[tuple[Any, ...]]:
-    """The index rows of a registry: ``id``, ``kind``, ``location``,
-    ``timeline_id``, ``name``, sorted."""
+def _non_events(registry: pa.Table) -> list[tuple[Any, ...]]:
+    """The non-event rows of a registry: ``id``, ``kind``, ``location``,
+    ``timeline_id``, sorted."""
     return sorted(
-        (row["id"], row["kind"], row["location"], row["timeline_id"], row["name"])
+        (row["id"], row["kind"], row["location"], row["timeline_id"])
         for row in registry.to_pylist()
         if row["start"] is None
     )
 
 
-def index_rows_of_lone(directory: Path, name: str) -> pa.Table:
-    """TimeToShare's index rows of the manifest *name* lying in *directory*
+def non_event_rows_of_lone(directory: Path, name: str) -> pa.Table:
+    """TimeToShare's non-event rows of the manifest *name* lying in *directory*
     with its registry, Extraction table and MatchClaim table, read as a
     package of one manifest (a copy given a ``package.yaml`` listing them)."""
     copy = Path(
@@ -245,7 +246,7 @@ def index_rows_of_lone(directory: Path, name: str) -> pa.Table:
         ),
         encoding="utf-8",
     )
-    return index_rows(copy)
+    return non_event_rows(copy)
 
 
 def _parts(directory: Path, kind: str) -> list[str]:
@@ -281,7 +282,7 @@ class TestTablesBesideAManifest:
         fraction = {"unit": "quarters", "number_type": "fraction"}
         rows = {
             _tool("a_score"): [
-                ("a_n3", "Note", "a_bar", fraction, _number(17, 2), None, None),
+                ("a_n3", "Note", "a_bar", fraction, _number(17, 2), None),
                 (
                     "a_n1",
                     "Note",
@@ -289,7 +290,6 @@ class TestTablesBesideAManifest:
                     fraction,
                     _number(0, 1),
                     _number(1, 1),
-                    "C4",
                 ),
                 (
                     claim.event_a_id,
@@ -298,10 +298,9 @@ class TestTablesBesideAManifest:
                     fraction,
                     _number(0, 1),
                     _number(4, 1),
-                    None,
                 ),
-                ("a_b1", "Beat", "a_score", fraction, _number(1, 3), None, None),
-                ("a_n2", "Note", "a_score", fraction, _number(3, 2), None, None),
+                ("a_b1", "Beat", "a_score", fraction, _number(1, 3), None),
+                ("a_n2", "Note", "a_score", fraction, _number(3, 2), None),
             ],
             _tool("a_pcm"): [
                 (
@@ -310,7 +309,6 @@ class TestTablesBesideAManifest:
                     "a_pcm",
                     {"unit": "samples", "number_type": "int"},
                     _number(22050),
-                    None,
                     None,
                 )
             ],
@@ -322,7 +320,6 @@ class TestTablesBesideAManifest:
                     {"unit": "pixels", "number_type": "int"},
                     _number(378),
                     _number(139),
-                    None,
                 )
             ],
         }
@@ -342,24 +339,25 @@ class TestTablesBesideAManifest:
                 **axis,
                 "start": start,
                 "duration": duration,
-                "name": name,
                 "extraction_id": extraction_id,
                 "locator": None,
                 "vanished_in": None,
             }
             for extraction_id in sorted(rows)
-            for event_id, kind, timeline_id, axis, start, duration, name in rows[
+            for event_id, kind, timeline_id, axis, start, duration in rows[
                 extraction_id
             ]
         ]
-        assert _index(registry) == _index(index_rows_of_lone(tmp_path, "a.yaml"))
+        assert _non_events(registry) == _non_events(
+            non_event_rows_of_lone(tmp_path, "a.yaml")
+        )
         notes = pq.read_table(tmp_path / "Note.parquet")
-        assert notes.column_names == ["id", "midi", "staff"]
+        assert notes.column_names == ["id", "name", "midi", "staff"]
         assert notes.to_pylist() == [
-            {"id": "a_n3", "midi": 64, "staff": None},
-            {"id": "a_n1", "midi": 60, "staff": None},
-            {"id": "a_n2", "midi": 62, "staff": 1},
-            {"id": "a_o1", "midi": None, "staff": None},
+            {"id": "a_n3", "name": None, "midi": 64, "staff": None},
+            {"id": "a_n1", "name": "C4", "midi": 60, "staff": None},
+            {"id": "a_n2", "name": None, "midi": 62, "staff": 1},
+            {"id": "a_o1", "name": None, "midi": None, "staff": None},
         ]
         assert pq.read_table(tmp_path / "Beat.parquet").to_pylist() == [{"id": "a_b1"}]
         assert [
@@ -678,7 +676,7 @@ class TestTablesBesideAManifest:
         part, *_ = sorted(
             path
             for path in (tmp_path / "package" / "registry").iterdir()
-            if path.name != "index.parquet"
+            if path.name != "non_events.parquet"
         )
 
         for path, kind, sorting in (
@@ -759,16 +757,67 @@ class TestTablesBesideAManifest:
         ]
 
 
-#: A Parquet file of other rows (``Features``) a manifest carries is a table
-#: resource, so its package lists it as a table, which TimeToShare's package
-#: check reads as a pre-parsed table of the event type ``Features``; its
-#: check of such a table without an ``id`` column fails with Arrow's
-#: ``ArrowInvalid`` (tests/alignment/README.md, "Known issue").
-_FEATURES_IN_A_PACKAGE = pytest.mark.xfail(
-    raises=pa.ArrowInvalid,
-    strict=True,
-    reason="TimeToShare's package check fails on a carried table of other rows",
-)
+def _velocity(uid: str, value: Any, type_: pa.DataType) -> Timeline:
+    """A ticks timeline *uid* made from an event table (as a MIDI loader
+    makes it), holding the Note ``<uid>_n`` at 0 with ``velocity`` *value*
+    of *type_*."""
+    data = EventData.from_arrays(
+        {
+            "id": pa.array([f"{uid}_n"]),
+            "event_type": pa.array(["Note"]),
+            "start": pa.array([0]),
+            "velocity": pa.array([value], type_),
+        },
+        TimeUnit.ticks,
+        NumberType.int,
+        extra_fields=[pa.field("velocity", type_)],
+    )
+    return data.create_timeline(uid=uid)
+
+
+def _velocities(table: pa.Table) -> dict[str, Any]:
+    """Each Note's ``velocity`` of a pre-parsed Note table, by ID."""
+    return dict(
+        zip(
+            table.column("id").to_pylist(),
+            table.column("velocity").to_pylist(),
+            strict=True,
+        )
+    )
+
+
+def _sourced(uid: str, source: Path | zipfile.Path) -> tuple[Timeline, Extraction]:
+    """The root *uid* (quarters) holding the Note ``<uid>_n`` made by the
+    extraction of *source*, at the locator ``row:0``, and that extraction."""
+    extraction = Extraction.of_source(source, parser="TestParser", parser_version="1")
+    score = ContinuousLogicalTimeline(length=Fraction(4), uid=uid)
+    score.add_events(
+        [
+            {
+                "id": f"{uid}_n",
+                "event_type": "Note",
+                "start": Fraction(0),
+                "extraction_id": extraction.id,
+                "locator": "row:0",
+            }
+        ],
+        extractions=[extraction],
+    )
+    return score, extraction
+
+
+def _bundle_of(*timelines: Timeline) -> AlignmentBundle:
+    """A bundle ``piece`` of *timelines*."""
+    bundle = AlignmentBundle(id="piece")
+    for timeline in timelines:
+        bundle.add_timeline(timeline)
+    return bundle
+
+
+#: The name the package writer mints for ``e``'s folder ``scans/``, whose
+#: name ``b``'s copy holds (seeded from the type ``Scan`` and the folder's
+#: content; probed once).
+_MINTED_SCANS = "scans_2uozflji0q0pn"
 
 
 def _two_bundle_package(
@@ -780,6 +829,22 @@ def _two_bundle_package(
     package.write_bundle(a, "a/manifest.yaml")
     package.write_bundle(b, "b/manifest.yaml")
     return package.to_file(directory / "package.yaml"), a, b
+
+
+def _carrying_scans(
+    directory: Path, bundle: AlignmentBundle, data: bytes
+) -> AlignmentBundle:
+    """*bundle* given a resource ``scans`` (``Scan``) naming the folder
+    ``scans/`` holding ``page1.png`` of *data*, written into *directory* with
+    its events and read back: a bundle carrying that folder."""
+    (directory / "scans").mkdir(parents=True)
+    (directory / "scans" / "page1.png").write_bytes(data)
+    (timeline,) = bundle.timelines
+    bundle.resources.append(Resource("scans", "Scan", (timeline,), "scans/"))
+    bundle.to_file(directory / "manifest.yaml", events=True)
+    read = AlignmentBundle.from_file(directory / "manifest.yaml")
+    assert list(read._carried_tables) == ["scans"]
+    return read
 
 
 def _carrying(
@@ -800,6 +865,147 @@ def _carrying(
     return read
 
 
+class TestWritersOfLoneManifests:
+    """Values in tests/alignment/README.md, "The tables beside a lone
+    manifest" (widening, locators, the rewrite)."""
+
+    def test_a_column_held_in_two_widths_is_widened(self, tmp_path: Path) -> None:
+        bundle = AlignmentBundle(id="velocities")
+        bundle.add_timeline(_velocity("s1", 100, pa.int8()))
+        bundle.add_timeline(_velocity("s2", 300, pa.int64()))
+
+        bundle.to_file(tmp_path / "v.yaml", events=True)
+
+        notes = pq.read_table(tmp_path / "Note.parquet")
+        assert notes.schema.field("velocity").type == pa.int64()
+        assert _velocities(notes) == {"s1_n": 100, "s2_n": 300}
+        read = AlignmentBundle.from_file(tmp_path / "v.yaml")
+        assert [
+            read.get_timeline(uid).events.table.column("velocity").to_pylist()
+            for uid in ("s1", "s2")
+        ] == [[100], [300]]
+
+    def test_a_widening_that_may_change_a_value_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        bundle = AlignmentBundle(id="velocities")
+        bundle.add_timeline(_velocity("s1", 100, pa.int64()))
+        bundle.add_timeline(_velocity("s2", 100.5, pa.float64()))
+
+        with pytest.raises(ValueError) as refused:
+            bundle.to_file(tmp_path / "v.yaml", events=True)
+
+        assert str(refused.value) == (
+            "The Note table cannot hold the column 'velocity' of timeline 's2' "
+            "(double): timeline 's1' holds it as int64, and a column has one type "
+            "in a table."
+        )
+        assert list(tmp_path.iterdir()) == []
+
+    def test_a_locator_repeated_across_families_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        (tmp_path / "notes.csv").write_bytes(b"a\n1\n")
+        first, extraction = _sourced("l1", tmp_path / "notes.csv")
+        second, _ = _sourced("l2", tmp_path / "notes.csv")
+        bundle = _bundle_of(first, second)
+        (tmp_path / "out").mkdir()
+
+        with pytest.raises(ValueError) as refused:
+            bundle.to_file(tmp_path / "out" / "l.yaml", events=True)
+
+        assert str(refused.value) == (
+            f"The locator 'row:0' of the extraction '{extraction.id}' names an "
+            "event on the timeline 'l1' and one on 'l2': a locator names one event "
+            "of its extraction's source; nothing is written."
+        )
+        assert list((tmp_path / "out").iterdir()) == []
+
+    def test_a_rewrite_leaves_no_pre_parsed_file_of_a_kind_it_no_longer_holds(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bundle = _a()
+        path = bundle.to_file(tmp_path / "a.yaml", events=True)
+        before = _files(tmp_path)
+
+        def refuse(*args: Any) -> Path:
+            raise OSError("induced")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(package_module, "_write_package_file", refuse)
+            with pytest.raises(OSError, match="^induced$"):
+                bundle.to_file(path)
+        assert _files(tmp_path) == before
+
+        bundle.to_file(path)
+
+        assert sorted(p.name for p in tmp_path.iterdir()) == [
+            "a.yaml",
+            "boxes.parquet",
+            "extractions.parquet",
+            "match_claims.parquet",
+            "projections.parquet",
+            "registry.parquet",
+        ]
+
+
+class TestExtractionSources:
+    """Values in tests/alignment/README.md, "A source is written where the
+    manifest lies" and "A source is written from the package's root"."""
+
+    @pytest.mark.parametrize("where", ["beside", "elsewhere", "member"])
+    def test_a_source_is_written_where_the_manifest_lies(
+        self, tmp_path: Path, where: str
+    ) -> None:
+        folder = (tmp_path / "lone").resolve()
+        (tmp_path / "elsewhere").mkdir()
+        folder.mkdir()
+        if where == "beside":
+            source: Path | zipfile.Path = folder / "notes 1.csv"
+            source.write_bytes(b"a\n1\n")
+            written = "notes%201.csv"
+        elif where == "elsewhere":
+            source = (tmp_path / "elsewhere" / "notes.csv").resolve()
+            source.write_bytes(b"a\n1\n")
+            written = source.as_uri()
+        else:
+            with zipfile.ZipFile(folder / "archive.zip", "w") as archive:
+                archive.writestr("dir/notes.csv", b"a\n1\n")
+            source = zipfile.Path(
+                zipfile.ZipFile(folder / "archive.zip"), at="dir/notes.csv"
+            )
+            written = "jar:archive.zip!/dir/notes.csv"
+        score, extraction = _sourced("score", source)
+
+        _bundle_of(score).to_file(folder / "a.yaml", events=True)
+
+        (row,) = pq.read_table(folder / "extractions.parquet").to_pylist()
+        assert (row["id"], row["source"]) == (extraction.id, written)
+        read = AlignmentBundle.from_file(folder / "a.yaml")
+        assert read.registry.extractions == [extraction]
+
+    def test_a_source_is_written_from_the_package_s_root(self, tmp_path: Path) -> None:
+        root = (tmp_path / "package").resolve()
+        (root / "sources").mkdir(parents=True)
+        (root / "sources" / "notes.csv").write_bytes(b"a\n1\n")
+        score, extraction = _sourced("score", root / "sources" / "notes.csv")
+        package = Package()
+        package.write_bundle(_bundle_of(score), "score/manifest.yaml")
+
+        path = package.to_file(root / "package.yaml")
+
+        table = root / "tables" / "extractions.parquet"
+        (row,) = pq.read_table(table).to_pylist()
+        assert (row["id"], row["source"]) == (extraction.id, "sources/notes.csv")
+        opened = Package.from_file(path)
+        read = opened.bundle("score/manifest.yaml")
+        assert read.registry.extractions == [extraction]
+        before = table.read_bytes()
+        opened.write_bundle(read, "score/manifest.yaml")
+        assert table.read_bytes() == before
+        assert package_problems(path) == []
+
+
 class TestPackage:
     def test_two_bundles_in_one_package(self, tmp_path: Path) -> None:
         path, a, b = _two_bundle_package(tmp_path)
@@ -811,7 +1017,7 @@ class TestPackage:
             "b/manifest.yaml",
             "package.yaml",
             *sorted(f"registry/{key}.parquet" for key in extractions),
-            "registry/index.parquet",
+            "registry/non_events.parquet",
         ]
         parts = {
             kind: _parts(tmp_path, kind)
@@ -906,9 +1112,9 @@ class TestPackage:
         for key in extractions:
             part = pq.read_table(tmp_path / "registry" / f"{key}.parquet")
             assert set(part.column("extraction_id").to_pylist()) == {key}
-        assert _index(pq.read_table(tmp_path / "registry" / "index.parquet")) == _index(
-            index_rows(tmp_path)
-        )
+        assert _non_events(
+            pq.read_table(tmp_path / "registry" / "non_events.parquet")
+        ) == _non_events(non_event_rows(tmp_path))
         assert sorted(
             pq.read_table(tmp_path / "tables" / "extractions.parquet")
             .column("id")
@@ -957,7 +1163,7 @@ class TestPackage:
         )
         roots = ("a_score", "a_pcm", "a_seg", "b_score", "e_score")
         assert sorted(p.name for p in (tmp_path / "registry").iterdir()) == sorted(
-            [*(f"{_tool(root)}.parquet" for root in roots), "index.parquet"]
+            [*(f"{_tool(root)}.parquet" for root in roots), "non_events.parquet"]
         )
         notes = pq.read_table(tmp_path / "tables" / "Note" / parts["Note"][0])
         # The bundles in the order staged, each in its registry's order.
@@ -1319,6 +1525,64 @@ class TestPackage:
             f"outside tables/, not at {url!r}."
         )
 
+    def test_a_column_two_manifests_hold_in_two_widths_is_widened(
+        self, tmp_path: Path
+    ) -> None:
+        package = Package()
+        package.write_bundle(
+            _bundle_of(_velocity("s1", 100, pa.int8())), "v1/manifest.yaml"
+        )
+        package.write_bundle(
+            _bundle_of(_velocity("s2", 300, pa.int64())), "v2/manifest.yaml"
+        )
+
+        path = package.to_file(tmp_path / "package.yaml")
+
+        (part,) = _parts(tmp_path, "Note")
+        notes = pq.read_table(tmp_path / "tables" / "Note" / part)
+        assert notes.schema.field("velocity").type == pa.int64()
+        assert _velocities(notes) == {"s1_n": 100, "s2_n": 300}
+        assert package_problems(path) == []
+
+    def test_staging_many_bundles_checks_each_against_them_all(self) -> None:
+        def staged(index: int, note: str | None = None) -> AlignmentBundle:
+            score = ContinuousLogicalTimeline(length=Fraction(4), uid=f"s{index}_score")
+            score.add_events(
+                [
+                    {
+                        "id": note or f"s{index}_n1",
+                        "event_type": "Note",
+                        "start": Fraction(0),
+                    }
+                ]
+            )
+            bundle = AlignmentBundle(id=f"s{index}")
+            bundle.add_timeline(score)
+            return bundle
+
+        def refusal(held: int) -> str:
+            return (
+                f"The event 's{held}_n1' of timeline 's6_score' of the manifest "
+                "'s6/manifest.yaml' cannot join the package: its ID is held by the "
+                f"event of timeline 's{held}_score' in the manifest "
+                f"'s{held}/manifest.yaml'; nothing is renamed."
+            )
+
+        package = Package()
+        for index in range(6):
+            package.write_bundle(staged(index), f"s{index}/manifest.yaml")
+        for held in (0, 5):
+            with pytest.raises(ValueError) as refused:
+                package.write_bundle(staged(6, f"s{held}_n1"), "s6/manifest.yaml")
+            assert str(refused.value) == refusal(held)
+
+        package.write_bundle(staged(0), "s0/manifest.yaml")
+
+        with pytest.raises(ValueError) as refused:
+            package.write_bundle(staged(6, "s0_n1"), "s6/manifest.yaml")
+        assert str(refused.value) == refusal(0)
+        assert package.manifests == [f"s{index}/manifest.yaml" for index in range(6)]
+
     def test_where_a_package_is_written(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError) as refused:
             Package().to_file(tmp_path / "pieces.yaml")
@@ -1346,69 +1610,49 @@ class TestPackage:
             "manifests: []"
         )
 
-    @_FEATURES_IN_A_PACKAGE
-    def test_a_carried_table_is_copied_into_the_package_and_listed(
+    def test_a_table_of_other_rows_is_a_problem_of_the_package(
+        self, tmp_path: Path
+    ) -> None:
+        read = _carrying(tmp_path / "source", _b(), [1, 2])
+        package = Package()
+        package.write_bundle(read, "b/manifest.yaml")
+
+        for folder in ("package", "elsewhere"):
+            path = tmp_path / folder / "package.yaml"
+            with pytest.raises(ValueError) as refused:
+                package.to_file(path)
+
+            assert str(refused.value) == (
+                f"The package check refuses the package written at '{path}': "
+                "foreign_table in 'tables/Features/features.parquet': the table "
+                "'tables/Features/features.parquet' of type 'Features' has no 'id' "
+                "column: a package's tables hold the registry, the Extraction "
+                "table, MatchClaim tables and pre-parsed tables of events keyed by "
+                "'id'; the package is restored as it was."
+            )
+            assert _files(tmp_path / folder) == {}
+            assert package.path is None
+            assert package.manifests == ["b/manifest.yaml"]
+
+    def test_a_manifest_alone_carries_a_table_of_other_rows(
         self, tmp_path: Path
     ) -> None:
         read = _carrying(tmp_path / "source", _b(), [1, 2])
         source = tmp_path / "source" / "features.parquet"
-        package = Package()
-        package.write_bundle(read, "b/manifest.yaml")
+        data = source.read_bytes()
 
-        path = package.to_file(tmp_path / "package" / "package.yaml")
+        read.to_file(tmp_path / "source" / "manifest.yaml")
 
-        copy = tmp_path / "package" / "tables" / "Features" / "features.parquet"
-        assert copy.read_bytes() == source.read_bytes()
-        assert [
-            (table["type"], table["url"])
-            for table in timetoshare.loads(path.read_text(encoding="utf-8"))["tables"]
-        ] == [
-            ("Beat", "tables/Beat/"),
-            ("Note", "tables/Note/"),
-            ("Features", "tables/Features/features.parquet"),
-        ]
-        manifest = timetoshare.loads(
-            (tmp_path / "package" / "b" / "manifest.yaml").read_text(encoding="utf-8")
-        )
-        assert [r for r in manifest["resources"] if r["id"] == "#features"] == [
-            {
-                "id": "#features",
-                "type": "Features",
-                "timelines": ["#b_score"],
-                "url": "../tables/Features/features.parquet",
-            }
-        ]
-        assert package_problems(path) == []
-        again = Package.from_file(path).bundle("b/manifest.yaml")
+        assert source.read_bytes() == data
+        again = AlignmentBundle.from_file(tmp_path / "source" / "manifest.yaml")
         (carried,) = [r for r in again.resources if r.id == "features"]
-        assert carried.url == "../tables/Features/features.parquet"
+        assert (carried.type, carried.url) == ("Features", "features.parquet")
         assert list(again._carried_tables) == ["features"]
-        assert _rows(again) == _rows(_b())
-
-        # Written back through the opened package, the copy stays.
-        before = _files(tmp_path / "package")
-        opened = Package.from_file(path)
-        opened.write_bundle(opened.bundle("b/manifest.yaml"), "b/manifest.yaml")
-        after = _files(tmp_path / "package")
-        assert [name for name in after if "Features" in name] == [
-            "tables/Features/features.parquet"
-        ]
-        assert after["tables/Features/features.parquet"] == source.read_bytes()
-        assert len(after) == len(before)
-        assert [table["url"] for table in opened.tables].count(
-            "tables/Features/features.parquet"
-        ) == 1
-        assert package_problems(path) == []
 
     def test_a_folder_without_parquet_files_is_copied_and_listed(
         self, tmp_path: Path
     ) -> None:
-        (tmp_path / "source" / "scans").mkdir(parents=True)
-        (tmp_path / "source" / "scans" / "page1.png").write_bytes(b"\x89PNG")
-        bundle = _b()
-        bundle.resources.append(Resource("scans", "Scan", ("b_score",), "scans/"))
-        bundle.to_file(tmp_path / "source" / "b.yaml", events=True)
-        read = AlignmentBundle.from_file(tmp_path / "source" / "b.yaml")
+        read = _carrying_scans(tmp_path / "source", _b(), b"\x89PNG")
         package = Package()
         package.write_bundle(read, "b/manifest.yaml")
 
@@ -1417,16 +1661,47 @@ class TestPackage:
         assert (
             tmp_path / "package" / "tables" / "Scan" / "scans" / "page1.png"
         ).read_bytes() == b"\x89PNG"
-        assert {"type": "Scan", "url": "tables/Scan/scans/"} in package.tables
-        (scans,) = [r for r in read.resources if r.id == "scans"]
-        assert scans.url == "../tables/Scan/scans/"
+        assert [
+            (table["type"], table["url"])
+            for table in timetoshare.loads(path.read_text(encoding="utf-8"))["tables"]
+        ] == [
+            ("Registry", "registry/"),
+            ("Extraction", "tables/extractions.parquet"),
+            ("Beat", "tables/Beat/"),
+            ("Note", "tables/Note/"),
+            ("Scan", "tables/Scan/scans/"),
+        ]
+        manifest = timetoshare.loads(
+            (tmp_path / "package" / "b" / "manifest.yaml").read_text(encoding="utf-8")
+        )
+        assert [r for r in manifest["resources"] if r["id"] == "#scans"] == [
+            {
+                "id": "#scans",
+                "type": "Scan",
+                "timelines": ["#b_score"],
+                "url": "../tables/Scan/scans/",
+            }
+        ]
         assert package_problems(path) == []
         again = Package.from_file(path).bundle("b/manifest.yaml")
         assert list(again._carried_tables) == ["scans"]
         assert _rows(again) == _rows(_b())
 
-    @_FEATURES_IN_A_PACKAGE
-    def test_a_carried_table_s_name_taken(self, tmp_path: Path) -> None:
+        # Written back through the opened package, the copy stays.
+        before = _files(tmp_path / "package")
+        opened = Package.from_file(path)
+        opened.write_bundle(opened.bundle("b/manifest.yaml"), "b/manifest.yaml")
+        after = _files(tmp_path / "package")
+        assert [name for name in after if "Scan" in name] == [
+            "tables/Scan/scans/page1.png"
+        ]
+        assert len(after) == len(before)
+        assert [table["url"] for table in opened.tables].count(
+            "tables/Scan/scans/"
+        ) == 1
+        assert package_problems(path) == []
+
+    def test_a_carried_folder_s_name_taken(self, tmp_path: Path) -> None:
         score = ContinuousLogicalTimeline(length=Fraction(4), uid="e_score")
         score.add_events([{"id": "e_n1", "event_type": "Note", "start": Fraction(0)}])
         e = AlignmentBundle(id="e")
@@ -1434,38 +1709,41 @@ class TestPackage:
         f = AlignmentBundle(id="f")
         f.add_timeline(ContinuousLogicalTimeline(length=Fraction(4), uid="f_score"))
         package = Package()
-        package.write_bundle(_carrying(tmp_path / "b", _b(), [1, 2]), "b/manifest.yaml")
-        package.write_bundle(_carrying(tmp_path / "e", e, [3]), "e/manifest.yaml")
-        package.write_bundle(_carrying(tmp_path / "f", f, [1, 2]), "f/manifest.yaml")
+        package.write_bundle(
+            _carrying_scans(tmp_path / "b", _b(), b"\x89PNG b"), "b/manifest.yaml"
+        )
+        package.write_bundle(
+            _carrying_scans(tmp_path / "e", e, b"\x89PNG e"), "e/manifest.yaml"
+        )
+        package.write_bundle(
+            _carrying_scans(tmp_path / "f", f, b"\x89PNG b"), "f/manifest.yaml"
+        )
 
         path = package.to_file(tmp_path / "package" / "package.yaml")
 
         root = tmp_path / "package"
-        assert _parts(root, "Features") == [
-            "features.parquet",
-            "features_0eyvk1ozczb0s.parquet",
-        ]
-        assert (
-            root / "tables/Features/features_0eyvk1ozczb0s.parquet"
-        ).read_bytes() == ((tmp_path / "e" / "features.parquet").read_bytes())
+        assert _parts(root, "Scan") == ["scans", _MINTED_SCANS]
+        assert (root / "tables/Scan" / _MINTED_SCANS / "page1.png").read_bytes() == (
+            b"\x89PNG e"
+        )
         urls = {
             url: [
                 r["url"]
                 for r in timetoshare.loads((root / url).read_text(encoding="utf-8"))[
                     "resources"
                 ]
-                if r["id"] == "#features"
+                if r["id"] == "#scans"
             ]
             for url in package.manifests
         }
         assert urls == {
-            "b/manifest.yaml": ["../tables/Features/features.parquet"],
-            "e/manifest.yaml": ["../tables/Features/features_0eyvk1ozczb0s.parquet"],
-            "f/manifest.yaml": ["../tables/Features/features.parquet"],
+            "b/manifest.yaml": ["../tables/Scan/scans/"],
+            "e/manifest.yaml": [f"../tables/Scan/{_MINTED_SCANS}/"],
+            "f/manifest.yaml": ["../tables/Scan/scans/"],
         }
-        assert [t["url"] for t in package.tables if t["type"] == "Features"] == [
-            "tables/Features/features.parquet",
-            "tables/Features/features_0eyvk1ozczb0s.parquet",
+        assert [t["url"] for t in package.tables if t["type"] == "Scan"] == [
+            "tables/Scan/scans/",
+            f"tables/Scan/{_MINTED_SCANS}/",
         ]
         assert package_problems(path) == []
 
@@ -1577,7 +1855,11 @@ class TestResolve:
             ("bach/manifest.yaml", "projection_3"): [],
             ("bach/manifest.yaml", "claim_1"): [("MatchClaim", "claim_1")],
             ("bach/manifest.yaml", "extraction_1"): [
-                ("Extraction", "extraction_1", "bach/alignment.csv")
+                (
+                    "Extraction",
+                    "extraction_1",
+                    (_SHARED.resolve() / "bach" / "alignment.csv").as_posix(),
+                )
             ],
             ("bach/manifest.yaml", "extraction_2"): [],
             ("handel/manifest.yaml", "projection_5"): [_PROJECTION_5],

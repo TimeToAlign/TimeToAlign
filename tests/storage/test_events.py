@@ -1162,64 +1162,6 @@ class TestBoxRows:
             "denominator": 3,
         }
 
-    @pytest.mark.parametrize(
-        ("stated", "axis"),
-        [
-            ({"unit": "seconds", "number_type": "float"}, "seconds as float"),
-            ({"unit": "seconds"}, "seconds as int"),
-            ({"number_type": "float"}, "pixels as float"),
-        ],
-    )
-    def test_a_box_rows_axis_is_the_tables(
-        self, stated: dict[str, str], axis: str
-    ) -> None:
-        rect_h2 = BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels")
-        with pytest.raises(ValueError) as refused:
-            EventData.from_dicts(
-                [{**self._rect_h2_row(), "bounding_box": rect_h2, **stated}],
-                TimeUnit.pixels,
-                NumberType.int,
-            )
-        assert str(refused.value) == (
-            f"The event's bounding_box is in {axis}, the events are in pixels as "
-            "int; a shape is never converted onto the events' axis."
-        )
-
-    @pytest.mark.parametrize(
-        "stated",
-        [
-            {"unit": "pixels", "number_type": "int"},
-            {"unit": TimeUnit.pixels, "number_type": NumberType.int},
-        ],
-    )
-    def test_a_box_row_stating_the_tables_axis_is_stored_without_it(
-        self, stated: dict[str, Any]
-    ) -> None:
-        plain = EventData.from_dicts(
-            [self._rect_h2_row()], TimeUnit.pixels, NumberType.int
-        )
-
-        data = EventData.from_dicts(
-            [{**self._rect_h2_row(), **stated}], TimeUnit.pixels, NumberType.int
-        )
-
-        assert data.table.schema == plain.table.schema
-        assert data.table.to_pylist() == plain.table.to_pylist()
-        assert {"unit", "number_type"}.isdisjoint(data.table.column_names)
-
-    def test_a_box_row_naming_a_timeline_is_refused_without_one(self) -> None:
-        with pytest.raises(ValueError) as refused:
-            EventData.from_dicts(
-                [{**self._rect_h2_row(), "timeline_id": "seg_2"}],
-                TimeUnit.pixels,
-                NumberType.int,
-            )
-        assert str(refused.value) == (
-            "Box 'a' names the timeline 'seg_2' (timeline_id), but events read "
-            "without a timeline hold no timeline ID: add the Box to its timeline "
-            "with Timeline.add_events."
-        )
-
     def test_shape_leaves_are_reduced_at_the_door(self) -> None:
         measure = self._measure("user_units", "fraction")
         data = EventData.from_dicts(

@@ -211,9 +211,11 @@ track.statements
 # ## The files of one theme
 #
 # The first theme, B689 in Barlow and Morgenstern, is fourteen timelines:
-# the excerpt and one per file of its four encodings. A MIDI file is a
-# ticks timeline, on the file's own axis, with a C-Map to quarters (480
-# ticks per quarter here); the MusicXML file and the Sibelius file are
+# the excerpt and one per file of its four encodings. A MIDI file is the
+# ticks timeline the MIDI loader builds of it, on the file's own axis,
+# with what the file states of that axis: a C-Map to quarters (480 ticks
+# per quarter here), a C-Map to seconds from its tempo map, and a measure
+# map of its bars; the MusicXML file and the Sibelius file are
 # quarters timelines, a note list (CSV) and the excerpt seconds timelines,
 # a PDF a points timeline. Each
 # names its file in the archive (`lrmoo:R7i_is_exemplified_by`) and, where
@@ -222,8 +224,9 @@ track.statements
 # file, EDM-corr's MIDI file from EDM-orig's, each EDM encoding's note list
 # and PDF from its MIDI file, and EDM-alig's files from EDM-corr's MIDI file.
 #
-# A timeline is as long as its file states: a MIDI file its end of track,
-# the MusicXML file the end of its last bar, the excerpt its seconds. A note
+# A timeline is as long as its file states: a MIDI file its end of track
+# (its timeline is locked at that length), the MusicXML file the end of its
+# last bar, the excerpt its seconds. A note
 # list, a PDF and the Sibelius file state no end: their length is unknown
 # (`length` is `None`). Only the MIDI files' timelines hold notes.
 
@@ -303,7 +306,9 @@ claims(field, edm_corr)
 
 # %% [markdown]
 # The timeline's C-Map reads tick 3200 as exactly `20/3` quarters, the
-# onset the alignment file writes as `6.66667`.
+# onset the alignment file writes as `6.66667`. Its tempo map, a second per
+# quarter in this file, reads it as `20/3` seconds, shown as the float the
+# seconds axis holds.
 
 # %%
 edm_corr.get_timestamp_at(3200)

@@ -1945,7 +1945,7 @@ the time of the run, compared with the extraction the bundle holds.
   fixture `bundles/bundle_resources.yaml` reads to `bundle.resources ==
   [Resource("resource_1", "MatchClaim", ("score", "take_1"),
   "match_claims.parquet", "application/vnd.apache.parquet"),
-  Resource("resource_2", "Projection", ("take_1",), "projections.parquet")]`
+  Resource("resource_2", "Registry", ("take_1",), "registry.parquet")]`
   (IDs bare). An unknown key of a resource and of its `integrity` is kept
   and written back. A one-root manifest read by `Timeline.from_dict` writes
   its resource back. `Manifest.read` refuses, each with its exact message:
@@ -2052,11 +2052,10 @@ the time of the run, compared with the extraction the bundle holds.
   tables), holds no claims, keeps both entries, and written back gives the
   same bytes and no table file. Written into a directory where neither
   file lies, after a Projection is added to `take_1` (no claim), the
-  registry is written under a new entry (`Registry`, `take_1`,
-  `registry.parquet`, a minted ID) and both entries read, whose files are
-  neither written nor lying there, go: the MatchClaim table is not
-  written, and `resource_2` names a Projection table, which a manifest no
-  longer names (the registry's rows locate it).
+  registry is written under the entry that names it, which keeps its
+  given ID `resource_2` (`Registry`, `take_1`, `registry.parquet`), and
+  the MatchClaim entry, whose file is neither written (no claim) nor
+  lying there, goes: `bundle.resources` is that one Registry entry.
 - **No event row in the manifest.** `to_file(..., events=True)` of the
   synthetic package writes its Notes into `Note.parquet` beside the five
   files, and the manifest written holds no `events` key in any timeline

@@ -259,7 +259,7 @@ class TestResources:
                 "match_claims.parquet",
                 PARQUET_MEDIA_TYPE,
             ),
-            Resource("resource_2", "Projection", ("take_1",), "projections.parquet"),
+            Resource("resource_2", "Registry", ("take_1",), "registry.parquet"),
         ]
         assert len(bundle.match_claim_table) == 0
 
@@ -713,8 +713,8 @@ class TestWriting:
             "registry.parquet",
         ]
         (registry,) = bundle.resources
-        assert _is_minted_resource_id(registry.id)
-        assert (registry.type, registry.timelines, registry.url) == (
+        assert (registry.id, registry.type, registry.timelines, registry.url) == (
+            "resource_2",
             "Registry",
             ("take_1",),
             "registry.parquet",

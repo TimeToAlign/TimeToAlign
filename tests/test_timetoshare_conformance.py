@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pyarrow.parquet as pq
 import pytest
 from timetoshare import (
     FORMAT_CONTEXT,
@@ -31,6 +32,13 @@ from timetoshare import (
     warning_paths,
     with_context,
 )
+from timetoshare.tables import (
+    extraction_problems,
+    index_rows,
+    package_fixture_path,
+    projection_problems,
+    registry_problems,
+)
 
 from tests.helpers import filed
 from timetoalign import (
@@ -45,7 +53,8 @@ from timetoalign import (
     Timeline,
     TimelineGroup,
 )
-from timetoalign.core import FlowManifestation, TimeUnit
+from timetoalign.alignment import Package, resolve
+from timetoalign.core import BoundingBox, Box, FlowManifestation, TimeUnit
 from timetoalign.core.time import number_from_json, number_to_json
 from timetoalign.loader.alignment import (
     Ieee1599Loader,
@@ -817,3 +826,96 @@ def test_the_unit_table_is_the_package_s() -> None:
         )
         for unit, entry in UNITS.items()
     }
+
+
+# region The package's tables
+
+
+_ACCEPTANCES = package_fixture_path("acceptances")
+
+
+@pytest.mark.parametrize(
+    "case", sorted(path.name for path in _ACCEPTANCES.iterdir() if path.is_dir())
+)
+def test_every_acceptance_package_reads(case: str) -> None:
+    root = _ACCEPTANCES / case
+    package = Package.from_file(root / "package.yaml")
+    for url in package.manifests:
+        bundle = package.bundle(url)
+        for timeline in bundle._known_timelines().values():
+            timeline.events  # every pre-parsed content read
+            assert timeline.n_events == len(
+                timeline.registry.filter(within=timeline.id).table
+            )
+    expected = loads((root / "expected.yaml").read_text(encoding="utf-8"))
+    for resolution in expected.get("resolutions", []):
+        found = resolve(root / resolution["path"], resolution["id"])
+        assert len(found) == len(resolution["found"])
+        assert {getattr(item, "id", None) for item in found} <= {resolution["id"]}
+
+
+def test_the_tables_written_pass_the_package_s_checks(tmp_path: Path) -> None:
+    score = ContinuousLogicalTimeline(length=Fraction(8), uid="score")
+    part = ContinuousLogicalTimeline(length=Fraction(2), uid="part")
+    score.add_child(part, Fraction(4))
+    part.add_events([{"id": "n1", "event_type": "Note", "start": Fraction(1, 2)}])
+    page = DiscreteGraphicalTimeline(
+        length=867,
+        uid="page",
+        meta={"box": {"x": 7, "y": 0, "width": 867, "height": 270}},
+    )
+    page.add_events(
+        Box.from_shape(
+            BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels"), origin=7, id="b1"
+        )
+    )
+    bundle = AlignmentBundle(id="checked")
+    bundle.add_timeline(score)
+    bundle.add_timeline(page)
+    bundle.create_match_claims([("n1", "part", {"start": 100}, "page")])
+
+    path = bundle.to_file(tmp_path / "checked.yaml", events=True)
+
+    manifest = loads(path.read_text(encoding="utf-8"))
+    registry = pq.read_table(tmp_path / "registry.parquet")
+    assert registry_problems(registry, manifest) == []
+    assert extraction_problems(pq.read_table(tmp_path / "extractions.parquet")) == []
+    assert (
+        projection_problems(pq.read_table(tmp_path / "projections.parquet"), manifest)
+        == []
+    )
+    copy = tmp_path / "as_package"
+    copy.mkdir()
+    for name in (
+        "checked.yaml",
+        "registry.parquet",
+        "extractions.parquet",
+        "match_claims.parquet",
+    ):
+        (copy / name).write_bytes((tmp_path / name).read_bytes())
+    (copy / "package.yaml").write_text(
+        dumps(
+            {
+                "timetoshare": "0.2.0",
+                "manifests": [{"url": "checked.yaml"}],
+                "tables": [
+                    {"type": "Registry", "url": "registry.parquet"},
+                    {"type": "Extraction", "url": "extractions.parquet"},
+                    {"type": "MatchClaim", "url": "match_claims.parquet"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def index(table: Any) -> list[tuple[Any, ...]]:
+        return sorted(
+            (row["id"], row["kind"], row["location"], row["timeline_id"], row["name"])
+            for row in table.to_pylist()
+            if row["start"] is None
+        )
+
+    assert index(registry) == index(index_rows(copy))
+
+
+# endregion

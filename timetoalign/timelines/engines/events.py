@@ -47,11 +47,9 @@ from timetoalign.core.time import (
 from timetoalign.core.timestamp import _format_coordinate_value
 from timetoalign.storage import EventData
 from timetoalign.storage.events import (
-    _DECLARED_EXTRA_FIELDS,
     BOX_EVENT_TYPE,
     PROJECTION_EVENT_TYPE,
     SHAPE_FIELDS,
-    _build_extra_field_schema,
     _column_refusal,
     _event_rows,
     box_rows_on_the_axis,
@@ -701,160 +699,11 @@ class EventsMixin(_Host):
         self._append_events(added)
         return added
 
-    def _add_event_table(self, rows: pa.Table, event_type: str) -> None:
-        """Add the rows of a package's event table of *event_type* lying on this timeline.
-
-        *rows* are this timeline's rows of the table as
-        :func:`~timetoalign.timelines.manifest.read_event_table` reads them
-        (``id``, ``unit``, ``number_type``, ``start``, ``duration`` and every
-        further column, each number as memory holds it). They are events a
-        source states, read as a table (:meth:`EventData.from_arrays
-        <timetoalign.storage.EventData.from_arrays>`), never row by row: as
-        :meth:`_add_stated_events` adds a manifest's event rows, no ID is
-        minted, an ID the family holds is refused, and a Box is checked
-        against its shape as :meth:`add_events` checks it. The length
-        follows :meth:`add_events`' rule (:meth:`_fit_length`): an unlocked
-        timeline grows to hold a row ending past it, a locked one refuses
-        it. A Projection the timeline holds under a row's ID already, of
-        the row's content (a manifest whose timelines state their event
-        rows as well), is kept, and the row passed over, as
-        :meth:`add_projections` reuses a Projection it holds; one of other
-        content is refused (:meth:`_projection_rows_not_held`). A further column none of the rows holds a value
-        in is not added: the table spans timelines, and the column is
-        another timeline's. The rows' ``unit`` and ``number_type`` must be
-        the timeline's: an event in another unit or number type reaches a
-        timeline only as a Projection through a C-Map.
-
-        Args:
-            rows: The rows, every one lying on this timeline.
-            event_type: The table's type, every row's ``event_type``.
-
-        Raises:
-            ValueError: If a row states another axis than the timeline's (a
-                Box with the message :meth:`add_events` gives), a Box
-                contradicts its shape, an ID is held in the family or twice
-                (a Projection's by a Projection of other content), or a row
-                ends past the length of a locked timeline; nothing is added
-                then.
-        """
-        n = rows.num_rows
-        if n == 0:
-            return
-        unit, number_type = self._unit, self._number_type
-        off = pc.invert(
-            _filled(
-                pc.and_(
-                    pc.equal(rows.column("unit"), pa.scalar(unit.value)),
-                    pc.equal(rows.column("number_type"), pa.scalar(number_type.name)),
-                ),
-                pa.scalar(False),
-            )
-        )
-        if pc.any(off).as_py():
-            row = rows.slice(pc.index(off, True).as_py(), 1).to_pylist()[0]
-            if event_type == BOX_EVENT_TYPE:
-                box_rows_on_the_axis(
-                    [{**row, "event_type": event_type}],
-                    unit,
-                    number_type,
-                    timeline_id=self._id,
-                )
-            raise ValueError(
-                f"{event_type} {quote_id(row['id'])} of an event table lies on "
-                f"{row['unit']} as {row['number_type']}, but its timeline "
-                f"{quote_id(self._id)} is in {unit.value} as {number_type.name}: "
-                f"an event in another unit or number type reaches a timeline "
-                f"only as a Projection through a C-Map."
-            )
-        if event_type == PROJECTION_EVENT_TYPE:
-            rows = self._projection_rows_not_held(rows)
-            n = rows.num_rows
-            if n == 0:
-                return
-        # A further column none of this timeline's rows holds a value in
-        # is another timeline's, which the table spanning them both holds.
-        fields: dict[str, Any] = {
-            name: rows.column(name)
-            for name in rows.column_names
-            if name not in ("unit", "number_type")
-            and (
-                name in ("id", "start", "duration")
-                or name in _DECLARED_EXTRA_FIELDS
-                or rows.column(name).null_count < n
-            )
-        }
-        fields["event_type"] = pa.repeat(pa.scalar(event_type, pa.string()), n)
-        declared = [name for name in fields if name in _DECLARED_EXTRA_FIELDS]
-        added = type(self._events).from_arrays(
-            fields,
-            unit,
-            number_type,
-            extra_fields=list(
-                _build_extra_field_schema(
-                    pa.schema([]), declared, [], unit, number_type
-                )
-            ),
-        )
-        if event_type == BOX_EVENT_TYPE:
-            self._refuse_boxes_off_their_shapes(added, rows.column("id").to_pylist())
-        self._registry._family.refuse_held_ids(self._id, added.table)
-        self._fit_length(added)
-        self._append_events(added, checked=True)
-
-    def _projection_rows_not_held(self, rows: pa.Table) -> pa.Table:
-        """The Projection *rows* of an event table this timeline does not hold.
-
-        Get-or-add, as :meth:`add_projections` takes a row with an ID: a
-        row whose ID the timeline holds as a Projection of the same content
-        (``projection_of``, both members, ``start`` and ``duration``, each
-        compared exactly) is that Projection, and is passed over; every
-        other row is returned. Compared by one join, never row by row.
-
-        Raises:
-            ValueError: If the timeline holds a row's ID as a Projection of
-                other content, naming the first such ID, as
-                :meth:`add_projections` refuses it; nothing is added then.
-        """
-        table = self._events.table
-        if "event_type" not in table.column_names:
-            return rows
-        held = table.filter(
-            _filled(
-                pc.equal(table.column("event_type"), pa.scalar(PROJECTION_EVENT_TYPE)),
-                pa.scalar(False),
-            )
-        )
-        hit = _filled(
-            pc.is_in(rows.column("id"), value_set=held.column("id").combine_chunks()),
-            pa.scalar(False),
-        )
-        if not pc.any(hit).as_py():
-            return rows
-        cells = ("start", "duration")
-        candidates = rows.filter(hit)
-        match = _held_match(
-            _projection_keys(held, cells).append_column(
-                "held_id", held.column("id").combine_chunks()
-            ),
-            _projection_keys(candidates, cells).append_column(
-                "held_id", candidates.column("id").combine_chunks()
-            ),
-            with_id=True,
-        )
-        differing = pc.is_null(match)
-        if pc.any(differing).as_py():
-            event_id = candidates.column("id")[pc.index(differing, True).as_py()]
-            raise ValueError(
-                f"Event id {quote_id(event_id.as_py())} is already held by "
-                f"another event of timeline {quote_id(self._id)}"
-            )
-        return rows.filter(pc.invert(hit))
-
     def _fit_length(self, added: EventData) -> None:
         """Hold the rows *added* within the length, as :meth:`add_events` does.
 
         The rule of :meth:`add_events` without ``allow_expansion``, for rows
-        a source states (an event file, a manifest's event rows): where a
+        a source states (a manifest's event rows): where a
         row ends past a known length, an unlocked timeline grows to its end
         and a locked one refuses it; a timeline of unknown length is bounded
         by its parent's structure alone (:meth:`_ensure_capacity`).

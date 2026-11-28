@@ -1200,9 +1200,12 @@ What would prove CHUNK works and is not a renamed Projection:
   stated by its position). A Projection whose `projection_of` names either
   string as its event is refused: built as a `Projection`, added to a
   timeline as a row (`add_events`, `add_projections`), and read from a
-  Projections table whose `projection_of.event_id` cell holds it (the
-  table check's own message, code `invalid_projection_of`, column
-  `projection_of.event_id`); the timeline holds no event afterwards.
+  pre-parsed Projection table whose `projection_of.event_id` cell holds it
+  (TimeToShare's fixture package copied, the cell of `projection_10`
+  changed: reading the events of `clt_2`, which first reads that table,
+  raises the table check's own message, code `invalid_projection_of`, row
+  0 of the rows read, column `projection_of.event_id`); the timeline holds
+  no event afterwards.
 - **Text renderings name the sentinel**: `repr` marks a CHUNK side
   `[CHUNK]` after its coordinate, `str` and the HTML card show `CHUNK` /
   `NOMATCH` as the event, never the reserved string.
@@ -1914,17 +1917,29 @@ without `second` the WarpMap of `first` and `third` places quarter 2 at
 A manifest and the files it names make a package. The manifest's
 `resources` is a modelled list (`timelines/manifest.py::Resource`, with
 `Integrity`), read and written by the one manifest module, and
-`AlignmentBundle.to_file` writes the bundle's two tables beside the manifest
-— the MatchClaim table (`match_claims.parquet`) and the Projections table
-(`projections.parquet`, every Projection of every timeline of the bundle's
-trees with its `timeline_id`) — naming each in `resources`;
-`AlignmentBundle.from_file` reads them back through those entries. What
-would show the feature broken: a resource read as an opaque blob (an unknown
-key would be lost, a malformed one accepted), a table written but not named
+`AlignmentBundle.to_file` writes the bundle's tables beside the manifest:
+the **registry** (`registry.parquet`: the index rows of the manifest's
+elements, its MatchClaims and its extractions, then one event row per
+event, its position on the axis of its timeline's root), the **Extraction
+table** (`extractions.parquet`), one **pre-parsed table** per kind
+(`projections.parquet`, `boxes.parquet`, `<Kind>.parquet`: each event's
+content by ID, no position) and the **MatchClaim table**
+(`match_claims.parquet`). The manifest names the registry and the
+MatchClaim table in `resources`; `AlignmentBundle.from_file` reads them
+back through those entries, the registry rows installed in each timeline's
+family and each event's content read from the table its `location` names.
+What would show the feature broken: a resource read as an opaque blob (an
+unknown key lost, a malformed one accepted), a table written but not named
 or named with a size or digest that is not its file's, a round trip that
-changes a value, a Projection added twice, a table written over another
-that drops a MatchClaim, a manifest that names a table that is absent and
-then fails to load. Each test pins one of these with exact values.
+changes a value or an ID, a child's position written on its own axis (the
+registry holds the root's), a Projection added twice, a table written over
+another that drops a MatchClaim, a manifest naming a table that is absent
+and then failing to load, a registry row refused or accepted against the
+format's check. Each test pins one of these with exact values. The ID of
+an extraction a family mints for events made in code is
+`Extraction.of_tool(scope=<root ID>).id` (seeded from the library's name
+and version and the root), computed in the test, never typed; its `date` is
+the time of the run, compared with the extraction the bundle holds.
 
 - **Resources are read and refused as the format says.** TimeToShare's
   fixture `bundles/bundle_resources.yaml` reads to `bundle.resources ==
@@ -1937,127 +1952,126 @@ then fails to load. Each test pins one of these with exact values.
   a resource naming a timeline the manifest lacks, a second resource of the
   type `MatchClaim` listing `score` again (`resource_type` at
   `#/resources/1/timelines/0`, `'score' is listed by the resource
-  'resource_1' of the type MatchClaim already`: several resources of one
-  type are valid, a timeline listed by two of them is not), an integrity
-  algorithm outside PREMIS's five, a resource ID a timeline holds too. A resource ID of any other shape
-  (`table_1`) is an ID like any other: it reads and is written back as it
-  stands (minted IDs will not be numbered, so nothing assumes
-  `resource_N`). (The four
-  rejection cases of TimeToShare are also in
+  'resource_1' of the type MatchClaim already`), an integrity algorithm
+  outside PREMIS's five, a resource ID a timeline holds too. A resource ID
+  of any other shape (`table_1`) reads and is written back as it stands.
+  (The four rejection cases of TimeToShare are also in
   `test_timetoshare_conformance.py`'s refusal test.)
 - **The synthetic package, written.** Three roots — `score` (quarters,
   fraction, 16, its child `part` at 8, length 4, the notes `n1` at 0 with
   duration 1 and `n2` at 3/2; `part` holds `p1` at 1), `pcm` (samples, int,
   705600) and `audio` (seconds, float, 16.0) — and, through
   `create_match_claims` with one shared provenance (`method` `imported`),
-  five claims in this order: (1) `n1` ↔ a span 0–44100 on `pcm` (an
-  interval claim), (2) `n2` ↔ 66150 on `pcm`, (3) the position 0.5 s named
-  `onset_a` on `audio` ↔ 22050 on `pcm` (both sides positions), (4) `p1`
-  (the child's note) ↔ 9.0 s on `audio`, (5) a NOMATCH of `n2` towards
+  five claims in this order: (1) `n1` ↔ a span 0–44100 on `pcm`, (2) `n2` ↔
+  66150 on `pcm`, (3) the position 0.5 s named `onset_a` on `audio` ↔ 22050
+  on `pcm`, (4) `p1` ↔ 9.0 s on `audio`, (5) a NOMATCH of `n2` towards
   `audio`. A test reads each claim's id, and the ID of the Projection its
-  side B names, from the claim (claims 1–4 name the Projections `P1` …
-  `P4` below); none is typed. `to_file(dir / "package.yaml")` leaves
-  exactly three files. The Projections table holds five rows, timelines
-  sorted by ID and each timeline's Projections by `start`: `onset_a` on
-  `audio` (no source, 0.5 s), `P4` on `audio` (of `part`/`p1`, 9 s), `P1`
-  on `pcm` (of `score`/`n1`, 0), `P3` (no source, 22050), `P2` (of
-  `score`/`n2`, 66150); the five IDs are distinct, and the MatchClaim table's
-  fourth row is claim 4, `p1` ↔ `P4`. Each
-  row states its axis once, `unit` and `number_type` (`seconds`/`float`
-  on `audio`, `samples`/`int` on `pcm`), and `start` and `duration` their
-  number once, as `(numerator, denominator, value)`: `onset_a` start
-  `(null, null, 0.5)` (no mirror), `P4` `(null, null, 9.0)`, `P1` start
-  `(0, null, null)` and duration `(44100, null, null)`, `P2` `(66150, null,
-  null)`, `P3` `(22050, null, null)`; every instant's duration null. The
-  MatchClaim table passes TimeToShare's check against the manifest written
-  (`check_match_claims`), and so does the Projections table
-  (`projection_problems` is empty). `bundle.resources` names, in the order
-  written, an entry of type `MatchClaim` (timelines `audio`, `part`, `pcm`,
-  `score`) and one of type `Projection` (`audio`, `pcm`), each under an ID
-  minted when it was made (`resource_` + 13 base-36 characters, two
-  distinct), with the Parquet media type, and `size` and `integrity` equal
-  to the file's byte count and the SHA-256 of its bytes, computed in the
-  test from the file itself (a Parquet file's bytes depend on the writing
-  library's version, so the test pins the relation, not a digest literal);
-  the manifest file holds the same two entries in canonical order, by ID.
+  side B names, from the claim (claims 1–4 name `P1` … `P4`).
+  `to_file(dir / "package.yaml")` leaves exactly `package.yaml`,
+  `extractions.parquet`, `match_claims.parquet`, `projections.parquet` and
+  `registry.parquet` (the Notes are not written without `events`). The
+  registry's event rows, sorted by extraction, timeline, exact start and
+  ID, are the five Projections: `onset_a` and `P4` on `audio` (`seconds`,
+  `float`, starts `(null, null, 0.5)` and `(null, null, 9.0)`, no
+  duration) named by `audio`'s extraction; `P1` (start `(0, null, null)`,
+  duration `(44100, null, null)`), `P3` (`(22050, null, null)`) and `P2`
+  (`(66150, null, null)`) on `pcm` (`samples`, `int`) named by `pcm`'s;
+  each of kind `Projection` at the location `projections.parquet`, no
+  name, locator or vanishing; the two extractions sorted by their IDs
+  decide which timeline comes first. Its index rows are, by location and
+  ID, the two extractions at `extractions.parquet`, the five MatchClaims
+  at `match_claims.parquet` and the manifest's elements at `package.yaml`
+  (`audio`, `package` the manifest, `part`, `pcm`, the two resources,
+  `score`), each without position. `projections.parquet` holds the five
+  rows `{id, projection_of}` in the registry's order: `onset_a` and `P3`
+  of nothing, `P4` of `part`/`p1`, `P1` of `score`/`n1`, `P2` of
+  `score`/`n2`. `extractions.parquet` holds the two extractions the
+  families hold, equal to `bundle.registry.extractions` row for row
+  (`Extraction.from_row`). The registry passes TimeToShare's check
+  against the manifest written (`registry_problems`, as the package check
+  reads it), and so do the MatchClaim table (`check_match_claims`) and the
+  Projection table (`projection_problems`); the fourth MatchClaim is claim
+  4, `p1` ↔ `P4`. `bundle.resources` names an entry of type `Registry`
+  (timelines `audio`, `pcm`: the timelines holding event rows,
+  `registry.parquet`) and one of type `MatchClaim` (`audio`, `part`,
+  `pcm`, `score`), each under an ID minted when it was made (`resource_` +
+  13 base-36 characters, two distinct), with the Parquet media type, and
+  `size` and `integrity` the file's byte count and the SHA-256 of its
+  bytes, computed in the test from the file itself; the manifest file
+  holds the same two entries in canonical order, by ID, and names no
+  pre-parsed table or Extraction table.
 - **Read back exactly.** `from_file` gives a bundle whose
   `match_claim_table` equals the written one row for row (provenance
-  included), whose timelines hold the same Projections (`projection_table`
-  of the bundle read equals the file's table), and whose `to_dict()` equals
-  the writer's (`resources` included, which both give in canonical order,
-  by ID, whatever order the bundle made them in). Written again into a fresh directory, all three files are
-  byte for byte the first ones.
+  included), whose registry gives the same event rows and the same
+  pre-parsed Projection table (`event_tables` of the bundle read), whose
+  extractions are the written ones, and whose `to_dict()` equals the
+  writer's. Written again into a fresh directory, all five files are byte
+  for byte the first ones: the read keeps every extraction's date, and a
+  writer orders the rows of a pre-parsed table as the registry's.
 - **The actor context survives the package.** The synthetic package with
   `add_prefix("orcid", "https://orcid.org/")` on the bundle and the belief
   `true` of `orcid:0000-0001` recorded in claim 2
   (`add_match_claim_belief`, date 2026-11-21): no statement uses `orcid`,
   only a MatchClaim table actor does. The manifest written holds `"orcid":
   "https://orcid.org/"` in its `@context` beside the format's terms and
-  nothing else; read
-  back, `bundle.prefixes == {"orcid": "https://orcid.org/"}`, the belief is
-  still written `orcid:0000-0001` in the table, and
-  `get_match_claims(believer="https://orcid.org/0000-0001", beliefs=["true"])`
-  keeps claim 2 alone, as it does on the bundle written. A writer keeping
-  only the prefixes statements use would drop the declaration: the compact
-  actor would then expand to nothing after the reload and the filter would
-  keep no claim. Written again, the files are byte for byte the first ones.
+  nothing else; read back, `bundle.prefixes == {"orcid":
+  "https://orcid.org/"}`, the belief is still written `orcid:0000-0001`,
+  and `get_match_claims(believer="https://orcid.org/0000-0001",
+  beliefs=["true"])` keeps claim 2 alone, as on the bundle written. Written
+  again, the files are byte for byte the first ones.
 - **A prefix neither the statements nor the table use is not written.**
-  The written `@context` holds what its readers need, no more: a prefix
-  the statements use or the MatchClaim table's provenance uses (its
-  actors), whether the bundle declares it or the catalogue does. The
-  synthetic package with `add_prefix("ex", "http://example.org/ns/")`
+  The synthetic package with `add_prefix("ex", "http://example.org/ns/")`
   (used by nothing) and `add_prefix("orcid", "https://orcid.org/")`, the
   belief `true` of `orcid:0000-0001` in claim 2 and of `wd:Q1` (a
-  catalogue prefix no statement uses) in claim 3, written with its table:
-  the `@context` is exactly the format's terms, `orcid` and `wd` with the
-  catalogue's namespace; `ex` is not written. Read back, `prefixes` is
-  `{"orcid": "https://orcid.org/"}` (`wd` is the catalogue's, so not the
-  bundle's own). A writer keeping every declared prefix would write `ex`;
-  one keeping only what statements use would drop `orcid` and `wd`.
+  catalogue prefix no statement uses) in claim 3: the `@context` is exactly
+  the format's terms, `orcid` and `wd` with the catalogue's namespace; read
+  back, `prefixes` is `{"orcid": "https://orcid.org/"}`.
 - **The succession rule binds the writer.** Writing the same bundle over
   its own files succeeds and changes no byte, and so does the same
   construction run again as a fresh process runs it (after
   `reset_content_minters()`, so its claims and Projections hold the ids the
-  first run minted). The construction without claim 5, run afresh the same
-  way (claims 1–4 hold the first run's ids), written over them, is refused
+  first run minted, and its extractions the same IDs: an extraction the
+  Extraction table lying there holds under its ID, of the same content but
+  its date, is that extraction, its row kept with its date). The
+  construction without claim 5, run afresh, written over them, is refused
   (`The new MatchClaim table lacks the MatchClaim '<claim 5's id>' of the
-  existing one: ...`) before anything is written: the three files keep
-  their bytes. Built twice in one run, the bundles would hold different
-  ids (equal content minted twice gives two ids), so the comparison of
-  equal constructions needs the fresh run.
-- **No claims and no Projections, no table.** A bundle with timelines and
-  neither MatchClaims nor Projections writes the manifest alone, which
-  holds no `resources`.
+  existing one: ...`) before anything is written: every file keeps its
+  bytes.
+- **No claims and no events, no table.** A bundle with timelines and
+  neither MatchClaims nor Projections nor Boxes writes the manifest alone,
+  which holds no `resources`.
 - **Projections without claims.** A bundle whose `pcm` holds one
-  Projection (`Timeline.add_projections`, 22050, no source) and no
-  MatchClaim writes the manifest and `projections.parquet`, named by one
-  entry under a minted ID (`Projection`, `pcm`); read back, `pcm` holds that
-  Projection (the bundle's Projections table equals the file's).
+  Projection (22050, no source) and no MatchClaim writes the manifest,
+  `extractions.parquet`, `projections.parquet` and `registry.parquet`,
+  named by one entry under a minted ID (`Registry`, `pcm`,
+  `registry.parquet`); read back, the registry's rows and the Projection
+  table are the written ones and the bundle holds no MatchClaim.
 - **A named table that is absent.** The fixture `bundle_resources.yaml`
   copied alone into a directory loads (a manifest is read without its
-  tables), holds no claims, keeps both entries, and written back gives
-  the same bytes and no table file. Written into a directory where neither
+  tables), holds no claims, keeps both entries, and written back gives the
+  same bytes and no table file. Written into a directory where neither
   file lies, after a Projection is added to `take_1` (no claim), the
-  Projections table is written under its entry (`resource_2`) and the
-  MatchClaim entry, whose file is neither written nor lying there, goes.
-- **No event row in the manifest.** A manifest never names an event's
-  ID: `to_file(..., events=True)` of the synthetic package writes its
-  events into event files beside the manifest (`Note.parquet` beside the
-  three tables), and the manifest written holds no `events` key in any
-  timeline object; so does a bundle holding Projections alone (no Note
-  file then, its one table the Projections table). The event files
-  themselves are pinned in "Event files beside a lone manifest" below. A
-  manifest whose event rows name a Projection the Projections
-  table holds too (written by hand: the package's manifest with the rows of
-  `pcm` and `audio` added) reads each Projection once (`pcm` 3 events,
-  `audio` 2), the table's row reusing the Projection held under its ID.
+  registry is written under a new entry (`Registry`, `take_1`,
+  `registry.parquet`, a minted ID) and both entries read, whose files are
+  neither written nor lying there, go: the MatchClaim table is not
+  written, and `resource_2` names a Projection table, which a manifest no
+  longer names (the registry's rows locate it).
+- **No event row in the manifest.** `to_file(..., events=True)` of the
+  synthetic package writes its Notes into `Note.parquet` beside the five
+  files, and the manifest written holds no `events` key in any timeline
+  object; so does a bundle holding Projections alone (no Note file then).
+  A manifest whose event rows name the Projections the registry holds too
+  (written by hand: the package's manifest with the rows of every timeline
+  added) reads each Projection once (`pcm` 3 events, `audio` 2): a
+  registry row whose ID the family holds on the same timeline, as the same
+  kind at the same root position, is the event the manifest states.
 - **Placement.** An entry read with the manifest keeps its ID and URL:
   with `bundle.resources = [Resource("resource_7", "MatchClaim",
   ("score",), "tables/claims.parquet")]` the table is written to
   `tables/claims.parquet`, the entry keeps `resource_7` and its URL and
-  names the four timelines the claims name; the Projections table, new,
-  gets an entry under a minted ID (`resource_` + 13 characters) beside the
-  manifest. A URL with a scheme
+  names the four timelines the claims name; the registry, new, gets an
+  entry under a minted ID beside the manifest, the registry's index row
+  of each MatchClaim at `tables/claims.parquet`. A URL with a scheme
   (`https://example.org/claims.parquet`) is refused.
 - **Merged claims keep their ids.** `from_bundles` of `source_a` and
   `source_b`, each holding a score (quarters) and a samples timeline with
@@ -2065,115 +2079,83 @@ then fails to load. Each test pins one of these with exact values.
   `n1` ↔ `o1`: `source_a`'s minted at its construction, `source_b`'s given
   `claim_2`; `merged` then creates a third between `n2` (1 quarter on
   `a_score`) and `o2` (44100 samples on `b_pcm`). No claim needs a
-  Projection, so the package holds no Projections table. `to_file` writes
-  the MatchClaim table with exactly the twelve MatchClaim columns, ids
-  `source_a`'s claim's, `claim_2` and the created claim's (three
-  distinct), which TimeToShare's check accepts against the manifest
-  written; read back, the MatchClaim table and `to_dict()` equal the
-  writer's, and a second write gives the same bytes. Written over its own
-  files the merged bundle changes no byte, nor does the same merge run
-  afresh (after `reset_content_minters()`); the same merge run afresh with
-  `source_b`'s claim given `claim_7` instead, written over them, lacks
-  `claim_2` and is refused (`The new MatchClaim table lacks the MatchClaim
-  'claim_2' of the existing one: ...`), the files keeping their bytes: a
-  MatchClaim is its ID.
+  Projection, so the package holds no registry. `to_file` writes the
+  MatchClaim table with exactly the twelve MatchClaim columns, ids
+  `source_a`'s claim's, `claim_2` and the created claim's, which
+  TimeToShare's check accepts against the manifest written; read back, the
+  MatchClaim table and `to_dict()` equal the writer's, and a second write
+  gives the same bytes. Written over its own files the merged bundle
+  changes no byte, nor does the same merge run afresh; the same merge with
+  `source_b`'s claim given `claim_7` instead lacks `claim_2` and is
+  refused (`The new MatchClaim table lacks the MatchClaim 'claim_2' of the
+  existing one: ...`), the files keeping their bytes.
 - **A further column is kept.** The merged package's MatchClaim table
-  (`source_a`'s claim, `claim_2`) rewritten by hand with a `scope` column appended
-  (`source_a`, null), as a package written by an earlier tool holds one:
-  `MatchClaimField.from_parquet` reads it, the column last in `table`, its
-  values as written, and `package_table` equals the file's table;
-  `AlignmentBundle.from_file` holds the same field, and its
-  `filter(timeline_id="b_score")` keeps the row's `scope` (null). Written
-  to another directory, the MatchClaim table equals the hand-written one;
-  after a claim `n2` ↔ `o2` is added (its id minted at its construction)
-  and `source_a`'s claim is believed `false`, the rewritten table's
+  rewritten by hand with a `scope` column appended (`source_a`, null):
+  `MatchClaimField.from_parquet` reads it, the column last in `table`, and
+  `package_table` equals the file's table; `AlignmentBundle.from_file`
+  holds the same field, and its `filter(timeline_id="b_score")` keeps the
+  row's `scope` (null). Written to another directory, the MatchClaim table
+  equals the hand-written one; after a claim `n2` ↔ `o2` is added and
+  `source_a`'s claim is believed `false`, the rewritten table's
   `id`/`scope` rows are `source_a`'s claim `source_a`, `claim_2` null, the
-  added claim null: the column is carried row for row, null for a row
-  added, and never compared by the succession rule.
-- **An unreduced fraction in the package's tables** (the format's rule that "any fraction
-  is valid" at the file boundary, through the whole path). A package of
-  `score` (quarters, fraction, 8; `n1` at 1/2) and `audio` (seconds, float,
-  60.0; `o1` at 1.0) with a claim `n1` ↔ `o1` and a second, the position
-  3/2 on `score` ↔ `o1` (a Projection on `score` at 3/2, of `audio`/`o1`,
-  its ID read from that claim) is written, then both files are rewritten by hand with every
-  fraction spelled doubled: the MatchClaim cells `(2, 4, null)` and
-  `(6, 4, null)`, the Projection's start `(6, 4, null)`. `from_file` reads
-  it: its `match_claim_table` equals the writer's and `score` holds one
-  Projection, under that ID, at `Coordinate(3/2, quarters)` (cell
-  `{1.5, 3, 2}`). `add_projections` of the Projection of `audio`/`o1` at
-  `Coordinate(3/2, quarters)` on the `score` read (the package holds no
-  Note: a manifest names no event, so the Projection is its one event)
-  returns `[<that ID>]` and `score` still holds one event: get-or-add
-  matches a cell read as `6/4` with one placed as `3/2`. Written
-  back over the rewritten files (the succession rule compares values, so
-  the file's `6/4` is the bundle's `3/2`), the three files are byte for byte
-  the ones first written (a writer respells reduced).
-- **A Projections table that breaks the format** (a row naming the
-  timeline `ghost`) makes `from_file` raise TimeToShare's `TableError`.
-- **Projection IDs are unique across the package** (TimeToShare's check
-  keys the Projections table on the ID alone). Reading: the file's row 3
-  (`P2` on `pcm`) rewritten to row 2's ID (`P1`, on `pcm`) is refused by
-  that check, which the reader raises as it stands, a `TableError` `the ID
-  '<P1>' is given twice`; so is row 1 (`P4` on `audio`) rewritten to
-  `P1`, the same ID on two timelines, with the same message. Writing: an
-  ID is minted when a Projection is created, a minted or given ID another
-  timeline of the manifest holds is refused there, and nothing is minted
-  again on writing (an ID once given is stable, a MatchClaim may name it).
-  Timelines that created their Projections apart and joined afterwards may
-  each hold one ID, so the writer refuses such a table before any file is
-  written. `SHARED` is `IdMinter(1).mint("projection")`, the ID
-  `add_projections(..., seed=1)` mints first (computed by a second
-  minter, never typed): `audio` of a bundle mints it at 0.5 s, a free
-  `part` mints it at sample 5, and `part` joins `pcm` of that bundle as a
-  child (the join succeeds: `pcm` has one child, `part` keeps `SHARED`),
-  and `projection_table` of `audio` and `part` raises `Projection ID
-  '<SHARED>' names a Projection on the timeline 'audio' and one on
-  'part': a Projection's ID is unique among all Projections of a manifest
-  and its package. Create the MatchClaims once the timelines share the
+  added claim null.
+- **An unreduced fraction in the package's tables.** A package of `score`
+  (quarters, fraction, 8; `n1` at 1/2) and `audio` (seconds, float, 60.0;
+  `o1` at 1.0) with a claim `n1` ↔ `o1` and a second, the position 3/2 on
+  `score` ↔ `o1` (a Projection on `score` at 3/2, of `audio`/`o1`, its ID
+  read from that claim), is written, then the MatchClaim table and the
+  registry are rewritten by hand with every fraction spelled doubled: the
+  MatchClaim cells `(2, 4, null)` and `(6, 4, null)`, the Projection's
+  registry `start` `(6, 4, null)`. `from_file` reads it: its
+  `match_claim_table` equals the writer's and `score` holds one Projection,
+  under that ID, at `{1.5, 3, 2}`. `add_projections` of the Projection of
+  `audio`/`o1` at `Coordinate(3/2, quarters)` on the `score` read returns
+  `[<that ID>]` and `score` still holds one event. Written back over the
+  rewritten files, the MatchClaim table, the Projection table and the
+  registry are byte for byte the ones first written (a writer respells
+  reduced).
+- **A registry breaking the format** (an event row on the timeline
+  `ghost`) makes `from_file` raise TimeToShare's `TableError` (`the
+  manifest has no timeline 'ghost'`).
+- **Event IDs are unique across the package.** Reading: the registry's
+  `P2` rewritten to `P1`'s ID (on `pcm` both) is refused by TimeToShare's
+  check, a `TableError` `the ID '<P1>' is given twice`; so is `P4` (on
+  `audio`) rewritten to `P1`. Writing: an ID is minted when a Projection is
+  created, and nothing is minted again on writing. `SHARED` is
+  `IdMinter(1).mint("projection")`, the ID `add_projections(..., seed=1)`
+  mints first: `audio` of a bundle mints it at 0.5 s, a free `part` mints
+  it at sample 5, and `part` joins `pcm` of that bundle as a child, and
+  `event_tables` of the bundle raises `The event ID '<SHARED>' names an
+  event on the timeline 'audio' and one on 'part': an event's ID is held
+  once in a package: create the MatchClaims once the timelines share the
   bundle (for instance with AlignmentBundle.create_match_claims), so that
-  their Projection IDs are minted unique` (the timelines in the table's
-  order). A writer that let it pass would write a table TimeToShare's
-  check refuses; one that minted again would change an ID a MatchClaim may
-  name.
+  their Projection IDs are minted unique.` (the timelines in the order of
+  the bundle's families).
 - **A join keeps a Projection ID the manifest holds; the writer refuses
-  it** (`TestProjectionIdsAtAJoin`). Matching before bundling is a valid
-  workflow (each timeline of a separate group mints its own Projections),
-  and a MatchClaim addresses an event by its timeline and ID, so a join
-  is never refused for a Projection ID. Two timelines given Projections
-  apart with one seed each mint `SHARED` (`pcm` at 22050 samples, `audio`
-  at 0.5 s). Every way a timeline joins a bundle's manifest passes one
-  admission, so each is tried once with the bundle holding `pcm`:
-  `add_timeline(audio)`, `add_timeline(audio, grouped_with="pcm")` (the
-  group, held by the bundle, admits it), `add_group` of a group holding
-  `audio`, and `from_bundles` of a bundle holding `pcm` and one holding
-  `audio` (the child join, `add_child`, is the item above). Each join
-  changes exactly what it changes otherwise: the bundle's timelines are
-  `['pcm', 'audio']`, its groups' members as the join makes them (none;
-  `[['pcm', 'audio']]`; `[['audio']]`; none), and each timeline keeps its
-  one Projection `SHARED` at its position (never minted again). A
-  Projection then added without an ID to `audio` (at 1.0 s) is minted an
-  ID other than `SHARED`, and `audio` holds the two. Writing the
-  package raises `ValueError` before any file is written (the directory
-  stays empty), naming the ID and both timelines in the table's order
-  (sorted by timeline ID: `audio`, then `pcm`) and the remedy, the message
-  of the item above. The control: `audio`'s Projection given the ID
-  `onset_a` instead joins, and the package holds `onset_a` on `audio` and
-  `SHARED` on `pcm`. A bundle whose MatchClaims were created inside
-  it writes and reads back with its exact Projection IDs (the loader tests
-  of the Performance Precision and MAPS bundles).
-- **Boxes in the package** (`TestBoxes`). One writer serves every event
-  type: `event_table(timelines, event_type)` writes `id`, `timeline_id`,
-  `unit`, `number_type`, then every property of the type after `id`, each
-  number written once by its row's number type, at whatever depth it lies
-  in a shape; `read_event_table` is its inverse. The Projections table is
-  that writer for `Projection`: `event_table_schema(Projection)` equals
-  TimeToShare's `PROJECTION_SCHEMA`, its rows sorted as every event
-  table's ("Event files beside a lone manifest"). `event_table_schema(Box)` is `id`,
-  `timeline_id`, `unit`, `number_type` (strings), `start`, `duration` (the
-  package number), `bounding_box` (`x`, `y`, `width`, `height`, each the
-  package number) and `quadrilateral` (`top_left`, `top_right`,
-  `bottom_right`, `bottom_left`, each a struct of `x` and `y` package
-  numbers). The package bundle holds three roots:
+  it** (`TestProjectionIdsAtAJoin`). Two timelines given Projections apart
+  with one seed each mint `SHARED` (`pcm` at 22050 samples, `audio` at
+  0.5 s). Every way a timeline joins a bundle's manifest is tried once with
+  the bundle holding `pcm`: `add_timeline(audio)`, `add_timeline(audio,
+  grouped_with="pcm")`, `add_group` of a group holding `audio`, and
+  `from_bundles` of a bundle holding `pcm` and one holding `audio`. Each
+  join changes exactly what it changes otherwise: the bundle's timelines
+  are `['pcm', 'audio']`, its groups' members as the join makes them
+  (none; `[['pcm', 'audio']]`; `[['audio']]`; none), and each timeline
+  keeps its one Projection `SHARED`. A Projection then added without an ID
+  to `audio` (at 1.0 s) is minted another ID. Writing the package raises
+  `ValueError` before any file is written (the directory stays empty),
+  naming the ID, both timelines in the order of the bundle's families
+  (`pcm`, then `audio`) and the remedy, the message of the item above. The
+  control: `audio`'s Projection given the ID `onset_a` instead joins, and
+  the package holds `onset_a` on `audio` and `SHARED` on `pcm`.
+- **Boxes in the package** (`TestBoxes`). The pre-parsed Projection table
+  is TimeToShare's: `pre_parsed_schema("Projection")` is its
+  `PROJECTION_SCHEMA` (`id`, `projection_of`), metadata aside.
+  `pre_parsed_schema("Box")` is `id` (string), `bounding_box` (`x`, `y`,
+  `width`, `height`, each the package number) and `quadrilateral`
+  (`top_left`, `top_right`, `bottom_right`, `bottom_left`, each a struct of
+  `x` and `y` package numbers): no position, the registry's. The package
+  bundle holds three roots:
   - `page` (`DiscreteGraphicalTimeline`, pixels, int, length 4512,
     `meta["box"]` `(0, 0, 4512, 6174)`, `meta["image"]` the Gallica URL
     `https://gallica.bnf.fr/iiif/ark:/12148/bpt6k11620688/f2`), its child
@@ -2188,322 +2170,225 @@ then fails to load. Each test pins one of these with exact values.
     2/3.
 
   It holds neither MatchClaims nor Projections, and `to_file` writes
-  exactly `boxes.parquet` beside the manifest. Its rows, timelines sorted
-  by ID (`page` holds no Box): `rect_h2` on `seg_2`, `m1`, `m2` on `sys`,
-  `f` on `uu`, with `unit`/`number_type` `pixels`/`int` ×3 and
-  `user_units`/`fraction`. `rect_h2.start` is `{numerator: 378,
-  denominator: null, value: null}` (an int is its numerator alone);
-  `f.start` is `{1, 3, null}`, `f.bounding_box.y` `{0, 1, null}` and
+  exactly `boxes.parquet`, `extractions.parquet`, `registry.parquet` and
+  the manifest. The registry's event rows give the positions on each
+  root's axis: `m1` and `m2` on `sys` at 1221 and 2151 (its offset 1221
+  added: the root `page`'s axis), `rect_h2` at 378, `f` at `{1, 3, null}`
+  for `{2, 3, null}`. `boxes.parquet` holds their shapes alone, in the
+  registry's order: `f.bounding_box.y` `{0, 1, null}` and
   `f.bounding_box.height` `{1, 1, null}` (a fraction keeps its
-  denominator, 1 included); `m1.quadrilateral.bottom_right` is `{x: {2161,
-  null, null}, y: {2266, null, null}}`; `rect_h2.quadrilateral` and
-  `m1.bounding_box` are null. The resource is one entry under a minted ID
-  (`resource_` + 13 characters), type `"Box"`,
-  timelines `["seg_2", "sys", "uu"]`, URL `boxes.parquet`, the Parquet
-  media type, its size and SHA-256 those of the file. `from_file` reads
-  back the four Boxes equal to the originals (each timeline's Box rows
-  read by `Box.from_row` on its axis), the timelines' `meta` as written;
-  written again into a fresh directory, both files are byte for byte the
-  first ones. A writer that wrote numbers through a float would lose `f`'s
-  thirds; one that dropped nested leaves' number types would write `{1,
-  1}` as an int.
-- **A Box table contradicting its shapes is refused on reading.** The
-  table rewritten with `m1.start` `{1, null, null}`: `from_file` raises
-  the invariant message of `Timeline.add_events`, `Box 'm1' starts at 1 on
-  timeline 'sys', but its shape starts at x 1221 and the timeline stands
-  at x 1221 of its image (meta["box"]): its start is 0.` Every Box read
-  passes `add_events`, so a table is never trusted over its shapes. A
-  Box's own rule is refused in the same words on every path: the table
-  rewritten with `m1.duration` `{10, null, null}` gives exactly the
-  sentence `add_events` gives for that row as a dict, added to an empty
-  timeline standing where `sys` does (its length and `meta`) (`Box 'm1':
-  its duration is 10 and its shape spans 940 in x (1221 to 2161); a Box's
-  duration is its shape's x extent.`), not pydantic's report around it;
-  the test asserts both the literal text and the equality with the
-  `add_events` refusal, so a reader wrapping the sentence fails.
-- **Boxes beside event rows.** As for Projections, a bundle holding Boxes
-  writes them in `boxes.parquet` alone: `to_file(..., events=True)` writes
-  `boxes.parquet` and the manifest, which holds no `events` key.
+  denominator, 1 included), `m1.quadrilateral.bottom_right` `{x: {2161,
+  null, null}, y: {2266, null, null}}` (a shape lies on its image, never
+  shifted), `rect_h2.quadrilateral` and `m1.bounding_box` null. The
+  resource is one entry under a minted ID, type `"Registry"`, timelines
+  `["seg_2", "sys", "uu"]`, URL `registry.parquet`. `from_file` reads back
+  the four Boxes equal to the originals (each timeline's Box rows read by
+  `Box.from_row` on its axis: `m1` at its own 0), the timelines' `meta` as
+  written; written again into a fresh directory, the files are byte for
+  byte the first ones.
+- **A Box contradicting its shape is refused on reading.** The registry
+  rewritten with `m1`'s start `{1222, null, null}` (its own 1): `from_file`
+  raises the invariant message of `Timeline.add_events`, `Box 'm1' starts
+  at 1 on timeline 'sys', but its shape starts at x 1221 and the timeline
+  stands at x 1221 of its image (meta["box"]): its start is 0.` Every Box
+  read passes that check, so a registry is never trusted over a shape. The
+  registry rewritten with `m1`'s duration `{10, null, null}` gives exactly
+  the sentence `add_events` gives for that row as a dict, added to an empty
+  timeline standing where `sys` does (`Box 'm1': its duration is 10 and
+  its shape spans 940 in x (1221 to 2161); a Box's duration is its shape's
+  x extent.`); the test asserts both the literal text and the equality
+  with the `add_events` refusal.
+- **Boxes beside event rows.** `to_file(..., events=True)` of the Box
+  bundle writes the same four files, the manifest holding no `events` key.
 - **Nothing is accepted in memory that the package would write otherwise**
-  (`TestBoxRowsAsTheBoxTableStatesThem`). The package writes each number
-  once, on the side its row's number type names, so a number memory holds
-  that the axis cannot hold, or a cell holding two numbers, would be read
-  back changed. `seg_2` (as above) is given `rect_h2` as a dict row with
-  its bounding box as memory cells: with `y` the cell `{1/3, 1, 3}`,
-  `add_events` refuses (`A shape's y is 1/3, which pixels as int cannot
-  hold exactly: geometry is never rounded.`, the shape constructor's
-  sentence) and nothing is added; before, `to_file`/`from_file` read `y`
-  back as 1. With `y` `{46.0, 47, 1}` it refuses likewise (`Box 'a': its
-  bounding_box.y is the cell ..., whose sides hold two numbers (46.0 and
-  47/1); ...`); before, it was read back as 47. With the cells of
-  `(385, 46, 139, 20)` it is accepted, and the bundle written and read
-  back holds `seg_2`'s events equal to those in memory, row for row in
-  memory's columns, every further column read back (the `quadrilateral`
-  the Box table always has) null: what memory accepts is what the package
-  returns.
-- **Box rows as the Box table states them.** The Box table states
-  `timeline_id`, `unit` and `number_type` once per row; a dict row may give
-  them too (a row read out of that table), and they are checked as the
-  scalar is, then dropped, so no stray key reaches the events, the
-  manifest or the package. On `seg_2`: `unit "seconds"`, `number_type
-  "float"` with the pixel bounding box is refused by `add_events` with the
-  sentence the scalar path gives for the bounding box built in seconds as
-  float (`The event's bounding_box is in seconds as float, the events are
-  in pixels as int; a shape is never converted onto the events' axis.`,
-  asserted equal to that refusal);
-  `timeline_id "other"` is refused, `Box 'a' names the timeline 'other'
-  (timeline_id), but is added to the timeline 'seg_2'.`; `timeline_id
-  "seg_2"`, `unit "pixels"`, `number_type "int"` are accepted: `seg_2`'s
-  events table then equals, schema and rows, the one of the same row
-  without the three keys (no `timeline_id`, `unit` or `number_type`
-  column), its manifest row (`to_dict(events=True)`) holds none of the
-  three keys, and the package writes and reads it back equal.
-- **The package never drops data silently.** The Box table's declared
-  columns are `id`, `timeline_id`, `unit`, `number_type`, `start`,
-  `duration`, `bounding_box`, `quadrilateral`: every member of `Box` plus
-  the row's timeline and axis. A further column keeps the table's type and
-  is written, never refused: every column a timeline's rows of the type
-  hold a value in follows the declared ones; the columns the table holds by
-  being of one type (`event_type`) or derives from `start` and `duration`
-  (`temporal_type`, `end`) are not written, and a column null in every row
-  of that type (the `midi` of a Note beside Boxes, below) is not written.
-  On `seg_2`, `rect_h2` given with `name "crop"`: `boxes.parquet` holds,
-  after the declared columns, `name` (`"crop"`); given with `staff 1`
-  instead, `staff` (`1`, int64); read back, `seg_2`'s row equals the one
-  added, the further value included. A writer dropping the column, or one
-  refusing it, fails. `add_events` refuses a Projection row giving any
-  other key, so the Projections table holds its declared columns alone.
-- **Event tables of timelines holding other events**
-  (`TestEventTablesBesideOtherEvents`). A table of one event type holds
-  exactly the events of that type of each timeline, whatever other events
-  the timeline holds and whatever columns they bring (a score's Notes, with
-  a `midi` column and no `projection_of`): a writer reading a column the
-  Projections lack, or missing one they have, fails or writes a Note. A
-  column the timeline's table lacks is written as typed nulls of the
-  package schema. Each case writes the package, reads it back and writes it
-  again into a fresh directory, byte for byte the first one.
-  - *One Projection beside Notes.* `score` (`ContinuousLogicalTimeline`,
-    quarters, fraction, length 16) holds `n1` (start 0, duration 1, `midi`
-    60) and `n2` (start 3/2, `midi` 62), then one Projection added by
-    `add_projections` (start 1/3, duration 2/3; its minted ID is the one
-    `add_projections` returns, and `score`'s ids are `n1`, `n2`, that ID).
-    The bundle `one` holds `score` alone; `to_file` writes exactly
-    `one.yaml` and `projections.parquet`, whose one row is `{id: <that ID>,
-    timeline_id: score, unit: quarters, number_type: fraction, start: {1,
-    3, null}, duration: {2, 3, null}, projection_of: null}`; the resource is
-    one entry under a minted ID, type `"Projection"`, timelines
-    `["score"]`, URL `projections.parquet`. Read back, `score` holds that
-    Projection alone (start 1/3, duration 2/3, `projection_of` null: the
-    manifest names no Note).
-  - *Two Boxes beside a Note.* `seg_2` (pixels, int, length 867,
-    `meta["box"]` x 7) holds the Note `note_a` (start 0, duration 10,
-    `midi` 60), `rect_h2` (the bounding box (385, 46, 139, 20): start 378,
-    duration 139) and `rect_b` (the bounding box (400, 100, 50, 30): start
-    393, duration 50). `to_file` writes exactly the manifest and
-    `boxes.parquet`, whose rows are `rect_h2` and `rect_b` on `seg_2`,
-    `pixels`/`int`, starts `{378, null, null}` and `{393, null, null}`,
-    durations `{139, null, null}` and `{50, null, null}`, bounding boxes as
-    given, `quadrilateral` null; read back, `seg_2` holds those two Boxes,
-    equal to the originals.
-  - *Two timelines, one holding a Projection.* `score` holds `n1` (as
-    above) and `pcm` (`DiscretePhysicalTimeline`, samples, int, length
-    705600) holds the Note `o1` at 22050. One MatchClaim states the score
-    side as the position `{start: 0, end: 4}` and the performance side as
-    the event `o1`: it adds a Projection on `score` (its ID the claim's
-    event A) and none on `pcm`. `projections.parquet` holds exactly one
-    row, `{id: <that ID>, timeline_id: score, unit: quarters, number_type:
-    fraction, start: {0, 1, null}, duration: {4, 1, null}, projection_of:
-    {timeline_id: pcm, event_id: o1}}`; the Projection resource names
+  (`TestBoxRowsAsTheBoxTableStatesThem`). `seg_2` is given `rect_h2` as a
+  dict row with its bounding box as memory cells: with `y` the cell `{1/3,
+  1, 3}`, `add_events` refuses (`A shape's y is 1/3, which pixels as int
+  cannot hold exactly: geometry is never rounded.`); with `y` `{46.0, 47,
+  1}` likewise (`Box 'a': its bounding_box.y is the cell ..., whose sides
+  hold two numbers (46.0 and 47/1); ...`). With the cells of `(385, 46,
+  139, 20)` it is accepted, and the bundle written and read back holds
+  `seg_2`'s events equal to those in memory, row for row, the
+  `quadrilateral` null.
+- **Box rows as a table states them.** On `seg_2`: a dict row with `unit
+  "seconds"`, `number_type "float"` and the pixel bounding box is refused
+  with the scalar path's sentence (`The event's bounding_box is in seconds
+  as float, the events are in pixels as int; a shape is never converted
+  onto the events' axis.`); `timeline_id "other"` is refused (`Box 'a'
+  names the timeline 'other' (timeline_id), but is added to the timeline
+  'seg_2'.`); `timeline_id "seg_2"`, `unit "pixels"`, `number_type "int"`
+  are accepted and stored without the three keys, and the package writes
+  and reads it back equal.
+- **The package never drops data silently.** `rect_h2` given with `name
+  "crop"`: the registry row of `rect_h2` holds the name `"crop"`
+  (`name` is the registry's) and `boxes.parquet` holds the declared
+  columns alone; given with `staff 1` instead, `boxes.parquet` holds,
+  after the declared columns, `staff` (`1`, int64); read back, `seg_2`'s
+  row equals the one added, the further value included.
+- **Pre-parsed tables of timelines holding other events**
+  (`TestEventTablesBesideOtherEvents`). A pre-parsed table of one kind
+  holds exactly the events of that kind, whatever other events the
+  timeline holds and whatever columns they bring. Each case writes the
+  package, reads it back and writes it again into a fresh directory, byte
+  for byte the first one.
+  - *One Projection beside Notes.* `score` (quarters, fraction, length 16)
+    holds `n1` (start 0, duration 1, `midi` 60) and `n2` (start 3/2, `midi`
+    62), then one Projection added by `add_projections` (start 1/3,
+    duration 2/3). The bundle `one` holds `score` alone; `to_file` writes
+    exactly `one.yaml`, `extractions.parquet`, `projections.parquet` and
+    `registry.parquet`: one Projection row `{id: <that ID>,
+    projection_of: null}` and one event row at `{1, 3, null}` for `{2, 3,
+    null}`; the Registry resource names `["score"]`. Read back, `score`
+    holds that Projection alone.
+  - *Two Boxes beside a Note.* `seg_2` holds the Note `note_a` (start 0,
+    duration 10, `midi` 60), `rect_h2` (385, 46, 139, 20) and `rect_b`
+    (400, 100, 50, 30: start 393, duration 50). `to_file` writes exactly the
+    manifest, `boxes.parquet`, `extractions.parquet` and
+    `registry.parquet`; the registry's event rows are `rect_h2` and
+    `rect_b` (starts 378, 393, durations 139, 50), the Box table their
+    shapes; read back, `seg_2` holds those two Boxes, equal to the
+    originals.
+  - *Two timelines, one holding a Projection.* `score` holds `n1` and `pcm`
+    holds the Note `o1` at 22050. One MatchClaim from the position
+    `{start: 0, end: 4}` on `score` to `o1` adds a Projection on `score`.
+    The Projection table holds exactly `{id: <that ID>, projection_of:
+    {timeline_id: pcm, event_id: o1}}`, the registry one row on `score`
+    (`{0, 1, null}` for `{4, 1, null}`); the Registry resource names
     `["score"]` alone. Read back, `score` holds that Projection with its
-    reference, and the bundle holds the one MatchClaim, under the id it was
-    made with, from that Projection on `score` to `o1` on `pcm`.
-  - The fixture tests below (`TestTimeToShareFixturePackage`), whose
-    timelines hold Projections alone, read the fixture's rows in any order.
+    reference, and the bundle the one MatchClaim.
 - **Loaded notes write no table, whatever columns they bring**
   (`TestLoadedNotesWriteNoTable`). Without `events`, a bundle writes no
-  Note table: notes stay with their source. So timelines whose note columns disagree in type
-  are written as any timelines are, and nothing about their notes is
-  refused or warned of. Two bundles of loaded timelines, each written with
-  `to_file` under `warnings.simplefilter("error")` (any warning fails the
-  test): *EEP beside MIDI*, the EEP note file of the first violin
-  (`score`, `beethoven_op18-4iv_multimodal/StringQuartetEEP_I_Normal/
-  StringQuartetEEP_I_Normal_align_vln1.notes`, `pitch` a name string)
-  and `ScoreMidiLoader`'s `midi/score/beethoven_op18.mid` (`pitch` an
-  integer); *IEEE 1599 beside ms3*, `ieee1599/bach_artefuga_01.xml`'s
-  logically organised symbols timeline (the loader's `los_uid`; `staff`
-  and `voice` text identifiers) and
-  `Ms3Loader`'s Chopin Op. 10 No. 3 notes (`staff` and `voice` integers).
-  Each directory then holds exactly the manifest, the manifest has no
-  `resources` key and validates (`timetoshare.validate`), and
-  `AlignmentBundle.from_file` reads it back with the two timeline IDs. What
-  would show it broken: a `ValueError` naming the column, a warning, a
-  `notes.parquet` or a `Note` resource.
+  Note: two bundles of loaded timelines (*EEP beside MIDI*, *IEEE 1599
+  beside ms3*, the files of the earlier version of this section), each
+  written with `to_file` under `warnings.simplefilter("error")`: each
+  directory then holds exactly the manifest, which has no `resources` key
+  and validates, and reads back with the two timeline IDs.
 
 ### Several resources of one type, and folders (`TestSeveralResourcesOfAType`, `TestFolderResources`)
 
 A manifest may name several resources of one table type, each listing its
-own timelines (a timeline at most once per type), and a resource whose URL
-ends in `/` names a folder whose files the manifests of a package may
-share. The library reads every resource of a type and, from a folder, only
-the rows of the timelines the resource lists. It writes one table per type
-and writes nothing into a folder. What would show it broken: a reader that
-keeps one resource per type (the last or the first) and drops the other's
-rows; a reader that skips a folder (`is_file()` false) and loads the
-manifest without its rows; a folder read whole, so that the other
-manifest's rows reach the bundle (or are refused as foreign); a MatchClaim
-reaching outside the manifest passed over instead of refused; a writer that
-names the second resource beside a table holding its rows, or writes into
-a folder, or writes a file before refusing.
+own timelines, and a resource whose URL ends in `/` names a folder whose
+files the manifests of a package may share. The library reads every
+resource of a type and, from a folder, only the rows of the timelines the
+resource lists. It writes one table per type and writes nothing into a
+folder.
 
-- **Two Projection resources are both read.** The synthetic package
-  written, then its `projections.parquet` split by `timeline_id` into
-  `pcm.parquet` (the three rows on `pcm`) and `audio.parquet` (the two on
-  `audio`), the original file removed, and its manifest rewritten with the
-  MatchClaim entry as written and two Projection entries in this order:
+- **Two Registry resources are both read.** The synthetic package written,
+  then its registry split by timeline into `pcm.parquet` (the index rows
+  and the three rows on `pcm`) and `audio.parquet` (the two on `audio`),
+  the original file removed, and its manifest rewritten with the
+  MatchClaim entry as written and two Registry entries in this order:
   `resource_p` (`["#pcm"]`, `pcm.parquet`), `resource_a` (`["#audio"]`,
   `audio.parquet`). `from_file` holds every MatchClaim of the bundle
-  written (its `match_claim_table` equal to the writer's: a claim's side B
-  names a Projection of either file), and the bundle's Projections table
-  equals the original `projections.parquet` row for row; `resources` keeps
-  the three entries as read. Written into a fresh directory, the files are
-  exactly `package.yaml`, `match_claims.parquet` and `pcm.parquet`, whose
-  bytes are the original `projections.parquet`'s (one table of every
-  Projection at the first entry's URL); the Projection entry is the one
-  entry `resource_p`, URL `pcm.parquet`, timelines `["audio", "pcm"]`
-  (sorted: the entry read listed other timelines), size and SHA-256 its
-  file's; `resource_a` is not in `resources`. Read back, the Projections
-  table equals the original again. A reader that kept the last entry
-  alone would hold the two Projections on `audio`, one keeping the first
-  the three on `pcm`: either Projections table differs from the original.
+  written and the same Projection table and event rows as the original;
+  `resources` keeps the three entries as read. Written into a fresh
+  directory, the files are exactly `package.yaml`, `extractions.parquet`,
+  `match_claims.parquet`, `projections.parquet` and `pcm.parquet`, whose
+  bytes are the original registry's (one registry at the first entry's
+  URL); the Registry entry is the one entry `resource_p`, timelines
+  `["audio", "pcm"]`, size and SHA-256 its file's; `resource_a` is gone. A
+  reader that kept one entry alone would hold two or three Projections.
 - **A folder holds the rows of two manifests; each reads its own.**
-  TimeToShare's package fixture `shared` (`packages/<version>/shared`,
-  found through `timetoshare.tables.package_fixture_path`): the manifests
-  `bach` and `handel` both name `../tables/MatchClaim/` and
-  `../tables/Projection/` (the Projection folder holds two files). Its
-  `expected.yaml` (hand-written in TimeToShare's emission script) states
-  each resource's row IDs, and the bundles read hold exactly those:
-  `bach` the MatchClaims `claim_1`, `claim_2`, `claim_5` (in the folder's
-  order) and, on `dpt_1`, the Projections `projection_1` (0),
-  `projection_2` (44100), `projection_7` (132300), `projection_9` (88200)
-  samples (`clt_1` holds none); `handel` `claim_3`, `claim_4`, on `dpt_2`
-  `projection_3` (0), `projection_4` (88200), `projection_6` (132300)
-  samples, and on its child
-  `clt_3` `projection_5` (1/2) and `projection_8` (3/2 quarters, on the
-  child's own axis). The test also checks the literal lists against
-  `expected.yaml`, so a re-emitted fixture shows up as a test failure, not
-  a silent change. Each bundle keeps its two resources as read.
+  TimeToShare's package fixture `shared`: `bach` and `handel` both name
+  `../registry/` and `../tables/MatchClaim/`. Its `expected.yaml` states
+  each resource's row IDs, and the bundles read hold exactly those: `bach`
+  the MatchClaims `claim_1`, `claim_2`, `claim_5` and, on `dpt_1`, the
+  Projections `projection_1` (0), `projection_2` (44100), `projection_7`
+  (132300), `projection_9` (88200) samples; `handel` `claim_3`, `claim_4`,
+  on `dpt_2` `projection_3` (0), `projection_4` (88200), `projection_6`
+  (132300) samples, and on its child `clt_3` `projection_5` (1/2) and
+  `projection_8` (3/2 quarters, on the child's own axis: the registry
+  holds 9/2 and 11/2 on the root's). The literal lists are checked against
+  `expected.yaml`. Each bundle keeps its two resources as read.
 - **A MatchClaim reaching outside the manifest is refused.** The fixture
-  copied into `tmp_path`, with a third file added to its MatchClaim folder:
-  `part_c.parquet`, `claim_5`'s row with the ID `claim_10` and
-  `timeline_b_id` `clt_2` (Handel's score). Reading `bach` the row is kept
-  (its side A, `dpt_1`, is listed) and refused, as a file's row on a
-  timeline the bundle lacks is: a `KeyError` naming `clt_2`; reading
-  `handel` likewise, naming `dpt_1`. A reader dropping the row would load
-  both manifests silently without it.
+  copied, with a third file in its MatchClaim folder: `claim_5`'s row with
+  the ID `claim_10` and `timeline_b_id` `clt_2` (Handel's score). Reading
+  `bach` the row is refused: a `KeyError` naming `clt_2`; reading `handel`
+  likewise, naming `dpt_1`.
 - **A bundle read with a folder resource is not written alone.** Each of
   the two bundles read, written into a fresh directory, raises
-  `NotImplementedError` naming its first folder resource and the way to
-  write it, `The resource 'resource_1' names the folder
-  '../tables/MatchClaim/' for its MatchClaim rows: AlignmentBundle.to_file
-  writes a manifest's tables as single files beside it and does not write
-  into a folder, whose files other manifests may share; write the bundle
-  into its package with Package.write_bundle.`, and
-  the directory stays empty (also the folder the URL would name); so does
-  each after its MatchClaim resource is left out (`resources` naming the
-  Projection folder alone), the message naming `resource_2` and
-  `'../tables/Projection/'` for its Projection rows.
+  `NotImplementedError` naming its first folder resource of a table type
+  it writes and the way to write it, `The resource 'resource_1' names the
+  folder '../tables/MatchClaim/' for its MatchClaim rows:
+  AlignmentBundle.to_file writes a manifest's tables as single files beside
+  it and does not write into a folder, whose files other manifests may
+  share; write the bundle into its package with Package.write_bundle.`;
+  with that resource left out, the same sentence names `resource_2`, the
+  folder `'../registry/'` and its Registry rows; the directory stays empty.
 
 ### Conformance with TimeToShare's fixture package
 
 TimeToShare's `fixtures/tables/<version>/` is a package: `manifest.yaml`
-naming `match_claims.parquet` and `projections.parquet`, and
-`expected.yaml` holding, for seven belief filters, each a `believer` and its
-`beliefs` (states of the four: none with the default; the actor
-`0000-0002-1825-0097` with the default `["true", "undecided",
-"unlikely"]`, with `["true"]`, with `["undecided"]` and with
-`["unlikely", "false"]`; the actor `0000-0001-5109-3700` with `["true"]`;
-the first actor written compact, `orcid:0000-0002-1825-0097`, with
-`["true"]`, which must keep what its absolute IRI keeps),
-the expected unique alignment anchors
-with the MatchClaims stating each and the expected potential MatchStamps.
-Those values are literal data written by hand in TimeToShare's emission
-script, never computed by a derivation, so they are an independent oracle.
+naming `match_claims.parquet` and `registry.parquet` (beside them
+`extractions.parquet` and the pre-parsed `projections.parquet`), and
+`expected.yaml` holding, for seven belief filters, each a `believer` and
+its `beliefs`, the expected unique alignment anchors with the MatchClaims
+stating each and the expected potential MatchStamps, literal data written
+by hand in TimeToShare's emission script.
 
-- `AlignmentBundle.from_file(manifest.yaml)` holds the eighteen MatchClaims
-  and the eleven Projections (eight on `dpt_1`, two on `cpt_1`, one on
-  `clt_2`; `clt_1` holds none; the CHUNK sides of `claim_11` and `claim_16`
-  hold none), so every timeline's events are its
-  Projections alone; `inserted_1` on `dpt_1`, the one Projection whose
-  source names an event the package does not hold, reads as a Projection
-  with `projection_of` null, and `claim_18` as the NOMATCH stated from it
-  (`inserted_1` on side A, `NOMATCH` on `clt_1`, no anchor, no CHUNK
-  side), so a reader that reads a null `projection_of` as an error, or a
-  NOMATCH side as a missing event, fails; the bundle's Projections table
-  holds the fixture's rows in the writer's order (sorted by `timeline_id`,
-  then `start` exactly, then `id`): the fixture's table sorted so equals
-  it. A reader never relies on a file's order, and the fixture's own is not
-  the writer's.
+- `AlignmentBundle.from_file(manifest.yaml)` holds the eighteen
+  MatchClaims and the eleven Projections (eight on `dpt_1`, two on
+  `cpt_1`, one on `clt_2`; `clt_1` holds none): `projection_10` lies at
+  23/2 on the registry's `clt_1` axis and at 7/2 on its child `clt_2`, its
+  own; `inserted_1` on `dpt_1` reads with `projection_of` null, and
+  `claim_18` as the NOMATCH stated from it. The registry read gives the
+  fixture's event rows and its one extraction (`extraction_1`, a tool run
+  without source).
 - Written to a fresh directory, `match_claims.parquet` is the fixture's
   byte for byte and its resource entry the fixture's (size and digest
-  included); `projections.parquet` holds the fixture's rows in the writer's
-  order, so its entry keeps the fixture's ID, type, timelines and URL with
-  the new file's size and digest; written again from the bundle read back,
-  both files are byte for byte the first write's.
+  included); the registry's event rows and the Projection table hold the
+  fixture's rows in the writer's order, the Registry entry keeps the
+  fixture's ID, type, timelines and URL with the new file's size and
+  digest; written again from the bundle read back, every file is byte for
+  byte the first write's.
 - For each case, `MatchGraph(bundle.get_match_claims(), believer=,
-  beliefs=, source=bundle)`, the case's `believer` and `beliefs` read as
-  they stand (the fixture holds exactly the seven cases): the unique anchors (each synchronous claim's
-  start and end anchors, both coordinates sorted, with the IDs of the claims
-  stating them) equal the expected anchors, and the graph has one edge per
-  unique anchor; the coordinates of each connected component
-  (`split_components`) with the IDs of the claims stating its anchors equal
-  the expected potential MatchStamps. Both are compared as TimeToShare's
-  `dumps` text of the sorted lists, so a fraction must be `[n, d]`, an
-  integer an integer and a float a float. End anchors are included
-  (`claim_2`, `claim_9`). The bundle's own belief filter
-  (`get_match_claims(believer=, beliefs=)`) keeps the same claims as the
-  graph's, and so does the MatchClaim table filtered under the fixture
-  manifest's own `@context`, read from the file
-  (`match_claim_table.filter(believer=, beliefs=, context=)`): the seventh
-  case names its believer by the compact IRI `orcid:…`, which only that
-  context expands, so every case is read under it, as TimeToShare reads
-  them.
-- The fixtures are TimeToShare's own, found through its package
-  (`timetoshare.tables.fixture_path`, `timetoshare.fixtures.fixture_paths`),
-  which every installation of `timetoshare` carries: the tests never skip.
+  beliefs=, source=bundle)`: the unique anchors and the potential
+  MatchStamps equal the expected ones, compared as TimeToShare's `dumps`
+  text of the sorted lists. The bundle's own belief filter and the
+  MatchClaim table filtered under the fixture manifest's `@context` keep
+  the same claims as the graph's.
+- The fixtures are TimeToShare's own, found through its package: the tests
+  never skip.
 
 ---
 
-## Event Files and Packages (`test_package_files.py`)
+## The Registry Beside a Manifest, and Packages (`test_package_files.py`)
 
 ### What We're Validating
 
-Every event type a bundle's timelines hold can be written as an event
-file, and a package is a folder of manifests sharing one folder of files
-per type, which `package.yaml` lists. A manifest never names an event ID:
-the events lie in their files alone. What would show the feature broken: an
-event type left out or written into the manifest, a further column dropped
-or refused, a child's row placed on its parent's axis, a row order that
+Every event a bundle's timelines hold can be written into the registry and
+the pre-parsed table of its kind, and a package is a folder of manifests
+sharing one registry (`registry/`: an index part and one part per
+extraction), one Extraction table and one folder of files per pre-parsed
+kind and of MatchClaims, which `package.yaml` lists. A manifest never names
+an event ID: the events lie in the tables alone. What would show the
+feature broken: an event left out or written into the manifest, a further
+column dropped or refused, a child's row placed on its own axis instead of
+its root's (or read back on its root's instead of its own), a row order that
 depends on a float where the ratio decides, a file without its type or
 version, a manifest of a package reading another manifest's rows (or
 refusing them), a re-written bundle dropping another manifest's rows or
 leaving its own behind, an ID collision found only after files were
 written, a package the format's own check refuses, a package of many
-bundles written as many files per type, a failed write leaving a changed
-package behind, a user's event dropped because of its type, a table of
-other rows read as events, refused, or left out of a package's manifest,
-a Projection of other content kept in silence under a held ID, a row
-beyond a timeline's length passed over by the length rule `add_events`
-applies. Every expected value is
-probed from the library once and then pinned literally; the oracle for the
-package as a whole is TimeToShare's `package_problems`, an independent
-implementation of the format's rules.
+bundles written as many files per kind, a failed write leaving a changed
+package behind, a user's event dropped because of its kind, a table of
+other rows read as events, refused, or left out of a package's manifest, a
+row beyond a timeline's length passed over by the length rule `add_events`
+applies, an extraction lost or duplicated. Every expected value is probed
+from the library once and then pinned literally, but for the IDs of the
+extractions a family mints for events made in code
+(`Extraction.of_tool(scope=<root ID>).id`, computed in the test from the
+library's version, and their dates, the run's); the oracle for the package
+as a whole is TimeToShare's `package_problems`, an independent
+implementation of the format's rules, and its `index_rows`, which gives the
+index a package's registry must hold.
 
 The bundle `a` of these tests holds:
 - `a_score` (`ContinuousLogicalTimeline`, quarters, fraction, length 16):
   the Notes `a_n1` (start 0, duration 1, `midi` 60, `name` "C4") and
   `a_n2` (start 3/2, `midi` 62, `staff` 1), the Beat `a_b1` (start 1/3),
   and the child `a_bar` (length 4, offset 8) holding the Note `a_n3` at its
-  own 1/2 (`midi` 64);
+  own 1/2 (`midi` 64), 17/2 on `a_score`'s axis;
 - `a_pcm` (`DiscretePhysicalTimeline`, samples, int, length 705600): the
   Note `a_o1` at 22050;
 - `a_seg` (`DiscreteGraphicalTimeline`, pixels, int, length 867,
@@ -2514,111 +2399,120 @@ The bundle `a` of these tests holds:
   `https://example.org/aligner`): its Projection on `a_score` is the
   claim's event A.
 
+Three families, so three extractions of events made in code: `a_score`'s
+(its Notes, Beat, Projection and `a_bar`'s Note), `a_pcm`'s and `a_seg`'s.
 The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
 `b_n1` (start 0, `midi` 67) and the Beat `b_b1` (start 1/2).
 
-### Event files beside a lone manifest (`TestEventFiles`)
+### The tables beside a lone manifest (`TestTablesBesideAManifest`)
 
-- **Every event type is written, the manifest naming none.**
+- **Every event is written, the manifest naming none.**
   `a.to_file(dir/"a.yaml", events=True)` writes exactly `a.yaml`,
-  `match_claims.parquet`, `projections.parquet`, `boxes.parquet`,
-  `Beat.parquet` and `Note.parquet`; no timeline object of the manifest
-  holds `events`; its resources name the five tables with the timelines
-  holding their rows (`Beat` `a_score`; `Note` `a_bar`, `a_pcm`,
-  `a_score`; `Box` `a_seg`; `Projection` `a_score`; `MatchClaim` `a_pcm`,
-  `a_score`). `Note.parquet` holds exactly four rows, in the writer's order
-  (`timeline_id`, then `start`, then `id`): `a_n3` on `a_bar` at the
-  child-local `{1, 2, null}` (not its parent's 17/2), `a_o1` on `a_pcm`
-  at `{22050, null, null}`, `a_n1` and `a_n2` on `a_score`; its columns
-  are the header (`id`, `timeline_id`, `unit`, `number_type`, `start`,
-  `duration`) then the further columns the rows hold, in the order the
-  sorted timelines first hold them (`midi`, `name`, `staff`), each value as
-  added (`name` "C4" on `a_n1` alone, `staff` 1 on `a_n2` alone). A
-  writer dropping `name` or `staff`, or shifting `a_n3`, fails.
+  `Beat.parquet`, `Note.parquet`, `boxes.parquet`, `extractions.parquet`,
+  `match_claims.parquet`, `projections.parquet` and `registry.parquet`; no
+  timeline object of the manifest holds `events`; its resources name the
+  registry (`Registry`, timelines `a_bar`, `a_pcm`, `a_score`, `a_seg`)
+  and the MatchClaim table (`a_pcm`, `a_score`) alone. The registry's
+  event rows, sorted by extraction, timeline, exact start and ID, are
+  `a_n3` on `a_bar` at `{17, 2, null}` (the root's axis, not the child's
+  1/2), `a_n1` (`{0, 1, null}` for `{1, 1, null}`, `name` "C4"), the
+  Projection (`{0, 1, null}` for `{4, 1, null}`), `a_b1` (`{1, 3, null}`)
+  and `a_n2` (`{3, 2, null}`) on `a_score`, all named by `a_score`'s
+  extraction; `a_o1` on `a_pcm` (`{22050, null, null}`) by `a_pcm`'s;
+  `a_rect` on `a_seg` (`{378, null, null}` for `{139, null, null}`) by
+  `a_seg`'s; each at the location of its kind's table (`Note.parquet`,
+  `projections.parquet`, `Beat.parquet`, `boxes.parquet`). `Note.parquet`
+  holds `id`, then the further columns its rows hold (`midi`, `staff`; the
+  `name` is the registry's), its rows in the registry's order: `a_n3` 64,
+  `a_n1` 60, `a_n2` 62 with `staff` 1, `a_o1` none. `Beat.parquet` holds
+  `id` alone (`a_b1`). The index rows are exactly TimeToShare's
+  `index_rows` of the manifest, its MatchClaim table and its Extraction
+  table, read as a package of one manifest. A writer dropping `staff` or
+  `name`, or writing `a_n3` at 1/2, fails.
 - **Read back, the events are the same.** `AlignmentBundle.from_file` of
-  the file holds, on every timeline, the same rows keyed by ID: each
-  column, each position with its number type (a Fraction stays a
-  Fraction, an int an int), the further columns; the same MatchClaims
-  (`==`, which compares each row's provenance). The bundle read records
-  `events` (its file names event files), so written again by default into
-  a fresh directory, every file is byte for byte the first write's.
-- **Read back, the Projections are added as a table.** With
-  `Projection.from_row` made to raise, `AlignmentBundle.from_file` of the
-  file still reads it, the same rows as above: no Projection is built row
-  by row on the reading path. A manifest that holds `a_score`'s event rows
-  inline as well (`events` in its timeline object, the Projection among
-  them) and names `projections.parquet` reads one Projection under its ID,
-  not two and no refusal: a Projection held under a row's ID is kept when
-  its content is the file row's (`projection_of`, both members, `start`
-  and `duration`, compared exactly). The same manifest whose inline
-  Projection lies at 7/2 for 1/2 (instead of 0 for 4) under the file row's
-  ID is refused
-  with `add_projections`' own message (`Event id '<its ID>' is already
-  held by another event of timeline 'a_score'`): neither of the two is
-  dropped in silence.
+  the file holds, on every timeline, the same rows keyed by ID: each cell
+  holding a value (a column the family reads from a pre-parsed table
+  spanning its timelines, such as `staff` on `a_bar`, may stand there null;
+  a column null for every event of a family is not read in), each position
+  on the timeline's own axis with its number type (a
+  Fraction stays a Fraction, an int an int: `a_n3` at 1/2 on `a_bar`), the
+  further columns; the same MatchClaims (`==`); its registry the same rows,
+  its extractions the written ones. The bundle read records `events` (its
+  registry held kinds beside Projections and Boxes), so written again by
+  default into a fresh directory, every file is byte for byte the first
+  write's.
+- **Read back, the Projections are built as a table.** With
+  `Projection.from_row` made to raise, the file still reads, the same rows
+  as above, and the events of every timeline read: no Projection is built
+  row by row on the reading path. A manifest that holds `a_score`'s event
+  rows inline as well (`events` in its timeline object, the Projection
+  among them) reads one Projection under its ID, not two and no refusal: a
+  registry row whose ID the family holds on the same timeline, as the same
+  kind at the same root position, is the event the manifest states. The
+  same manifest whose inline Projection lies at 7/2 for 1/2 under that ID
+  is refused (`Event id '<its ID>' is already held by an event of timeline
+  'a_score'`, the registry's own sentence): neither is dropped in silence.
 - **A user's `Segment` events are events.** A timeline `seg_t` (quarters,
   fraction, length 8) holding the child `seg_c` (length 2 at 4) and the
   user's `Segment` row `s1` (start 1, duration 1) with a Note `n1` at 0:
   `to_file(events=True)` writes `Segment.parquet` holding exactly `s1`
-  (the child's own `Segment` row, ID `seg_c`, is not written: the
-  manifest's child states it); read back, `seg_t` holds `s1`, `n1` and
-  the child's row, `seg_c` still its child. The inline form
-  (`Timeline.to_dict(events=True)`, `Timeline.from_dict`) keeps `s1` too.
+  and the registry rows of `s1` and `n1` alone (the child's own `Segment`
+  row, ID `seg_c`, is not written: the manifest's child states it); read
+  back, `seg_t` holds `s1`, `n1` and the child's row, `seg_c` still its
+  child. The inline form (`Timeline.to_dict(events=True)`,
+  `Timeline.from_dict`) keeps `s1` too.
 - **Rows read obey the length rule of `add_events`.** `b` written with
   `events=True`, its manifest's length of `b_score` changed to 1/4: read
   back, the timeline, unlocked, has grown to 1/2, the end of `b_b1`;
   stated `locked: true` as well, the read is refused with `add_events`'
   own message (`Adding content ending at 1/2 exceeds timeline length 1/4.
   Timeline is locked. Use allow_expansion=True to override.`). The same
-  for a timeline object's inline rows: `t` (quarters, length 8, the Note
-  `n1` at 3) as `to_dict(events=True)` writes it, its length set to 1,
-  reads with the length 3, and locked is refused (`Adding content ending
-  at 3 exceeds timeline length 1. Timeline is locked. Use
-  allow_expansion=True to override.`).
+  for a timeline object's inline rows (`t`, the Note `n1` at 3, its length
+  set to 1: read with the length 3, and refused when locked).
 - **A table of other rows is carried untouched.** `b` written to a file
   whose manifest names, beside it, a resource `features` of the type
-  `Features` at `features.parquet` (a Parquet file of one column `x`, no
-  event table's columns): `AlignmentBundle.from_file` reads it without a
-  refusal, its timelines holding exactly their events, `resources` naming
-  `features`; written again into another directory with `events=True`
-  (the file copied beside it), the manifest names `features` unchanged
-  and the file keeps its bytes.
+  `Features` at `features.parquet` (a Parquet file of one column `x`):
+  `AlignmentBundle.from_file` reads it without a refusal, its timelines
+  holding exactly their events, `resources` naming `features`; written
+  again into another directory with `events=True` (the file copied beside
+  it), the manifest names `features` unchanged and the file keeps its
+  bytes.
 - **A folder of a type not written is carried.** `b` given a resource
   `scans` of the type `Scan` at `scans/` (a folder, none lying there):
   written with `to_file(events=True)` and read back, the resource is
   carried as it stands and the rows are the same. The same folder lying
-  there, holding `page1.png` and no Parquet file, is carried as well and
-  never read as an event table: no file means no rows.
-- **Without `events`**, the same bundle writes exactly `a.yaml`,
-  `match_claims.parquet`, `projections.parquet` and `boxes.parquet`.
-- **The sort is exact.** `event_table` of three timelines' Beats,
-  `t_float` (seconds, float: `q` 0.5, `p` 0.25), `t_frac` (quarters,
-  fraction: `a` 1/3, `b` 6004799503160661/2^54, which is the double
+  there, holding `page1.png`, is carried as well, never read.
+- **Without `events`**, `a` writes exactly `a.yaml`, `boxes.parquet`,
+  `extractions.parquet`, `match_claims.parquet`, `projections.parquet` and
+  `registry.parquet`, the registry's event rows the Projection and the Box
+  alone.
+- **The sort is exact.** The event rows of a bundle of three timelines'
+  Beats, `t_float` (seconds, float: `q` 0.5, `p` 0.25), `t_frac`
+  (quarters, fraction: `a` 1/3, `b` 6004799503160661/2^54, the double
   nearest 1/3 and below it, `c` 1/3, `d` 0) and `t_int` (ticks, int: `z`
-  480, `y` 0, `x` 480), lists `p`, `q`, `d`, `b`, `a`, `c`, `y`, `x`, `z`:
-  timelines by ID, `b` before `a` although both floats are equal (a sort
-  on the float, then the numerator, gives `a`, `c`, `b`), ties by ID. A
-  fourth timeline `t_big` (quarters, fraction) holds `n`
+  480, `y` 0, `x` 480), and a fourth, `t_big` (quarters, fraction: `n`
   2431060582285925452/1165837368502584049 and `m`
   4862121164571850412/2331674737005167863, terms above 2^61 whose floats
-  are inverted (the float of `m`'s ratio lies a unit of the last place
-  above `n`'s, though `m` is the smaller): `m` comes first, the window of
-  the exact sort being proven (`_start_order`).
-- **A further coordinate cell is written once.** A Note holding a
-  further column `alt` of coordinate cells (0.5 seconds as a float, 3/4
-  quarters as a fraction) is written as the package's coordinate cell,
-  `{null, null, 0.5, "seconds", "float"}` and `{3, 4, null, "quarters",
-  "fraction"}`, and `read_event_table` gives both sides back.
-- **The file declares itself.** `write_event_table` of `a`'s Note table
-  (`event_table`) writes a file whose schema metadata is exactly
-  `timetoshare:type` `Note` and
-  `timetoshare:version` `0.2.0`, whose one row group declares
-  `timeline_id` (column 1) as its sorting column, every column chunk zstd
-  with statistics and with an offset and a column index (the page index);
-  the same table written twice gives equal bytes. A table of 65,537 Beat
-  rows writes two row groups, of 65,536 and 1 rows. A table without its
-  type in the metadata is refused (`A package table names its type in its
-  metadata ('timetoshare:type'), as event_table writes it.`).
+  are inverted), each timeline its own family and extraction
+  (`event_tables`): per timeline, `p`, `q`; `d`, `b`, `a`, `c` (`b` before
+  `a` although both floats are equal); `y`, `x`, `z`; `m`, `n`; `b`'s
+  start written `{6004799503160661, 2^54, null}`.
+- **A further coordinate cell is written once.** A Note holding a further
+  column `alt` of coordinate cells (0.5 seconds as a float, 3/4 quarters as
+  a fraction) is written into `Note.parquet` as the package's coordinate
+  cell, `{null, null, 0.5, "seconds", "float"}` and `{3, 4, null,
+  "quarters", "fraction"}`, and read back gives both sides
+  (`content_in_memory`).
+- **The file declares itself.** The registry beside a manifest, and every
+  pre-parsed table, states `timetoshare:type` (`Registry`, `Note`) and
+  `timetoshare:version` `0.2.0` and nothing else in its schema metadata;
+  every column chunk is zstd with statistics and with an offset and a
+  column index (the page index); a part of a package's registry declares
+  `timeline_id` (its column 3) as its sorting column. A table of 65,537
+  Beat rows written (`_write_package_file`) writes two row groups, of
+  65,536 and 1 rows. A table without its type in the metadata is refused
+  (`A package table names its type in its metadata ('timetoshare:type').`)
+  and leaves no file.
 - **One column, one type.** Two timelines, `s1` holding a Note with
   `staff` 1 and `s2` one with `staff` "I", written with `events=True`, are
   refused before any file (`The Note table cannot hold the column 'staff'
@@ -2630,157 +2524,194 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
 
 - **Two bundles in one package.** `Package(id="https://example.org/pieces",
   name="Pieces")`, `write_bundle(a, "a/manifest.yaml")`,
-  `write_bundle(b, "b/manifest.yaml")`, `to_file(dir/"package.yaml")`:
-  the folder holds exactly `package.yaml`, both manifests and one file
-  per type, `tables/<Type>/part_<13 base-36 characters>.parquet`, five in
-  all, the Beat and the Note file holding both bundles' rows. `package_problems` reports
-  nothing. `package.yaml` lists the two manifests (YAML) and one folder
-  entry per type, in the order first written, Parquet; `Package.from_file`
-  reads the same `manifests` and `tables`. Each manifest's resources name
-  `../tables/<Type>/` with the timelines holding the type's rows, Parquet,
-  without size or integrity, and each bundle's `resources` are then its
-  manifest's. Every file states its folder's type and the version
-  `0.2.0`; the MatchClaim file states no shared provenance and its row its
-  own. Read through `Package.bundle`, each manifest's timelines hold the
-  rows written (keyed by ID, as above) and `a` its MatchClaim.
-- **One file per type, however many bundles.** `e` (`e_score`,
-  quarters, fraction, length 4, the Note `e_n1` at 0 and the Beat `e_b1`
-  at 1/4), `a` and `b` staged in this order into a new package: exactly
-  one file per type (`Beat`, `Box`, `MatchClaim`, `Note`, `Projection`).
-  The Note file's rows are sorted by `timeline_id`, each timeline's rows in
-  their own order: `a_n3` (`a_bar`), `a_o1` (`a_pcm`), `a_n1`, `a_n2`
-  (`a_score`), `b_n1` (`b_score`), `e_n1` (`e_score`); the Beat file's
-  `a_b1`, `b_b1`, `e_b1`. Staging `a` again at its URL replaces it (its
-  own IDs held by nothing else).
+  `write_bundle(b, "b/manifest.yaml")`, `to_file(dir/"package.yaml")`: the
+  folder holds exactly `package.yaml`, both manifests, the registry
+  `registry/index.parquet` and one part per extraction,
+  `registry/<extraction ID>.parquet` (four: `a_score`'s, `a_pcm`'s,
+  `a_seg`'s and `b_score`'s), `tables/extractions.parquet` (the four), and
+  one file per pre-parsed kind and of MatchClaims,
+  `tables/<Type>/part_<13 base-36 characters>.parquet` (`Beat`, `Box`,
+  `MatchClaim`, `Note`, `Projection`), the Beat and the Note file holding
+  both bundles' rows. `package_problems` reports nothing. `package.yaml`
+  lists the two manifests (YAML) and the entries `Registry` `registry/`,
+  `Extraction` `tables/extractions.parquet`, then one folder per kind in
+  the order first written, Parquet; `Package.from_file` reads the same
+  `manifests` and `tables`. Each manifest's resources name `../registry/`
+  (its timelines holding events) and `../tables/MatchClaim/` (its
+  MatchClaims' timelines; `a` alone), Parquet, without size or integrity,
+  and each bundle's `resources` are then its manifest's. Every file states
+  its type and the version `0.2.0`; each registry part holds its
+  extraction's rows alone, the index part exactly TimeToShare's
+  `index_rows` of the package. Read through `Package.bundle`, each
+  manifest's timelines hold the rows written (keyed by ID) and `a` its
+  MatchClaim.
+- **One file per kind, however many bundles.** `e` (`e_score`, quarters,
+  fraction, length 4, the Note `e_n1` at 0 and the Beat `e_b1` at 1/4),
+  `a` and `b` staged in this order into a new package: exactly one file
+  per pre-parsed kind and of MatchClaims, and one registry part per
+  extraction (five). The Note file's rows are the bundles' in the order
+  staged, each bundle's in its registry's order: `e_n1`; `a_n3`, `a_n1`,
+  `a_n2` (`a_score`'s extraction) and `a_o1` (`a_pcm`'s), the two
+  extractions in the order of their IDs; `b_n1`. Staging `a` again at its
+  URL replaces it.
 - **Re-writing one bundle keeps the other's rows.** The package opened
   from its file; `a` read through it, a Note `a_n4` (start 2) added to
   `a_score`, written back at `a/manifest.yaml` (at once: the package lies
-  on disk): the Beat and the Note file keep their names and hold `b`'s
-  rows alone (`b_b1`; `b_n1`), the other three former files (`a`'s rows
-  alone) are gone, `a`'s five new files beside them, `package_problems` reports nothing,
-  `b` reads as before and `a` holds `a_n4`. `a`'s entry in `package.yaml`,
-  given a size and a digest by hand before, states the new manifest's
-  byte count and SHA-256.
+  on disk): `b`'s registry part keeps its bytes, `a`'s parts hold `a`'s
+  rows (`a_n4` among them, in `a_score`'s part, rewritten whole); the Beat
+  and the Note file of both keep their names and hold `b`'s rows alone
+  (`b_b1`; `b_n1`), the other three former files (`a`'s rows alone) are
+  gone, `a`'s five new files beside them; the Extraction table holds the
+  four extractions once each; `package_problems` reports nothing, `b`
+  reads as before and `a` holds `a_n4`. `a`'s entry in `package.yaml`,
+  given a size and a digest by hand before, states the new manifest's byte
+  count and SHA-256.
 - **A file shared with another manifest is rewritten, its rows kept.**
-  TimeToShare's fixture `packages/0.2.0/shared` copied; `bach` read
-  through the package and written back at its URL: the fixture's files
-  keep only `handel`'s rows (`tables/Projection/part_a.parquet`
-  `projection_5`, `projection_3`, `projection_4` and
-  `part_b.parquet` `projection_8`, `projection_6`; the MatchClaim file
-  `claim_3`, `claim_4`, the provenance the fixture's file states once for
-  every row now in each of the two rows, the file stating none: a package
-  writer writes provenance per row; the kept rows sorted by the declared
-  `timeline_id`, so `part_b.parquet`'s `projection_8` on `clt_3` now
-  precedes `projection_6` on `dpt_2`, and the fixture's `projection_5`,
-  `projection_3`, `projection_4` keep theirs), `bach`'s rows lie in its new files, the
-  package check reports nothing, and both manifests read through the
-  package give the rows `expected.yaml` states.
-- **The fixture opened as a package.** `Package.from_file` of the
-  fixture lists `bach/manifest.yaml` and `handel/manifest.yaml` and the
-  two folders; each manifest read through it holds the MatchClaims and
-  Projections `expected.yaml` states.
-- **A single file the manifests share is filtered.** The fixture copied,
-  each folder's files
-  joined into one file (`tables/MatchClaim.parquet`,
-  `tables/Projection.parquet`), `package.yaml` and both manifests naming
-  those files: through `Package.bundle` each manifest reads exactly its
-  rows (as above); the same manifest read alone
-  (`AlignmentBundle.from_file`) refuses the other manifest's rows, its
-  Projections table check's `unknown_timeline`.
+  TimeToShare's fixture `packages/0.2.0/shared` copied; `bach` read through
+  the package and written back at its URL: the registry part of `bach`'s
+  extraction, `registry/extraction_1.parquet`, is rewritten whole with the
+  rows read back (`projection_1`, `projection_2`, `projection_9`,
+  `projection_7`, sorted by exact start), `handel`'s part
+  `extraction_2.parquet` keeps its bytes; the pre-parsed Projection files
+  keep only `handel`'s rows in their order (`tables/Projection/part_a.parquet`
+  `projection_5`, `projection_3`, `projection_4`; `part_b.parquet`
+  `projection_6`, `projection_8`), the MatchClaim file `claim_3`,
+  `claim_4`, the provenance the fixture's file states once for every row
+  now in each of the two rows, the file stating none (a package writer
+  writes provenance per row); `bach`'s rows lie in its new files (four
+  Projections, three MatchClaims), the Extraction table holds
+  `extraction_1` and `extraction_2` once each, the package check reports
+  nothing, and both manifests read through the package give the rows
+  `expected.yaml` states.
+- **The fixture opened as a package.** `Package.from_file` of the fixture
+  lists `bach/manifest.yaml` and `handel/manifest.yaml`, the registry, the
+  Extraction table and the two folders; each manifest read through it holds
+  the MatchClaims and Projections `expected.yaml` states.
+- **A single shared registry is filtered.** The fixture copied, the
+  registry's parts joined into one file `registry.parquet`, `package.yaml`
+  and both manifests naming it: through `Package.bundle` each manifest
+  reads exactly its rows (as above); the same manifest read alone
+  (`AlignmentBundle.from_file` of a copy of it outside the package) refuses
+  the other manifest's rows, the registry check's `unknown_timeline`.
 - **An ID held twice is refused before any file.** With `a` written: a
   bundle `c` holding a Note `a_n1` on `c_score` (`The event 'a_n1' of
   timeline 'c_score' of the manifest 'c/manifest.yaml' cannot join the
   package: its ID is held by the event of timeline 'a_score' in
-  'tables/Note/part_….parquet'; nothing is renamed.`, the file's own
-  name); a bundle holding a timeline `a_pcm` (`timeline 'a_pcm' of the
-  manifest 'c/manifest.yaml' cannot join the package: its id 'a_pcm' is
-  already held by a timeline of the manifest 'a/manifest.yaml'`); a
-  MatchClaim of `a`'s ID between two new timelines (the same sentence
-  for `MatchClaim`, naming `a_score` and the MatchClaim file). After each,
-  every file of the package keeps its bytes and `manifests` is unchanged.
-  In a new package, `b` given `a`'s Note ID is refused naming `the
-  manifest 'a/manifest.yaml'` as the holder, and nothing is written.
-- **A manifest's MatchClaims are kept.** With `a` and `b` written, a
-  bundle of `a`'s three timelines without MatchClaims written at
+  'registry/<a_score's extraction>.parquet'; nothing is renamed.`); a
+  bundle holding a timeline `a_pcm` (`timeline 'a_pcm' of the manifest
+  'c/manifest.yaml' cannot join the package: its id 'a_pcm' is already held
+  by a timeline of the manifest 'a/manifest.yaml'`); a MatchClaim of `a`'s
+  ID between two new timelines (the same sentence for `MatchClaim`, naming
+  `a_score` and the MatchClaim file). After each, every file of the
+  package keeps its bytes and `manifests` is unchanged. In a new package,
+  `b` given `a`'s Note ID is refused naming `the manifest
+  'a/manifest.yaml'` as the holder, and nothing is written.
+- **A manifest's MatchClaims are kept.** With `a` and `b` written, a bundle
+  of `a`'s three timelines without MatchClaims written at
   `a/manifest.yaml` is refused (`The new MatchClaim table lacks the
-  MatchClaim '<a's ID>' of the existing one: a MatchClaim is never
-  removed; record the belief 'false' in it instead
-  (AlignmentBundle.add_match_claim_belief).`), every file keeping its
+  MatchClaim '<a's ID>' of the existing one: ...`), every file keeping its
   bytes.
 - **A refused write restores the package.** The package check made to
   report a problem: `write_bundle` of `a` with a new Note into the opened
   package raises it (`The package check refuses the package written at
-  '…': …; the package is restored as it was.`), every file keeps its
-  bytes and no other file is left (no part being written), and the
-  package's `manifests` and `tables` are as before; `to_file` of a new
-  package of `a` and `b` raises it too, the folder then empty, the
-  package's `path` None, and once the check is restored, the same
-  `to_file` writes the package. An opened package of another format
-  version than the library's (its document read set to `0.1.0` in
-  memory, since the reader refuses such a file today) is refused before
-  any file (`The package at '…' is of the format version '0.1.0', and the
-  library writes '0.2.0': a package holds files of one version; nothing
-  is written.`).
+  '…': …; the package is restored as it was.`), every file keeps its bytes
+  and no other file is left, and the package's `manifests` and `tables`
+  are as before; `to_file` of a new package of `a` and `b` raises it too,
+  the folder then empty, the package's `path` None, and once the check is
+  restored, the same `to_file` writes the package. An opened package of
+  another format version is refused before any file (`The package at '…'
+  is of the format version '0.1.0', and the library writes '0.2.0': a
+  package holds files of one version; nothing is written.`). An
+  extraction held by the package under its ID with other content is
+  refused before any file (`The extraction '<ID>' of the manifest
+  'b/manifest.yaml' cannot join the package: the package holds an
+  extraction of that ID of other content; nothing is written.`).
 - **Where a package and its manifests lie.** `write_bundle` refuses the
   URLs `../a.yaml`, `tables/a.yaml`, `package.yaml`, `a/` and
   `https://example.org/a.yaml` (`A manifest of a package lies at a file
-  path relative to its root, outside tables/, not at '<url>'.`);
-  `to_file` refuses a file not named `package.yaml`, a new package over a
-  file lying there, and an opened package written elsewhere; `bundle`
-  refuses a URL the package does not list, naming those it lists.
+  path relative to its root, outside tables/, not at '<url>'.`); `to_file`
+  refuses a file not named `package.yaml`, a new package over a file lying
+  there, and an opened package written elsewhere; `bundle` refuses a URL
+  the package does not list, naming those it lists.
 - **A table of other rows is carried into the package and listed.** The
-  bundle `b` read with its `features` table (above), staged at
-  `b/manifest.yaml` in a new package and written: the file is copied, its
-  bytes kept, to `tables/Features/features.parquet`; `package.yaml` lists
-  exactly one entry for it, `{type: Features, url:
-  tables/Features/features.parquet}`, after the two type folders
+  bundle `b` read with its `features` table, staged at `b/manifest.yaml`
+  in a new package and written: the file is copied, its bytes kept, to
+  `tables/Features/features.parquet`; `package.yaml` lists exactly one
+  entry for it, `{type: Features, url: tables/Features/features.parquet}`,
+  after the registry, the Extraction table and the two kind folders
   (`tables/Beat/`, `tables/Note/`); the manifest's resource `features`
   names `../tables/Features/features.parquet`, every other field as it
   was, and `package_problems` reports nothing. Read through the package,
-  the bundle carries it again (`resources` naming it at that URL, the
-  timelines holding exactly their events). Written back through the
-  opened package at its URL, the table stays where it lies: the package
-  holds the same files, the one copy keeping its bytes, and lists it once.
-  The folder `scans/` holding `page1.png` likewise: copied to
-  `tables/Scan/scans/page1.png`, listed as the folder `tables/Scan/scans/`,
-  named `../tables/Scan/scans/` by the resource, the package check
-  reporting nothing, carried again when read through the package.
-- **A carried table's name taken.** `b` carrying `features.parquet` of
-  the column `x` [1, 2], `e` (`e_score`, the Note `e_n1` at 0) carrying a
-  `features.parquet` of the column `x` [3], and `f` (an empty `f_score`)
-  carrying a file of `b`'s bytes, each resource `features` of the type
-  `Features`, staged in this order in one new package: `b`'s copy keeps
-  the name; `e`'s takes the name seeded from its type and content
-  (`IdMinter(seed_from("Features", <its SHA-256>))` minting under the
-  stem), `tables/Features/features_0eyvk1ozczb0s.parquet` (probed once,
-  pinned), with `e`'s bytes; `f` shares `b`'s copy. The folder holds
-  exactly these two files, `package.yaml` lists each once, the manifests
-  of `b` and `f` name `../tables/Features/features.parquet` and `e`'s its
-  own copy, and `package_problems` reports nothing.
+  the bundle carries it again. Written back through the opened package at
+  its URL, the table stays where it lies, kept once. The folder `scans/`
+  holding `page1.png` likewise: copied to `tables/Scan/scans/page1.png`,
+  listed as the folder `tables/Scan/scans/`, carried again when read.
+- **Known issue: a carried Parquet table of other rows in a package.** A
+  manifest naming a Parquet file of other rows (`features`, of the type
+  `Features`, the column `x` alone) names a table resource, so its
+  package lists it as a table, and the format reads every table entry of a
+  type other than `Registry`, `Extraction` and `MatchClaim` as a pre-parsed
+  table of that event type, keyed by `id`. TimeToShare's package check of
+  such a table without `id` fails with Arrow's `ArrowInvalid` (its read of
+  the `id` column gives no rows), so the package written is refused and
+  restored as it was. The two tests below (copied and listed; a name
+  taken) are marked `xfail` (strict, `raises=ArrowInvalid`) until the
+  format settles what a package carries beside its tables; the folder of a
+  type holding no Parquet file (`scans/`) is carried and passes.
+- **A carried table's name taken.** `b` carrying `features.parquet` of the
+  column `x` [1, 2], `e` carrying a `features.parquet` of the column `x`
+  [3], and `f` (an empty `f_score`) carrying a file of `b`'s bytes, staged
+  in this order: `b`'s copy keeps the name; `e`'s takes the name seeded
+  from its type and content, `tables/Features/features_0eyvk1ozczb0s.parquet`
+  (probed once, pinned); `f` shares `b`'s copy; `package_problems` reports
+  nothing.
 - **A table the writer has no file of is refused before any file.** The
-  bundle `b` built in code with a resource `features` (`Features`,
-  `features.parquet`), which it never read: `write_bundle` is refused
-  (`The resource 'features' of the bundle 'b' names the table
-  'features.parquet' of the type Features, of which the bundle holds no
-  rows, and the bundle was not read from it (built in code, or its file
-  missing when it was read): the package writer copies such a table into
-  the package from the file the bundle was read with and has none to
-  copy; nothing is written.`). A bundle read with its `features` file,
-  that file then deleted, is refused (`The resource 'features' of the
-  bundle 'b' names the table 'features.parquet' of the type Features,
-  which the bundle carries from '<the file>', where no file lies any
-  more: the package writer has nothing to copy into the package; nothing
-  is written.`). The package then lists no manifest and stays unwritten
-  (`path` None).
+  bundle `b` built in code with a resource `features` it never read:
+  `write_bundle` is refused (`The resource 'features' of the bundle 'b'
+  names the table 'features.parquet' of the type Features, of which the
+  bundle holds no rows, and the bundle was not read from it ...`); a
+  bundle read with its `features` file, that file then deleted, is refused
+  (`... which the bundle carries from '<the file>', where no file lies any
+  more ...`). The package then lists no manifest and stays unwritten.
 - **A write cut short leaves no hidden file once the package is opened.**
-  A package of `a` written; a hidden part `.part_<13>.parquet`, as a
-  process killed between removing the old rows and renaming the new files
-  leaves it, placed in `tables/Note/` and in a folder of a new type
-  `tables/Chord/`: `Package.from_file` removes both, every other file
+  A package of `a` written; a hidden part `.part_<13>.parquet` placed in
+  `tables/Note/`, in a folder of a new type `tables/Chord/` and in
+  `registry/`: `Package.from_file` removes all three, every other file
   keeps its bytes and the package check reports nothing.
-- **A bundle of the package is written through it.** A bundle read
-  through `Package.bundle` and written with `to_file` alone is refused
+- **A bundle of the package is written through it.** A bundle read through
+  `Package.bundle` and written with `to_file` alone is refused
   (`NotImplementedError`, naming its folder and `Package.write_bundle`).
+
+### Resolving an ID (`TestResolve`)
+
+`resolve(target, id)` answers through TimeToShare's `resolve` with library
+objects. The oracle is TimeToShare's `expected.yaml` of the fixture
+`shared` (its `resolutions`, literal data of its emission script) for what
+is found and in which order; the library adds the objects.
+
+- **Every resolution of the fixture.** For each case of `resolutions`
+  (the manifest or the package root and the ID, ten in this order),
+  `resolve` gives as many objects as the case finds, in its order: for
+  `dpt_1` through `bach/manifest.yaml` the `DiscretePhysicalTimeline`
+  `dpt_1`; for `projection_1` a `Projection` at `Coordinate(0, samples)`,
+  no duration, `projection_of` `clt_1`/`note_1`; for `claim_1` the
+  `MatchClaim` `claim_1`; for `extraction_1` the `Extraction` of the
+  source `bach/alignment.csv`; for `resource_1` through the root the two
+  `Resource`s of `bach` (timelines `clt_1`, `dpt_1`) and `handel` (`clt_2`,
+  `dpt_2`); for `projection_5` through `handel` and through the root the
+  same `Projection` at `Coordinate(9/2, quarters)` (the root's axis, as
+  the registry states it; 1/2 on its own `clt_3`), duration 1/2, of
+  `dpt_2`/`onset_1`; for `projection_3` and `extraction_2` through `bach`
+  and `ghost` through the root nothing.
+- **A lone manifest, a path or a `file:` URL.** `a` written with
+  `events=True`: `resolve(<a.yaml>, "a_n3")` is the `Event` `a_n3` at
+  `Coordinate(17/2, quarters)` (its root's axis), `resolve` of its
+  `file:` URL the same; `"#a_score"` (the written form) the timeline
+  `a_score`; `a`'s MatchClaim by its ID; a `https:` URL is refused (`'…'
+  is a https: URL; resolve reads a local manifest or package root, a path
+  or a file: URL`).
+
+---
 
 ## A Merge Keeps Its Sources' Resources (`test_from_bundles_resources.py`)
 

@@ -7,13 +7,13 @@ NOMATCH and CHUNK".
 from __future__ import annotations
 
 import re
+import shutil
 from fractions import Fraction
 from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-import timetoshare
 from timetoshare.tables import TableError, fixture_path
 
 from timetoalign import CHUNK, NOMATCH
@@ -30,7 +30,6 @@ from timetoalign.core import (
     TimeUnit,
     validate_id,
 )
-from timetoalign.timelines.manifest import read_projection_table
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
@@ -583,27 +582,28 @@ class TestASentinelNamesNoEvent:
         self, sentinel: str, tmp_path: Path
     ) -> None:
         """The fixture's first row, ``projection_10`` of ``onset_1``, now of a sentinel."""
-        table = pq.read_table(fixture_path("projections.parquet"))
-        manifest = timetoshare.loads(
-            fixture_path("manifest.yaml").read_text(encoding="utf-8")
+        package = Path(
+            shutil.copytree(fixture_path("manifest.yaml").parent, tmp_path / "tables")
         )
+        table = pq.read_table(package / "projections.parquet")
         reference = table.column("projection_of").combine_chunks()
         event_ids = reference.field("event_id").to_pylist()
+        assert table.column("id")[0].as_py() == "projection_10"
         assert event_ids[0] == "onset_1"
         changed = pa.StructArray.from_arrays(
             [reference.field("timeline_id"), pa.array([sentinel] + event_ids[1:])],
             fields=list(reference.type),
             mask=reference.is_null(),
         )
-        path = tmp_path / "projections.parquet"
         pq.write_table(
             table.set_column(
                 table.schema.get_field_index("projection_of"), "projection_of", changed
             ),
-            path,
+            package / "projections.parquet",
         )
+        bundle = AlignmentBundle.from_file(package / "manifest.yaml")
         with pytest.raises(TableError) as caught:
-            read_projection_table(path, manifest)
+            bundle.get_timeline("clt_2").events
         problem = caught.value.problem
         assert (problem.code, problem.row, problem.column, problem.message) == (
             "invalid_projection_of",

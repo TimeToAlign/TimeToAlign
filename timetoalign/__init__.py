@@ -292,6 +292,7 @@ _DEFERRED_EXPORTS = {
     "MatchStamp": ("timetoalign.alignment", "MatchStamp"),
     "NoteRecord": ("timetoalign.alignment", "NoteRecord"),
     "Package": ("timetoalign.alignment", "Package"),
+    "resolve": ("timetoalign.alignment", "resolve"),
     "SnoteRecord": ("timetoalign.alignment", "SnoteRecord"),
     "WarpMap": ("timetoalign.alignment", "WarpMap"),
 }
@@ -455,6 +456,7 @@ __all__ = [
     # Alignment
     "AlignmentBundle",
     "Package",
+    "resolve",
     "Gap",
     "TimelineGroup",
     "Resource",

@@ -1102,28 +1102,29 @@ timeline is tested in `tests/timelines/test_projections.py`.
   with a null row and a Projection without ID among them; after the round
   trip every Projection equals the one written and every cell names its own
   unit and number type. An empty field has the field's struct type.
-- **TimeToShare's fixture Projections table**
-  (`timetoshare.tables.fixture_path("projections.parquet")`, shipped with
-  the installed package; never skipped), which is in the package form
-  (each row's `unit` and `number_type` once, `start` and `duration` their
-  number once): read by the package reader (`read_projection_table`
-  against the fixture manifest), its eleven rows equal the eleven
-  Projections spelled out in the test, in the fixture's row order, by
-  timeline ID and each timeline's own order (one fraction on `clt_2`, the
-  interval 7/2 quarters lasting 1/2; two floats on `cpt_1`, the interval
-  12.5 seconds lasting 0.75 and the instant 11.25 seconds; eight ints on
-  `dpt_1`, one of them an interval; each with its `projection_of` but the
-  last on `dpt_1`, `inserted_1`, whose `projection_of` is null), each
-  start and duration of its number type's Python type (`int`, `float`,
-  `Fraction`), so each of the three number types is read
-  from the member the package form writes it in. The fixture's `timeline_id`
-  column is pinned in its row order (`clt_2`, `cpt_1` ×2, `dpt_1` ×8).
-  `ProjectionField.from_projections` of those eleven, its cells written in
-  the package form (`package_numbers` of each position's number by its
-  number type, the row's `unit` and `number_type` from its start cell) and
-  the fixture's `timeline_id` column added, in `PROJECTION_SCHEMA`'s order,
-  equals the fixture table, and TimeToShare's `projection_problems` finds
-  nothing.
+- **TimeToShare's fixture package** (`timetoshare.tables.fixture_path`,
+  shipped with the installed package; never skipped): its registry
+  (`registry.parquet`, each event's position once on the axis of its
+  timeline's root, its `unit` and `number_type` once) and its pre-parsed
+  Projection table (`projections.parquet`, `id` and `projection_of`).
+  Read by `AlignmentBundle.from_file` of the fixture manifest, the
+  Projections of its timelines, each read with `Projection.from_row` on
+  its own timeline's axis, equal the eleven Projections spelled out in
+  the test, in the registry's order, by timeline ID and each timeline's
+  exact start (one fraction on `clt_2`, the interval 7/2 quarters lasting
+  1/2: 23/2 in the registry, on `clt_1`, which holds `clt_2` at 8; two
+  floats on `cpt_1`, the instant 11.25 seconds and the interval 12.5
+  seconds lasting 0.75; eight ints on `dpt_1`, one of them an interval;
+  each with its `projection_of` but the last on `dpt_1`, `inserted_1`,
+  whose `projection_of` is null), each start and duration of its number
+  type's Python type (`int`, `float`, `Fraction`). The registry's
+  `timeline_id` column is pinned in its order (`clt_2`, `cpt_1` ×2,
+  `dpt_1` ×8). `ProjectionField.from_projections` of those eleven gives,
+  in `PROJECTION_SCHEMA`'s columns, exactly the fixture's Projection table
+  (TimeToShare's `projection_problems` finds nothing), and its cells
+  written in the package form (`package_numbers` by each cell's number
+  type) give the registry's `id`, `unit`, `number_type`, `duration` and,
+  but for `clt_2`'s start (its 7/2 plus the offset 8), `start`.
 
 ### `test_number_storage.py` - One struct, one canonical side, one builder
 

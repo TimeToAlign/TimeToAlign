@@ -9,13 +9,11 @@ from __future__ import annotations
 
 import copy
 import difflib
-import io
 import os
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
-import pyarrow as pa
 import pytest
 from timetoshare import (
     FORMAT_CONTEXT,
@@ -27,12 +25,10 @@ from timetoshare import (
     validate,
     with_context,
 )
-from timetoshare.tables import fixture_path
 
 from tests.helpers import refusal
 from timetoalign.alignment import AlignmentBundle
 from timetoalign.timelines import Timeline, TimelineGroup
-from timetoalign.timelines.manifest import read_projection_table
 from timetoalign.timelines.types import (
     ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
@@ -210,7 +206,7 @@ def test_event_rows_and_external_references_are_written_back(
     manifest: dict[str, Any], serialization: str, tmp_path: Path
 ) -> None:
     """The keys a file's timeline objects hold are written back, each on its own;
-    a bundle's events into event files beside its manifest."""
+    a bundle's events into its registry and pre-parsed tables beside its manifest."""
     text = dumps(manifest, serialization=serialization)
     written = _round_trip(AlignmentBundle, text, tmp_path)
     if "events" not in manifest["timelines"][1]:
@@ -224,13 +220,12 @@ def test_event_rows_and_external_references_are_written_back(
 def _assert_events_in_files(
     written: str, path: Path, manifest: dict[str, Any], *, serialization: str
 ) -> None:
-    """*written* is *manifest* without ``events``, naming its two event files,
-    and the bundle read from *path* holds the event rows of *manifest*."""
+    """*written* is *manifest* without ``events``, naming the registry beside
+    it, and the bundle read from *path* holds the event rows of *manifest*."""
     data = loads(written)
     resources = data.pop("resources")
     assert sorted((r["type"], r["timelines"], r["url"]) for r in resources) == [
-        ("Beat", ["#take_1"], "Beat.parquet"),
-        ("Note", ["#take_1"], "Note.parquet"),
+        ("Registry", ["#take_1"], "registry.parquet"),
     ]
     without = _without(manifest, "events")
     assert dumps(data, serialization=serialization) == dumps(
@@ -239,6 +234,8 @@ def _assert_events_in_files(
     assert sorted(p.name for p in path.parent.iterdir() if p.suffix == ".parquet") == [
         "Beat.parquet",
         "Note.parquet",
+        "extractions.parquet",
+        "registry.parquet",
     ]
     read = AlignmentBundle.from_file(path)
     keys = [key for key in ("external_references",) if key in manifest["timelines"][1]]
@@ -479,21 +476,6 @@ def test_a_timeline_added_changes_only_its_own_lines(tmp_path: Path) -> None:
         "after.yaml",
     )
     assert "".join(diff) == EDITED_DIFF
-
-
-def test_the_projection_table_is_read_from_what_parquet_reads() -> None:
-    """A path string, a Path, and two file objects give the same Projections."""
-    path = fixture_path("projections.parquet")
-    manifest = loads(fixture_path("manifest.yaml").read_text(encoding="utf-8"))
-    data = path.read_bytes()
-    read = read_projection_table(str(path), manifest)
-    assert {key: [p.id for p in value] for key, value in read.items()} == {
-        "clt_2": ["projection_10"],
-        "cpt_1": ["projection_11", "projection_12"],
-        "dpt_1": [f"projection_{n}" for n in (1, 2, 3, 4, 5, 8, 9)] + ["inserted_1"],
-    }
-    for source in (path, io.BytesIO(data), pa.BufferReader(data)):
-        assert read_projection_table(source, manifest) == read
 
 
 # endregion

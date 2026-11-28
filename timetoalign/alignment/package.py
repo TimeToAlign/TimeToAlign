@@ -13,31 +13,48 @@ import copy
 import hashlib
 import os
 import posixpath
+import re
 import shutil
-from collections.abc import Iterator, Mapping, Sequence
-from contextvars import ContextVar
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote, unquote, urlsplit
+from urllib.request import url2pathname
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import timetoshare
 from timetoshare import loads
 from timetoshare.tables import (
+    ELEMENT_KINDS,
+    EXTRACTION_SCHEMA,
+    INDEX_KINDS,
+    INDEX_PART,
     PACKAGE_FILE,
     PROVENANCE_METADATA_KEY,
+    REGISTRY_SCHEMA,
     TYPE_METADATA_KEY,
+    check_extractions,
+    check_projections,
+    check_registry,
     package_problems,
     read_table,
-    table_files,
 )
+from timetoshare.tables import resolve as timetoshare_resolve
+from timetoshare.tables import (
+    table_files,
+    write_index,
+)
+from timetoshare.tables.package import index_rows_of, table_index_rows
+from timetoshare.validation.diagnostics import manifest_ids
 
 from timetoalign.alignment.claim_store import _refuse_shared_claim_ids
 from timetoalign.alignment.claims import MatchClaimField
+from timetoalign.core import NumberType, TimeUnit
 from timetoalign.core.fields import _filled, _null_column
 from timetoalign.core.ids import (
     IdMinter,
@@ -47,29 +64,35 @@ from timetoalign.core.ids import (
     seed_from,
     table_seed_part,
 )
+from timetoalign.core.time import combine_number_columns
+from timetoalign.storage.events import BOX_EVENT_TYPE, _extreme_coordinate
+from timetoalign.storage.registry import Extraction, _runs, extraction_table
 from timetoalign.timelines import TimelineGroup
 from timetoalign.timelines.groups import _held_ids
 from timetoalign.timelines.manifest import (
-    _EVENT_ROW_COLUMNS,
     _NEW_FILE,
+    ALWAYS_WRITTEN_KINDS,
+    EXTRACTIONS_FILE_NAME,
     PARQUET_MEDIA_TYPE,
+    REGISTRY_FILE_NAME,
+    EventTables,
     Integrity,
     Manifest,
     Resource,
-    _joined_schema,
-    _projection_tables,
+    _sorted_rows,
     _timeline_ids,
     _validated_by_the_file,
     _write_package_file,
-    event_file_name,
-    read_event_table,
+    content_in_memory,
+    event_tables,
+    index_table,
+    pre_parsed_file_name,
+    pre_parsed_schema,
+    registry_rows_in_memory,
     resource_path,
-    write_event_table,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from timetoalign.alignment.bundle import AlignmentBundle
 
 
@@ -80,16 +103,15 @@ def _merged_resources(
 
     Every source's resources are carried as they stand, in source order,
     with one exception: the merge holds one table of each type (its
-    MatchClaim table holds every source's MatchClaims, the Projections,
-    Boxes and other events lie on the timelines they travel with), and the
-    library writes a
+    MatchClaim table holds every source's MatchClaims, its registry the
+    events that travel with the timelines), and the library writes a
     bundle's rows of a table type into one table, at the first entry of
     that type (:func:`_write_tables`). So the first entry of a type, in
     source order, names the merged table, and every later entry of that
     type, of the same source or of a later one, is not carried.
     :meth:`AlignmentBundle.to_file` writes the merged table at that entry's
-    URL under its ID. A table a source carries as it stands (it holds no
-    events) is carried like any other resource.
+    URL under its ID. A table a source carries as it stands (of a type the
+    bundle does not read) is carried like any other resource.
 
     Raises:
         ValueError: If the id of a resource carried is held in the merge
@@ -198,99 +220,436 @@ def _from_bundles(
     return merged
 
 
-_FILTERED: ContextVar[bool] = ContextVar("_FILTERED", default=False)
-"""Set while :meth:`Package.bundle` reads a manifest of its package: every
-table is then read filtered, single files as folders are."""
+#: The table types a bundle reads into its timelines and writes from them;
+#: a table resource of any other type is carried as it stands.
+_READ_TYPES = ("Registry", "MatchClaim")
 
 
-def _holds_event_columns(kind: str, names: Sequence[str]) -> bool:
-    """Whether a file of the type *kind* whose columns are *names* holds rows
-    a bundle reads: MatchClaims or Projections, the format's table types,
-    whatever the file holds (their checks refuse a malformed one), or
-    events, the file holding the columns every event table holds (``id``,
-    ``timeline_id``, ``unit``, ``number_type``, ``start``)."""
-    return kind in ("MatchClaim", "Projection") or set(_EVENT_ROW_COLUMNS) <= set(names)
+def _package_root(manifest: Path) -> tuple[Path, bool]:
+    """The root of the package the manifest file *manifest* lies in, and
+    whether a ``package.yaml`` lists it: the nearest folder above it whose
+    ``package.yaml`` lists it, else its own folder (a manifest alone)."""
+    resolved = manifest.resolve()
+    for folder in resolved.parents:
+        listing = folder / PACKAGE_FILE
+        if not listing.is_file():
+            continue
+        try:
+            document = loads(listing.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        for entry in document.get("manifests") or ():
+            url = entry.get("url") if isinstance(entry, Mapping) else None
+            if not isinstance(url, str):
+                continue
+            try:
+                listed = resource_path(folder, url)
+            except ValueError:
+                continue
+            if listed.resolve() == resolved:
+                return folder, True
+    return resolved.parent, False
 
 
-def _holds_rows(resource: Resource, path: Path) -> bool:
-    """Whether the table of *resource* lying at *path* holds rows a bundle
-    reads: a MatchClaim or Projections table, or one whose every file holds
-    an event table's columns (:func:`_holds_event_columns`). A table of
-    other rows, and a folder holding no Parquet file, which holds no rows,
-    is carried as it stands."""
-    if resource.type in ("MatchClaim", "Projection"):
-        return True
-    files = table_files(path) if resource.names_folder else [path]
-    return bool(files) and all(
-        _holds_event_columns(resource.type, pq.read_schema(file).names)
-        for file in files
+def _location_path(root: Path, location: str) -> Path | None:
+    """The path a registry row's *location* names in the package lying at
+    *root*, or None for an absolute URI (a resource outside the package)."""
+    if urlsplit(location).scheme:
+        return None
+    return resource_path(root, location)
+
+
+def _string_values(column: pa.ChunkedArray | pa.Array) -> list[str]:
+    """The distinct strings of *column*, nulls left out, sorted."""
+    return sorted(
+        str(value) for value in pc.unique(column).to_pylist() if value is not None
     )
 
 
-def _resource_table(resource: Resource, path: Path) -> pa.Table:
-    """The rows the table resource lying at *path* names for its manifest.
-
-    A file of a lone manifest is read whole: every row of it is the
-    manifest's, and a row on a timeline the manifest lacks is refused by the
-    reading of its type. A folder (:attr:`Resource.names_folder`), and in a
-    package (:meth:`Package.bundle`) a file as well, is read through
-    ``timetoshare.tables.read_table``, keeping the rows of the timelines the
-    resource lists (a MatchClaim's either of whose timelines it lists): the
-    files of a package may hold the rows of its other manifests.
+def _read_extractions(
+    registries: Sequence[Path], root: Path, named: Sequence[str], what: str
+) -> dict[str, Extraction]:
+    """The extractions *named*, read from the Extraction tables the index
+    rows of the registries lying at *registries* (every one the manifest
+    names) locate, each by ID.
 
     Raises:
-        timetoshare.tables.TableError: If the files state another type than
-            the resource's, or cannot be read as one table.
+        ValueError: If an extraction is located by no index row, or its
+            table holds no row of it.
+        timetoshare.tables.TableError: If an Extraction table breaks a rule.
     """
-    if resource.names_folder or _FILTERED.get():
-        return read_table(path, timelines=resource.timelines, type=resource.type)
-    return pq.read_table(path)
+    if not named:
+        return {}
+    index = pa.concat_tables(
+        [read_table(path, ids=named, type="Registry") for path in registries],
+        promote_options="default",
+    )
+    index = index.filter(
+        _filled(
+            pc.equal(index.column("kind"), pa.scalar("Extraction")), pa.scalar(False)
+        )
+    )
+    found: dict[str, Extraction] = {}
+    for location in _string_values(index.column("location")):
+        path = _location_path(root, location)
+        if path is None or not path.exists():
+            continue
+        ids = index.filter(pc.equal(index.column("location"), pa.scalar(location)))
+        table = read_table(
+            path, ids=_string_values(ids.column("id")), type="Extraction"
+        )
+        check_extractions(table)
+        for row in table.to_pylist():
+            found.setdefault(row["id"], Extraction.from_row(row))
+    missing = [extraction_id for extraction_id in named if extraction_id not in found]
+    if missing:
+        raise ValueError(
+            f"The events of {what} name the extraction {quote_id(missing[0])}, which "
+            f"no Extraction table its index locates holds: an event names the "
+            f"extraction that made it."
+        )
+    return found
 
 
-def _read_tables(
-    self: AlignmentBundle, directory: Path, data: Mapping[str, Any]
-) -> None:
+def _content_reader(
+    kind: str,
+    entries: list[tuple[Path, list[str]]],
+    unit: Any,
+    number_type: Any,
+    manifest: Mapping[str, Any] | None,
+) -> Callable[[], pa.Table]:
+    """The reader of the content of one family's events of *kind*: each
+    pre-parsed table of *entries* read by the IDs given, when first asked, a
+    Projection table checked (against *manifest*, where given)."""
+
+    def read() -> pa.Table:
+        parts = []
+        for path, ids in entries:
+            table = read_table(path, ids=ids, type=kind)
+            if kind == "Projection":
+                check_projections(table, manifest)
+            parts.append(
+                content_in_memory(
+                    table, unit, number_type, f"{kind} table '{path.name}'"
+                )
+            )
+        read = (
+            parts[0]
+            if len(parts) == 1
+            else pa.concat_tables(parts, promote_options="default")
+        )
+        # A column the family's events of the kind hold no value in is
+        # another family's (the table spans them); a declared one is kept.
+        declared = set(pre_parsed_schema(kind).names)
+        return read.select(
+            [
+                name
+                for name in read.column_names
+                if name in declared or read.column(name).null_count < read.num_rows
+            ]
+        )
+
+    return read
+
+
+def _fit_lengths(bundle: AlignmentBundle, rows: pa.Table, family: Any) -> None:
+    """Hold each timeline of *rows* (one family's, on its root's axis) long
+    enough for its rows, as a source's rows are held
+    (``Timeline._ensure_capacity``): the largest end of each, made local by
+    the offsets of the timeline's ancestors.
+
+    Raises:
+        ValueError: If a row ends past the length of a locked timeline.
+    """
+    number_type = family.number_type
+    for timeline_id in _string_values(rows.column("timeline_id")):
+        part = rows.filter(pc.equal(rows.column("timeline_id"), pa.scalar(timeline_id)))
+        start = part.column("start").combine_chunks()
+        duration = part.column("duration").combine_chunks()
+        ends = combine_number_columns(start, duration, "add", number_type)
+        ends = pc.if_else(duration.is_valid(), ends, start)
+        values = pc.struct_field(ends, "value")
+        if values.null_count == len(values):
+            continue
+        end = _extreme_coordinate(
+            pa.chunked_array([ends]),
+            pa.chunked_array([values]),
+            pc.max(values),
+            number_type,
+            max,
+        )
+        for offset in family.paths[timeline_id]:
+            end = end - offset
+        bundle._require_known_timeline(timeline_id)._ensure_capacity(end)
+
+
+def _install_registry(
+    bundle: AlignmentBundle,
+    resource: Resource,
+    path: Path,
+    root: Path,
+    manifest: Mapping[str, Any],
+    filtered: bool,
+    registries: Sequence[Path],
+) -> bool:
+    """Install the event rows of the registry *resource* names (lying at
+    *path*) in the families of the bundle's timelines (``_read_tables``),
+    their extractions located by the index rows of *registries*.
+
+    Returns:
+        Whether a row is of a kind other than Projection and Box.
+    """
+    what = f"the registry '{path.name}'"
+    rows = read_table(
+        path, timelines=resource.timelines if filtered else None, type="Registry"
+    )
+    events = rows.filter(
+        pc.invert(
+            _filled(
+                pc.is_in(rows.column("kind"), value_set=pa.array(INDEX_KINDS)),
+                pa.scalar(False),
+            )
+        )
+    )
+    check_registry(events, manifest)
+    if not events.num_rows:
+        return False
+    memory = registry_rows_in_memory(events, what)
+    named = sorted(
+        {
+            *_string_values(memory.column("extraction_id")),
+            *_string_values(memory.column("vanished_in")),
+        }
+    )
+    extractions = _read_extractions(registries, root, named, what)
+    timelines = memory.column("timeline_id").combine_chunks()
+    families: dict[int, tuple[Any, list[np.ndarray]]] = {}
+    for timeline_id, at in _runs(timelines):
+        family = bundle._require_known_timeline(str(timeline_id))._registry._family
+        families.setdefault(id(family), (family, []))[1].append(at)
+    for family, positions in families.values():
+        at = np.sort(np.concatenate(positions))
+        own = _not_stated_already(memory.take(pa.array(at, pa.int64())), family)
+        located: dict[str, list[tuple[Path, list[str]]]] = {}
+        stored = own.filter(own.column("location").is_valid())
+        for (kind, location), where in _pairs(stored):
+            target = _location_path(root, location)
+            if target is None:
+                # An absolute URI names content outside the package.
+                continue
+            if not target.exists():
+                first = stored.column("id")[int(where[0])].as_py()
+                raise ValueError(
+                    f"The {kind} {quote_id(first)} of {what} names the location "
+                    f"{location!r}, where no table lies in the package."
+                )
+            ids = stored.column("id").combine_chunks().take(pa.array(where, pa.int64()))
+            located.setdefault(kind, []).append(
+                (target, [str(value) for value in ids.to_pylist()])
+            )
+        contents = {
+            kind: _content_reader(
+                kind,
+                entries,
+                family.unit,
+                family.number_type,
+                # In a package a Projection may stand for an event of
+                # another manifest's timeline: the package check's to see.
+                None if filtered else manifest,
+            )
+            for kind, entries in located.items()
+        }
+        own_named = {
+            *_string_values(own.column("extraction_id")),
+            *_string_values(own.column("vanished_in")),
+        }
+        _fit_lengths(bundle, own, family)
+        bundle._require_known_timeline(family.root_id)._registry.add_rows(
+            own,
+            contents,
+            [extractions[key] for key in sorted(own_named)],
+            registered=True,
+        )
+        boxes = own.filter(pc.equal(own.column("kind"), pa.scalar(BOX_EVENT_TYPE)))
+        for timeline_id in _string_values(boxes.column("timeline_id")):
+            # A Box read passes the check every Box added passes: its shape
+            # read with it, never trusted over its position.
+            timeline = bundle._require_known_timeline(timeline_id)
+            events = timeline.events
+            timeline._refuse_boxes_off_their_shapes(
+                events, events.table.column("id").to_pylist()
+            )
+    kinds = set(_string_values(memory.column("kind")))
+    return bool(kinds - set(ALWAYS_WRITTEN_KINDS))
+
+
+def _not_stated_already(rows: pa.Table, family: Any) -> pa.Table:
+    """The registry *rows* of one family but those its timelines hold already:
+    a row whose ID the family holds on the same timeline, as the same kind at
+    the same root position (``start`` and ``duration`` compared exactly), is
+    the event a manifest's own event rows state, which is kept; a row whose
+    ID the family holds otherwise is refused (by ``add_rows``)."""
+    held = family.table()
+    if not held.num_rows or not rows.num_rows:
+        return rows
+    held_ids = held.column("id").combine_chunks()
+    hits = _flat(
+        _filled(pc.is_in(rows.column("id"), value_set=held_ids), pa.scalar(False))
+    )
+    if not pc.any(hits).as_py():
+        return rows
+    at = pc.index_in(rows.column("id"), value_set=held_ids)
+
+    def flags(array: Any) -> np.ndarray:
+        return np.asarray(
+            _flat(_filled(array, pa.scalar(False))).to_numpy(zero_copy_only=False),
+            dtype=bool,
+        )
+
+    same = flags(hits)
+    for name in ("timeline_id", "kind"):
+        same &= flags(pc.equal(rows.column(name), held.column(name).take(at)))
+    for name in ("start", "duration"):
+        mine = rows.column(name).combine_chunks()
+        theirs = held.column(name).combine_chunks().take(at)
+        both_null = flags(pc.and_(mine.is_null(), theirs.is_null()))
+        equal = flags(
+            pc.and_(
+                pc.equal(
+                    pc.struct_field(mine, "numerator"),
+                    pc.struct_field(theirs, "numerator"),
+                ),
+                pc.equal(
+                    pc.struct_field(mine, "denominator"),
+                    pc.struct_field(theirs, "denominator"),
+                ),
+            )
+        )
+        same &= both_null | equal
+    return rows.filter(pa.array(~same))
+
+
+def _pairs(rows: pa.Table) -> list[tuple[tuple[str, str], np.ndarray]]:
+    """The positions of *rows* by their ``kind`` and ``location``, each pair once."""
+    if not rows.num_rows:
+        return []
+    keys = pa.Table.from_arrays(
+        [
+            rows.column("kind"),
+            rows.column("location"),
+            pa.array(np.arange(rows.num_rows), pa.int64()),
+        ],
+        names=["kind", "location", "at"],
+    )
+    grouped = keys.group_by(["kind", "location"], use_threads=False).aggregate(
+        [("at", "list")]
+    )
+    return [
+        ((str(kind), str(location)), np.asarray(at, dtype=np.int64))
+        for kind, location, at in zip(
+            grouped.column("kind").to_pylist(),
+            grouped.column("location").to_pylist(),
+            grouped.column("at_list").to_pylist(),
+            strict=True,
+        )
+    ]
+
+
+def _read_tables(self: AlignmentBundle, path: Path, data: Mapping[str, Any]) -> bool:
     """Implement :meth:`AlignmentBundle._read_tables`."""
-    tables: list[tuple[str, pa.Table]] = []
+    directory = path.parent
+    root, listed = _package_root(path)
     carried: dict[str, Path] = {}
+    read: list[tuple[Resource, Path]] = []
     for resource in self.resources:
         if not resource.is_table:
             continue
-        path = resource.path_in(directory)
-        if not (path.is_dir() if resource.names_folder else path.is_file()):
+        target = resource.path_in(directory)
+        if not (target.is_dir() if resource.names_folder else target.is_file()):
             continue
-        if not _holds_rows(resource, path):
-            carried[resource.id] = Path(os.path.abspath(path))
+        if resource.type not in _READ_TYPES:
+            carried[resource.id] = Path(os.path.abspath(target))
             continue
-        tables.append((resource.type, _resource_table(resource, path)))
+        read.append((resource, target))
     self._carried_tables = carried
-    # Every resource of a type is read, in the order the manifest lists
-    # them: the Projections first, then every other event type, then the
-    # MatchClaims, whose side B may name a Projection. Each timeline's rows
-    # are added as a table.
-    for table_type, table in tables:
-        if table_type == "Projection":
-            for timeline_id, rows in _projection_tables(table, data).items():
-                timeline = self._require_known_timeline(timeline_id)
-                timeline._add_event_table(rows, table_type)
-    for table_type, table in tables:
-        if table_type in ("Projection", "MatchClaim"):
-            continue
-        for timeline_id, rows in read_event_table(table).items():
-            self._require_known_timeline(timeline_id)._add_event_table(rows, table_type)
-    for table_type, table in tables:
-        if table_type == "MatchClaim":
+    others = False
+    registries = [target for resource, target in read if resource.type == "Registry"]
+    for resource, target in read:
+        if resource.type == "Registry":
+            filtered = listed or resource.names_folder
+            others |= _install_registry(
+                self, resource, target, root, data, filtered, registries
+            )
+    # The MatchClaims last: a side may name a Projection.
+    for resource, target in read:
+        if resource.type == "MatchClaim":
+            table = (
+                read_table(target, timelines=resource.timelines, type="MatchClaim")
+                if listed or resource.names_folder
+                else pq.read_table(target)
+            )
             self.add_match_claim_field(MatchClaimField.from_package_table(table))
+    return others
 
 
-def _write_tables(
-    self: AlignmentBundle, directory: Path, *, events: bool = False
-) -> bool:
+def _held_entry(tabled: Sequence[Resource], table_type: str) -> Resource | None:
+    """The first entry of *table_type* among *tabled*, the one naming its table."""
+    return next((resource for resource in tabled if resource.type == table_type), None)
+
+
+def _index_of(
+    manifest: Mapping[str, Any],
+    location: str,
+    claims: tuple[pa.Array, str] | None,
+    extractions: tuple[pa.Array, str] | None,
+) -> pa.Table:
+    """The index rows of a manifest written (in the file form) at
+    *location*, of its MatchClaims and of its extractions (their IDs and
+    their table's URL), in the Registry's columns, sorted by ``location``,
+    then ``id``."""
+    parts = [index_rows_of(timetoshare.with_bare_ids(manifest), location)]
+    for given, kind in ((claims, "MatchClaim"), (extractions, "Extraction")):
+        if given is not None:
+            parts.append(table_index_rows(given[0], kind, given[1]))
+    joined = pa.concat_tables(parts).sort_by(
+        [("location", "ascending"), ("id", "ascending")]
+    )
+    return index_table(joined)
+
+
+def _kept_extractions(tables: EventTables, target: Path) -> pa.Table:
+    """The Extraction table of *tables* to write at *target*: an extraction
+    the table lying there holds under its ID, of the same content but its
+    date, is that extraction, written with the date it was first written
+    with; every other as the bundle holds it."""
+    held: dict[str, Extraction] = {}
+    if target.is_file():
+        for row in read_table(target, type="Extraction").to_pylist():
+            held.setdefault(row["id"], Extraction.from_row(row))
+    rows = [
+        (
+            held[extraction.id]
+            if extraction.id in held
+            and _undated(held[extraction.id]) == _undated(extraction)
+            else extraction
+        )
+        for extraction in tables.extractions
+    ]
+    table = extraction_table(rows).cast(EXTRACTION_SCHEMA)
+    return table.replace_schema_metadata({TYPE_METADATA_KEY: "Extraction"})
+
+
+def _write_tables(self: AlignmentBundle, path: Path, *, events: bool = False) -> bool:
     """Implement :meth:`AlignmentBundle._write_tables`."""
+    directory = path.parent
+    tables = event_tables(self.registry, events=events)
     claims = self.match_claim_table
-    event_tables = self._event_tables(events=events)
-    kinds = {*event_tables, *(("MatchClaim",) if len(claims) else ())}
-    # A table carried as it stands (no events, no MatchClaims) names no table.
+    with_events = tables.rows.num_rows > 0
+    kinds = {
+        *(("Registry",) if with_events else ()),
+        *(("MatchClaim",) if len(claims) else ()),
+    }
+    # A table carried as it stands names no table written.
     tabled = [
         resource
         for resource in self.resources
@@ -308,93 +667,115 @@ def _write_tables(
             )
     if not kinds:
         return False
-    # The first entry of each table type names its table; a later entry of
-    # a type written lists timelines whose rows that table now holds.
-    named: dict[str, Resource] = {}
-    for resource in tabled:
-        named.setdefault(resource.type, resource)
     taken = {
         **self._scope_ids(),
         **{r.id: f"resource {quote_id(r.id)}" for r in self.resources},
     }
-    written: dict[str, Resource] = {}
-
-    def place(table_type: str, default: str) -> tuple[str, Path]:
-        """Return the URL and resolved path a table is written to, creating its folder.
-
-        A held entry's URL is kept; otherwise *default* is used.
-        """
-        held = named.get(table_type)
-        url = held.url if held is not None else default
-        path = resource_path(directory, url)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return url, path
-
-    # Every table to write: its type, URL, path, timelines and writer.
-    tables: list[tuple[str, str, Path, list[str], Callable[[Path], object]]] = []
-    # Every place is resolved (a URL refused) before the first file is written.
-    if len(claims):
-        url, path = place("MatchClaim", MatchClaimField.file_name)
-        tables.append(
-            ("MatchClaim", url, path, _claim_timelines(claims.table), claims.to_parquet)
-        )
-    for kind, table in event_tables.items():
-        url, path = place(kind, quote(event_file_name(kind)))
-        tables.append(
-            (
-                kind,
-                url,
-                path,
-                _event_timelines(table),
-                lambda path, table=table: write_event_table(table, path),
+    planned: dict[str, Resource] = {}
+    for kind, default, timelines in (
+        ("Registry", REGISTRY_FILE_NAME, tables.timelines),
+        ("MatchClaim", MatchClaimField.file_name, _claim_timelines(claims.table)),
+    ):
+        if kind not in kinds:
+            continue
+        held = _held_entry(tabled, kind)
+        url = held.url if held is not None else quote(default)
+        if held is not None and set(held.timelines) == set(timelines):
+            timelines = list(held.timelines)
+        if held is None:
+            resource_id = Resource._minted_id(kind, timelines, url)
+            taken = _refuse_held_ids(
+                [(resource_id, f"resource {quote_id(resource_id)}")], taken
             )
+        else:
+            resource_id = held.id
+        planned[kind] = Resource(
+            resource_id, kind, tuple(timelines), url, PARQUET_MEDIA_TYPE
         )
-    # An entry of a type not written stays where its file lies; a folder
-    # of such a type, and a table carried, stay as they are.
+    # An entry of a type not written stays where its file lies; a folder of
+    # such a type, and a table carried, stay as they are.
     kept = {id(r) for r in self.resources if r.id in self._carried_tables} | {
         id(r)
         for r in tabled
         if r.type not in kinds
         and (r.names_folder or resource_path(directory, r.url).is_file())
     }
-    # Every entry's id, refused where the manifest holds it, before the
-    # first file is written. A held entry's id is reused, and its
-    # timeline order kept when it names the same timelines; otherwise a
-    # new entry mints its id.
-    entries: list[tuple[str, str, Path, list[str], str]] = []
-    for table_type, url, path, timelines, _ in tables:
-        held = named.get(table_type)
-        if held is not None and set(held.timelines) == set(timelines):
-            timelines = list(held.timelines)
-        if held is None:
-            resource_id = Resource._minted_id(table_type, timelines, url)
-            taken = _refuse_held_ids(
-                [(resource_id, f"resource {quote_id(resource_id)}")], taken
-            )
-        else:
-            resource_id = held.id
-        entries.append((table_type, url, path, timelines, resource_id))
-    for (_, _, _, _, write), (table_type, url, path, timelines, resource_id) in zip(
-        tables, entries, strict=True
-    ):
-        write(path)
-        written[table_type] = Resource.of_file(
-            path, id=resource_id, type=table_type, timelines=timelines, url=url
+
+    def resources_with(written: Mapping[str, Resource]) -> list[Resource]:
+        """The bundle's resources, each entry written in place of the first
+        entry of its type, the new ones last."""
+        pending = dict(written)
+        resources: list[Resource] = []
+        for r in self.resources:
+            if not r.is_table or id(r) in kept:
+                resources.append(r)
+            elif r is _held_entry(tabled, r.type) and r.type in pending:
+                resources.append(pending.pop(r.type))
+        return resources + list(pending.values())
+
+    files: list[tuple[Path, pa.Table, tuple[str, ...]]] = []
+    if with_events:
+        urls = {kind: quote(pre_parsed_file_name(kind)) for kind in tables.contents}
+        rows = tables.located(urls)
+        extraction_url = quote(EXTRACTIONS_FILE_NAME)
+        with _validated_by_the_file():
+            manifest = _to_dict(self, minimal=False, resources=resources_with(planned))
+        claim_ids = (
+            (claims.table.column("id").combine_chunks(), planned["MatchClaim"].url)
+            if "MatchClaim" in planned
+            else None
         )
-    resources: list[Resource] = []
-    for r in self.resources:
-        if not r.is_table or id(r) in kept:
-            resources.append(r)
-        elif r is named.get(r.type) and r.type in written:
-            resources.append(written.pop(r.type))
-    self.resources = resources + list(written.values())
+        extraction_ids = pa.array(
+            [extraction.id for extraction in tables.extractions], pa.string()
+        )
+        index = _index_of(
+            manifest,
+            quote(path.name),
+            claim_ids,
+            (extraction_ids, extraction_url) if len(extraction_ids) else None,
+        )
+        registry = pa.concat_tables([index, rows]).replace_schema_metadata(
+            {TYPE_METADATA_KEY: "Registry"}
+        )
+        files.append((resource_path(directory, planned["Registry"].url), registry, ()))
+        if len(extraction_ids):
+            target = resource_path(directory, extraction_url)
+            files.append((target, _kept_extractions(tables, target), ()))
+        for kind, content in tables.contents.items():
+            files.append((resource_path(directory, urls[kind]), content, ()))
+    undo = _Undo()
+    try:
+        hidden: list[tuple[Path, Path]] = []
+        for target, table, sorted_by in files:
+            undo.folder(target.parent)
+            veiled = target.with_name(f".{target.name}")
+            undo.keep(veiled)
+            undo.keep(target)
+            _write_package_file(table, veiled, sorted_by)
+            hidden.append((veiled, target))
+        if "MatchClaim" in planned:
+            claim_path = resource_path(directory, planned["MatchClaim"].url)
+            undo.folder(claim_path.parent)
+            undo.keep(claim_path)
+            claims.to_parquet(claim_path)
+        for veiled, target in hidden:
+            os.replace(veiled, target)
+    except BaseException:
+        undo.restore()
+        raise
+    self.resources = resources_with(
+        {
+            kind: Resource.of_file(
+                resource_path(directory, resource.url),
+                id=resource.id,
+                type=kind,
+                timelines=list(resource.timelines),
+                url=resource.url,
+            )
+            for kind, resource in planned.items()
+        }
+    )
     return True
-
-
-def _event_timelines(table: pa.Table) -> list[str]:
-    """The timelines an event table's rows lie on, sorted."""
-    named = pc.unique(table.column("timeline_id")).to_pylist()
-    return sorted(value for value in named if isinstance(value, str))
 
 
 def _claim_timelines(table: pa.Table) -> list[str]:
@@ -453,16 +834,33 @@ _TABLES_FOLDER = "tables"
 #: The prefix of the names of the files the package writer mints.
 _PART_PREFIX = "part"
 
+#: The folder of a package's registry, its URL in ``package.yaml``.
+_REGISTRY_URL = "registry/"
+
+#: The URL of a package's Extraction table in ``package.yaml``.
+_EXTRACTIONS_URL = f"{_TABLES_FOLDER}/{EXTRACTIONS_FILE_NAME}"
+
+#: The table types of a package that are no pre-parsed table.
+_PACKAGE_TYPES = frozenset({"Registry", "Extraction", "MatchClaim"})
+
 #: The columns naming a row's timelines in a MatchClaim table.
 _CLAIM_TIMELINES = ("timeline_a_id", "timeline_b_id")
 
 #: The sorting columns of a written MatchClaim file.
 _CLAIM_ORDER = ("timeline_a_id", "timeline_b_id", "id")
 
+#: An extraction ID that names its registry part as it stands.
+_PART_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
 
 def _sorted_by(kind: str) -> tuple[str, ...]:
-    """The columns a package file of *kind* is sorted by and declares."""
-    return _CLAIM_ORDER if kind == "MatchClaim" else ("timeline_id",)
+    """The columns a package file of *kind* is sorted by and declares: a
+    MatchClaim file's timelines and IDs, a registry part's timelines (then
+    by exact start and ID, which no sorting column states), none for a
+    pre-parsed table."""
+    if kind == "MatchClaim":
+        return _CLAIM_ORDER
+    return ("timeline_id",) if kind == "Registry" else ()
 
 
 def _claim_file_table(claims: MatchClaimField) -> pa.Table:
@@ -505,7 +903,7 @@ def _rows_of(table: pa.Table, columns: Sequence[str], timelines: Any) -> pa.Arra
         if name in table.column_names:
             held = pc.is_in(table.column(name), value_set=listed)
             mask = pc.or_(mask, _filled(held, pa.scalar(False)))
-    return mask
+    return mask.combine_chunks() if isinstance(mask, pa.ChunkedArray) else mask
 
 
 @dataclass(frozen=True)
@@ -538,6 +936,11 @@ class _Written:
     :meth:`Package.to_file` writes for it.
 
     Attributes:
+        rows: Its registry's event rows, each pre-parsed row's location the
+            folder of its kind's pre-parsed table.
+        contents: Its pre-parsed table of each kind.
+        extractions: The extractions its rows name.
+        claims: Its MatchClaim table as a package file holds it, or None.
         removed: The timelines whose rows the write removes from the files
             on disk: the manifest's and the one it replaces; none for a
             package not written yet.
@@ -548,7 +951,10 @@ class _Written:
     bundle: AlignmentBundle
     text: str
     media_type: str
-    tables: dict[str, pa.Table]
+    rows: pa.Table
+    contents: dict[str, pa.Table]
+    extractions: tuple[Extraction, ...]
+    claims: pa.Table | None
     resources: list[Resource]
     timelines: frozenset[str]
     removed: frozenset[str]
@@ -577,18 +983,15 @@ def _collision(
 def _id_columns(written: _Written, claims: bool) -> tuple[pa.Array, pa.Array]:
     """The IDs of *written*'s MatchClaims (with *claims*) or of its events,
     each with the timeline it lies on (a MatchClaim's ``timeline_a_id``)."""
-    column = "timeline_a_id" if claims else "timeline_id"
-    tables = [
-        table.select(["id", column])
-        for kind, table in written.tables.items()
-        if (kind == "MatchClaim") == claims
-    ]
-    if not tables:
-        return pa.array([], pa.string()), pa.array([], pa.string())
-    joined = pa.concat_tables(tables)
+    if claims:
+        if written.claims is None:
+            return pa.array([], pa.string()), pa.array([], pa.string())
+        table, column = written.claims, "timeline_a_id"
+    else:
+        table, column = written.rows, "timeline_id"
     return (
-        joined.column("id").combine_chunks(),
-        joined.column(column).combine_chunks(),
+        table.column("id").combine_chunks(),
+        table.column(column).combine_chunks(),
     )
 
 
@@ -808,19 +1211,25 @@ class Package:
     """A TimeToShare package: a folder of manifests sharing their tables.
 
     ``package.yaml`` at the folder's root lists the package's manifests and
-    its tables, each a file or a folder of Parquet files (``tables/<Type>/``
-    as this class writes them) holding the rows of one type, of every
-    manifest that names it. A manifest names each file or folder it reads
-    in its ``resources``, with the timelines whose rows it keeps; nothing in
-    a file names a manifest. An event ID is held once among all events of
-    the package, every type; a MatchClaim ID once among its MatchClaims; a
-    timeline ID by one manifest.
+    its tables: the **registry** (``registry/``, as this class writes it: an
+    index part ``index.parquet`` of every manifest element, MatchClaim and
+    extraction, and one part per extraction of its event rows, each
+    position on the axis of its timeline's root), the **Extraction table**
+    (``tables/extractions.parquet``), one **pre-parsed table** per kind of
+    event (``tables/<Kind>/``, each event's content keyed by its ID, without
+    positions) and the **MatchClaim table** (``tables/MatchClaim/``). A
+    manifest names the registry and the MatchClaim table in its
+    ``resources``, with the timelines whose rows it keeps; nothing in a file
+    names a manifest. An event ID is held once among all events of the
+    package, every kind; a MatchClaim ID once among its MatchClaims; a
+    timeline ID, as this class writes a package, by one manifest.
 
     :meth:`from_file` opens a package; :meth:`bundle` reads one of its
     manifests as an :class:`~timetoalign.alignment.AlignmentBundle`, every
-    table filtered by the timelines its resources list.
-    :meth:`write_bundle` writes a bundle into the package as one of its
-    manifests, and :meth:`to_file` writes a new package where it is told.
+    table filtered by the timelines its resources list and the events'
+    content read when first asked for. :meth:`write_bundle` writes a bundle
+    into the package as one of its manifests, and :meth:`to_file` writes a
+    new package where it is told.
 
     Args:
         id: The package's IRI where it is published (its repository or
@@ -840,8 +1249,10 @@ class Package:
         >>> package = Package(name="Pieces")
         >>> package.write_bundle(bundle, "piece/manifest.yaml")
         >>> path = package.to_file(Path(tempfile.mkdtemp()) / "package.yaml")
-        >>> package.manifests, [table["url"] for table in package.tables]
-        (['piece/manifest.yaml'], ['tables/Note/'])
+        >>> package.manifests
+        ['piece/manifest.yaml']
+        >>> [(table["type"], table["url"]) for table in package.tables]
+        [('Registry', 'registry/'), ('Extraction', 'tables/extractions.parquet'), ('Note', 'tables/Note/')]
         >>> read = Package.from_file(path).bundle("piece/manifest.yaml")
         >>> read.get_timeline("score").events.table.column("id").to_pylist()
         ['n1']
@@ -875,8 +1286,9 @@ class Package:
         The file is read in any serialization of the format and validated
         (:func:`timetoshare.validate_package`); its manifests and tables
         are read when asked for (:meth:`bundle`). A file a write cut short
-        left hidden in a folder of ``tables/`` (``.part_….parquet``, which
-        no reader reads) is removed.
+        left hidden in the registry's folder or in a folder of ``tables/``
+        (a name starting with ``.`` and ending in ``.parquet``, which no
+        reader reads) is removed.
 
         Raises:
             FileNotFoundError: If no file lies at *path*.
@@ -887,11 +1299,13 @@ class Package:
         data = loads(path.read_text(encoding="utf-8"))
         timetoshare.validate_package(data)
         tables = path.parent / _TABLES_FOLDER
+        folders = [path.parent / _REGISTRY_URL.rstrip("/")]
         if tables.is_dir():
-            for folder in tables.iterdir():
-                if folder.is_dir():
-                    for stray in folder.glob(f".{_PART_PREFIX}_*.parquet"):
-                        stray.unlink()
+            folders.extend(folder for folder in tables.iterdir() if folder.is_dir())
+        for folder in folders:
+            if folder.is_dir():
+                for stray in folder.glob(".*.parquet"):
+                    stray.unlink()
         package = cls.__new__(cls)
         package._document = data
         package._path = path
@@ -939,12 +1353,14 @@ class Package:
         """The manifest at *url* as an :class:`~timetoalign.alignment.AlignmentBundle`.
 
         Read as :meth:`AlignmentBundle.from_file
-        <timetoalign.alignment.AlignmentBundle.from_file>` reads it, but
-        every table its resources name, a single file as a folder, is read
-        filtered: its rows of the timelines the resource lists (a
-        MatchClaim's either of whose timelines it lists), the other
-        manifests' passed over. A manifest read alone instead refuses a row
-        of a timeline it lacks in a single file.
+        <timetoalign.alignment.AlignmentBundle.from_file>` reads a manifest
+        that ``package.yaml`` lists: every table its resources name, a
+        single file as a folder, is read filtered, its rows of the timelines
+        the resource lists (a MatchClaim's either of whose timelines it
+        lists), the other manifests' passed over; each event's content is
+        read from its pre-parsed table, by ID, when its family's events are
+        first read. A manifest read alone instead refuses a row of a
+        timeline it lacks in a single file.
 
         Args:
             url: The manifest's URL as :attr:`manifests` lists it.
@@ -967,50 +1383,55 @@ class Package:
                 f"The manifest {url!r} is not written yet: write the package "
                 f"(to_file) before reading it."
             )
-        token = _FILTERED.set(True)
-        try:
-            return AlignmentBundle.from_file(resource_path(self._path.parent, url))
-        finally:
-            _FILTERED.reset(token)
+        return AlignmentBundle.from_file(resource_path(self._path.parent, url))
 
     def write_bundle(self, bundle: AlignmentBundle, url: str) -> None:
         """Write *bundle* into the package as its manifest at *url*.
 
         The manifest lies at *url* under the package's root, its resources
-        naming the folders ``tables/<Type>/`` (relative to it, without size
-        or digest, since other manifests' rows share them), one per type it
-        has rows of, with its timelines holding them (a MatchClaim's both);
-        a resource that is no table (a recording) is kept. A table the
-        bundle carries, read as a table of other rows (a Parquet file
-        without an event table's columns, a folder holding no Parquet file),
-        is copied into the package with its bytes, at ``tables/<Type>/``
-        under its own name (a name holding other content: one seeded from
-        the table's content), listed in ``package.yaml``, and its resource
-        names the copy; one lying in the package already stays where it
-        lies, and equal content lying at its name is that copy. A table
-        resource of a type the bundle holds no rows of and does not carry
-        is refused: the writer has no file to copy. Its rows of every
-        event type (:func:`~timetoalign.timelines.manifest.event_table`,
-        Projections and Boxes among them) and its MatchClaims (each row with
-        its own provenance) go into the package's files: each write adds one
-        new file per type, ``tables/<Type>/part_<13 base-36
-        characters>.parquet``, holding the rows of every bundle it writes
-        (:meth:`to_file` writes every bundle staged at once), sorted by
-        ``timeline_id`` with each timeline's rows in their order (the
-        MatchClaims by ``timeline_a_id``, ``timeline_b_id`` and ``id``),
-        named from its content through the library's ID minter, so that a
-        rebuild names its files again. A manifest the package holds at *url*
-        already is replaced: the rows of its timelines and of the bundle's
-        leave the files holding them, each such file rewritten whole (one
-        left without a row removed), the other manifests' rows kept, sorted
-        as they are declared; its MatchClaims must be kept by the bundle, as
-        :meth:`MatchClaimField.to_parquet
+        naming the registry (``registry/``, relative to it, without size or
+        digest, since other manifests' rows share it) with the timelines
+        holding its events, and the MatchClaim table (``tables/MatchClaim/``)
+        with the timelines its MatchClaims name; a resource that is no table
+        (a recording) is kept. A table the bundle carries (a table resource
+        of a type it does not read, or a MatchClaim table it holds no rows
+        of) is copied into the package with its bytes, at
+        ``tables/<Type>/`` under its own name (a name holding other content:
+        one seeded from the table's content), listed in ``package.yaml``,
+        and its resource names the copy; one lying in the package already
+        stays where it lies, and equal content lying at its name is that
+        copy. A table resource of a type the bundle holds no rows of and
+        does not carry is refused: the writer has no file to copy.
+
+        Its events of every kind (:func:`~timetoalign.timelines.manifest.event_tables`)
+        go into the registry: one part per extraction, ``registry/<extraction
+        ID>.parquet`` (an ID that is no plain file name: ``part_`` and 13
+        base-36 characters minted from it), holding that extraction's rows of
+        every manifest, sorted by ``timeline_id``, exact ``start`` and
+        ``id``; a part holding the extraction already takes the new rows in,
+        rewritten whole. Their extractions go into the Extraction table
+        (``tables/extractions.parquet``, each extraction once), their
+        content into the pre-parsed table of their kind and their
+        MatchClaims (each row with its own provenance) into the MatchClaim
+        table: each write adds one new file per kind and one of MatchClaims,
+        ``tables/<Type>/part_<13 base-36 characters>.parquet``, holding the
+        rows of every bundle it writes (:meth:`to_file` writes every bundle
+        staged at once), named from its content through the library's ID
+        minter, so that a rebuild names its files again. Last, the
+        registry's index part is written from the manifests and tables
+        (``timetoshare.tables.write_index``). A manifest the package holds
+        at *url* already is replaced: the rows of its timelines and of the
+        bundle's leave the files holding them (a pre-parsed row by the ID
+        of its event), each such file rewritten whole (one left without a
+        row removed), the other manifests' rows kept; its MatchClaims must
+        be kept by the bundle, as :meth:`MatchClaimField.to_parquet
         <timetoalign.alignment.MatchClaimField.to_parquet>` requires, so a
         bundle holding none while the package holds MatchClaims of that
-        manifest is refused.
+        manifest is refused, and an extraction once written stays in the
+        Extraction table.
 
         Before anything is written, every ID is checked in memory: each
-        event ID among every event of the package, every type; each
+        event ID among every event of the package, every kind; each
         MatchClaim ID among its MatchClaims; each timeline ID among the
         timelines of its other manifests. A collision is refused, naming
         the ID and both holders; nothing is renamed. A new package (not
@@ -1166,12 +1587,12 @@ class Package:
 
     def _prepared(self, bundle: AlignmentBundle, url: str) -> _Written:
         """What writing *bundle* at *url* writes, every ID checked."""
-        tables: dict[str, pa.Table] = dict(bundle._event_tables(events=True))
+        tables = event_tables(bundle.registry, events=True)
         claims = bundle.match_claim_table
-        if len(claims):
-            tables["MatchClaim"] = _claim_file_table(claims)
+        claim_table = _claim_file_table(claims) if len(claims) else None
+        written_types = {"Registry", *(("MatchClaim",) if len(claims) else ())}
         folder = posixpath.dirname(url) or "."
-        carried = self._carried(bundle, set(tables), url)
+        carried = self._carried(bundle, written_types, url)
         resources: list[Resource] = []
         for resource in bundle.resources:
             placed = carried.get(resource.id)
@@ -1189,14 +1610,14 @@ class Package:
             **bundle._scope_ids(),
             **{r.id: f"resource {quote_id(r.id)}" for r in resources},
         }
-        for kind, table in tables.items():
-            relative = posixpath.relpath(f"{_TABLES_FOLDER}/{kind}", folder) + "/"
-            location = quote(relative, safe="/.")
-            timelines = (
-                _claim_timelines(table)
-                if kind == "MatchClaim"
-                else _event_timelines(table)
+        named = {"Registry": (_REGISTRY_URL, tables.timelines)}
+        if claim_table is not None:
+            named["MatchClaim"] = (
+                f"{_TABLES_FOLDER}/MatchClaim/",
+                _claim_timelines(claim_table),
             )
+        for kind, (target, timelines) in named.items():
+            location = quote(posixpath.relpath(target, folder) + "/", safe="/.")
             resource_id = held.get(kind)
             if resource_id is None:
                 resource_id = Resource._minted_id(kind, timelines, location)
@@ -1228,7 +1649,12 @@ class Package:
                 if form.serialization == "yaml"
                 else "application/json"
             ),
-            tables=tables,
+            rows=tables.located(
+                {kind: f"{_TABLES_FOLDER}/{quote(kind)}/" for kind in tables.contents}
+            ),
+            contents=dict(tables.contents),
+            extractions=tables.extractions,
+            claims=claim_table,
             resources=resources,
             timelines=timelines,
             removed=timelines | before if self._path is not None else frozenset(),
@@ -1427,20 +1853,21 @@ class Package:
             column = "timeline_a_id" if claims else "timeline_id"
             parts: list[tuple[pa.Table, str]] = []
             for kind, file, name in self._files():
-                if (kind == "MatchClaim") != claims:
+                if kind != ("MatchClaim" if claims else "Registry"):
                     continue
                 schema = pq.read_schema(file)
-                columns = [
-                    c
-                    for c in ("id", *(_CLAIM_TIMELINES if claims else (column,)))
-                    if c in schema.names
-                ]
+                wanted = ("id", *(_CLAIM_TIMELINES if claims else (column, "kind")))
+                columns = [c for c in wanted if c in schema.names]
                 if "id" not in columns or column not in columns:
                     continue
                 rows = pq.read_table(file, columns=columns)
                 keep = pc.invert(
                     _rows_of(rows, _CLAIM_TIMELINES if claims else (column,), removed)
                 )
+                if not claims and "kind" in columns:
+                    # The index rows hold the IDs of elements, MatchClaims
+                    # and extractions, not events.
+                    keep = pc.and_(keep, pc.invert(_is_index(rows)))
                 parts.append((rows.filter(keep).select(["id", column]), f"'{name}'"))
             ids, timelines = _id_columns(written, claims)
             _Ids.of(parts, column).refuse(
@@ -1478,21 +1905,29 @@ class Package:
     # Writing.
 
     def _write(self) -> None:
-        """Write every bundle staged, then ``package.yaml``, then check the
-        package whole; restore the package where anything fails.
+        """Write every bundle staged, then ``package.yaml``, then the
+        registry's index, then check the package whole; restore the package
+        where anything fails.
 
         In order: the format version of an opened package is checked; the
-        new files (one per type, :func:`_joined_tables`) are written under
-        names starting with ``.``, which readers skip; the rows of the
-        timelines replaced leave the files holding them; the new files are
-        renamed into place; the tables the bundles carry are copied in and
-        listed; the manifests and ``package.yaml`` are written; the package
-        is checked. Where a step raises, every file changed
-        gets its bytes back, every file and folder created is removed, and
-        the package's document is as it was; the bundles stay staged.
+        registry's event parts are written (each part holding an extraction
+        of the bundles takes their rows in, every part loses the rows of the
+        timelines replaced, :meth:`_registry_parts`), then the Extraction
+        table (:meth:`_extraction_table`), then one new file per pre-parsed
+        kind and one of MatchClaims (:func:`_joined_tables`), each under a
+        name starting with ``.``, which readers skip; the rows of the
+        timelines replaced leave the pre-parsed and MatchClaim files holding
+        them (:meth:`_remove_rows`); the new files are renamed into place;
+        the tables the bundles carry are copied in and listed; the
+        manifests and ``package.yaml`` are written; the index part is
+        written from them (``timetoshare.tables.write_index``); the package
+        is checked. Where a step raises, every file changed gets its bytes
+        back, every file and folder created is removed, and the package's
+        document is as it was; the bundles stay staged.
 
         Raises:
-            ValueError: If an opened package is of another format version
+            ValueError: If an opened package is of another format version,
+                or an extraction is held under its ID with other content
                 (before anything is written), or the package check finds a
                 problem, its first.
         """
@@ -1509,9 +1944,40 @@ class Package:
         removed = frozenset().union(*(written.removed for written in pending))
         document = copy.deepcopy(self._document)
         entries = document["tables"]
+
+        def listed(kind: str, url: str) -> None:
+            if not any(
+                entry["type"] == kind and entry["url"] == url for entry in entries
+            ):
+                entries.append(
+                    {"type": kind, "url": url, "media_type": PARQUET_MEDIA_TYPE}
+                )
+
+        registry_url = next(
+            (entry["url"] for entry in entries if entry["type"] == "Registry"),
+            _REGISTRY_URL,
+        )
+        listed("Registry", registry_url)
+        extractions = self._extraction_table(pending, entries, root)
         undo = _Undo()
         try:
             placed: list[tuple[Path, Path]] = []
+            removed_ids = self._registry_parts(
+                pending, root, registry_url, removed, undo, placed
+            )
+            if extractions is not None:
+                url, table = extractions
+                listed("Extraction", url)
+                target = resource_path(root, url)
+                if url.endswith("/"):
+                    undo.folder(target)
+                    target = target / _file_name("Extraction", table, target)
+                undo.folder(target.parent)
+                hidden = target.with_name(f".{target.name}")
+                undo.keep(hidden)
+                undo.keep(target)
+                _write_package_file(table, hidden, ())
+                placed.append((hidden, target))
             for kind, table in _joined_tables(pending).items():
                 folder_url = f"{_TABLES_FOLDER}/{quote(kind)}/"
                 folder = resource_path(root, folder_url)
@@ -1522,19 +1988,9 @@ class Package:
                 undo.keep(final)
                 _write_package_file(table, hidden, _sorted_by(kind))
                 placed.append((hidden, final))
-                if not any(
-                    entry["type"] == kind and entry["url"] == folder_url
-                    for entry in entries
-                ):
-                    entries.append(
-                        {
-                            "type": kind,
-                            "url": folder_url,
-                            "media_type": PARQUET_MEDIA_TYPE,
-                        }
-                    )
+                listed(kind, folder_url)
             if removed:
-                self._remove_rows(removed, undo)
+                self._remove_rows(removed, removed_ids, undo)
             for hidden, final in placed:
                 os.replace(hidden, final)
             copied: set[str] = set()
@@ -1568,6 +2024,12 @@ class Package:
             self._path.write_text(
                 timetoshare.dumps(document), encoding="utf-8", newline=""
             )
+            index = resource_path(root, registry_url)
+            if registry_url.endswith("/"):
+                undo.folder(index)
+                index = index / INDEX_PART
+            undo.keep(index)
+            write_index(root)
             problems = package_problems(self._path)
             if problems:
                 problem = problems[0]
@@ -1591,24 +2053,205 @@ class Package:
         self._pending.clear()
         self._staged = _Staged()
 
-    def _remove_rows(self, removed: frozenset[str], undo: _Undo) -> None:
-        """Remove the rows of the timelines *removed* from every file of the
-        package holding one, each such file recorded in *undo*, rewritten
-        whole and a file left without a row deleted; every other row is
-        kept, stable-sorted by the columns the file declares
-        (:func:`_sorted_by`: each timeline's rows keep their order). A
-        MatchClaim file stating a provenance its rows share is rewritten
-        with that provenance in each row kept, as the package writer writes
-        provenance. A table of other rows (:func:`_holds_event_columns`),
-        which a manifest carries, is left as it lies."""
-        for kind, file, _ in list(self._files()):
-            columns = _CLAIM_TIMELINES if kind == "MatchClaim" else ("timeline_id",)
-            names = pq.read_schema(file).names
-            present = [name for name in columns if name in names]
-            if not present or not _holds_event_columns(kind, names):
-                # A table of other rows is carried, never rewritten.
+    def _extraction_table(
+        self,
+        pending: Sequence[_Written],
+        entries: Sequence[Mapping[str, Any]],
+        root: Path,
+    ) -> tuple[str, pa.Table] | None:
+        """The Extraction table to write for the bundles *pending*, at its
+        URL: for a file (``tables/extractions.parquet`` as this class writes
+        it), every extraction it holds and every new one; for a folder, a new
+        part of the new ones alone; None where no extraction is new.
+
+        Raises:
+            ValueError: If an extraction is held, on disk or by another
+                bundle, under its ID with other content (its date aside),
+                naming it; nothing is written then.
+        """
+        url = next(
+            (entry["url"] for entry in entries if entry["type"] == "Extraction"),
+            _EXTRACTIONS_URL,
+        )
+        target = resource_path(root, url)
+        held: dict[str, Extraction] = {}
+        if target.exists():
+            for row in read_table(target, type="Extraction").to_pylist():
+                held.setdefault(row["id"], Extraction.from_row(row))
+        new: dict[str, Extraction] = {}
+        for written in pending:
+            for extraction in written.extractions:
+                known = held.get(extraction.id) or new.get(extraction.id)
+                if known is None:
+                    new[extraction.id] = extraction
+                elif _undated(known) != _undated(extraction):
+                    raise ValueError(
+                        f"The extraction {quote_id(extraction.id)} of the manifest "
+                        f"{written.url!r} cannot join the package: the package "
+                        f"holds an extraction of that ID of other content; "
+                        f"nothing is written."
+                    )
+        if not new:
+            return None
+        rows = (
+            list(new.values()) if url.endswith("/") else [*held.values(), *new.values()]
+        )
+        table = extraction_table(rows).cast(EXTRACTION_SCHEMA)
+        return url, table.replace_schema_metadata({TYPE_METADATA_KEY: "Extraction"})
+
+    def _registry_parts(
+        self,
+        pending: Sequence[_Written],
+        root: Path,
+        registry_url: str,
+        removed: frozenset[str],
+        undo: _Undo,
+        placed: list[tuple[Path, Path]],
+    ) -> pa.Array:
+        """Write the registry's event parts for the bundles *pending*.
+
+        A part on disk loses the rows of the timelines *removed*; the rows
+        of an extraction a part holds already join that part, the rows of
+        a new extraction a part of its own; each part changed is rewritten
+        whole under a hidden name (recorded in *placed*, renamed into place
+        later), sorted by ``timeline_id``, exact ``start`` and ``id``, and
+        a part left without a row is removed. A registry that is one file
+        is one part, its index rows kept for ``write_index``.
+
+        Returns:
+            The IDs of the event rows removed, whose pre-parsed rows go too.
+        """
+        target = resource_path(root, registry_url)
+        folder = registry_url.endswith("/")
+        new = [written.rows for written in pending if written.rows.num_rows]
+        rows = (
+            pa.concat_tables(new, promote_options="default")
+            if new
+            else REGISTRY_SCHEMA.empty_table()
+        )
+        new_extractions = _string_values(rows.column("extraction_id"))
+        if not folder:
+            # One file: its rows kept but the timelines removed, the new
+            # rows joining them.
+            table = (
+                read_table(target, type="Registry").replace_schema_metadata(None)
+                if target.is_file()
+                else REGISTRY_SCHEMA.empty_table()
+            )
+            gone = _rows_of(table, ("timeline_id",), removed)
+            removed_ids_of_file = pc.filter(table.column("id").combine_chunks(), gone)
+            table = pa.concat_tables(
+                [table.filter(pc.invert(gone)), rows], promote_options="default"
+            )
+            undo.folder(target.parent)
+            undo.keep(target)
+            self._place_part(table, target, undo, placed)
+            return removed_ids_of_file
+        undo.folder(target)
+        parts = [
+            file
+            for file in (table_files(target) if target.is_dir() else [])
+            if file.name != INDEX_PART
+        ]
+        removed_ids: list[pa.Array] = []
+        taken: set[str] = set()
+        for part in parts:
+            held = pq.read_table(part, columns=["timeline_id", "extraction_id"])
+            gone = _rows_of(held, ("timeline_id",), removed) if removed else None
+            holds = set(_string_values(held.column("extraction_id"))) & (
+                set(new_extractions) - taken
+            )
+            if not holds and (gone is None or not pc.any(gone).as_py()):
                 continue
-            mask = _rows_of(pq.read_table(file, columns=present), present, removed)
+            table = pq.read_table(part)
+            if gone is not None and pc.any(gone).as_py():
+                removed_ids.append(pc.filter(table.column("id").combine_chunks(), gone))
+                table = table.filter(pc.invert(gone))
+            joining = rows.filter(
+                _filled(
+                    pc.is_in(
+                        rows.column("extraction_id"),
+                        value_set=pa.array(sorted(holds), pa.string()),
+                    ),
+                    pa.scalar(False),
+                )
+            )
+            taken |= holds
+            table = pa.concat_tables(
+                [table.replace_schema_metadata(None), joining],
+                promote_options="default",
+            )
+            undo.keep(part)
+            if not table.num_rows:
+                part.unlink()
+                continue
+            self._place_part(table, part, undo, placed)
+        for extraction_id in new_extractions:
+            if extraction_id in taken:
+                continue
+            table = rows.filter(
+                pc.equal(rows.column("extraction_id"), pa.scalar(extraction_id))
+            )
+            name = (
+                f"{extraction_id}.parquet"
+                if _PART_NAME.fullmatch(extraction_id)
+                and f"{extraction_id}.parquet" != INDEX_PART
+                and not (target / f"{extraction_id}.parquet").exists()
+                else _file_name("Registry", table, target)
+            )
+            part = target / name
+            undo.keep(part)
+            self._place_part(table, part, undo, placed)
+        return (
+            pa.concat_arrays(removed_ids) if removed_ids else pa.array([], pa.string())
+        )
+
+    @staticmethod
+    def _place_part(
+        table: pa.Table, part: Path, undo: _Undo, placed: list[tuple[Path, Path]]
+    ) -> None:
+        """Write the registry part *table* under the hidden name of *part*,
+        its event rows sorted, recorded in *placed*."""
+        index = table.filter(_is_index(table))
+        events = _sorted_rows(table.filter(pc.invert(_is_index(table))))
+        joined = pa.concat_tables([index, events], promote_options="default")
+        joined = joined.replace_schema_metadata({TYPE_METADATA_KEY: "Registry"})
+        hidden = part.with_name(f".{part.name}")
+        undo.keep(hidden)
+        _write_package_file(joined, hidden, () if index.num_rows else ("timeline_id",))
+        placed.append((hidden, part))
+
+    def _remove_rows(
+        self, removed: frozenset[str], removed_ids: pa.Array, undo: _Undo
+    ) -> None:
+        """Remove the rows of the timelines *removed* from every MatchClaim
+        file of the package holding one, and the rows of the events
+        *removed_ids* from every pre-parsed file holding one, each such file
+        recorded in *undo*, rewritten whole and a file left without a row
+        deleted; every other row is kept in its order. A MatchClaim file
+        stating a provenance its rows share is rewritten with that
+        provenance in each row kept, as the package writer writes
+        provenance. The registry's parts are :meth:`_registry_parts`'; the
+        Extraction table keeps every extraction."""
+        for kind, file, _ in list(self._files()):
+            if kind in ("Registry", "Extraction"):
+                continue
+            names = pq.read_schema(file).names
+            if kind == "MatchClaim":
+                present = [name for name in _CLAIM_TIMELINES if name in names]
+                if not present:
+                    continue
+                mask = _rows_of(pq.read_table(file, columns=present), present, removed)
+            else:
+                if "id" not in names or not len(removed_ids):
+                    continue
+                mask = _filled(
+                    pc.is_in(
+                        pq.read_table(file, columns=["id"]).column("id"),
+                        value_set=removed_ids,
+                    ),
+                    pa.scalar(False),
+                )
             if not pc.any(mask).as_py():
                 continue
             undo.keep(file)
@@ -1631,6 +2274,27 @@ class Package:
                 file,
                 _sorted_by(kind),
             )
+
+
+def _undated(extraction: Extraction) -> dict[str, Any]:
+    """*extraction*'s row but its date: what two runs of one extraction share."""
+    row = extraction.to_row()
+    del row["date"]
+    return row
+
+
+def _flat(array: Any) -> pa.Array:
+    """*array* as one array, its chunks joined."""
+    return array.combine_chunks() if isinstance(array, pa.ChunkedArray) else array
+
+
+def _is_index(rows: pa.Table) -> pa.Array:
+    """Row for row, whether a registry row is an index row (its ``kind`` one of
+    the registry's index kinds)."""
+    return _filled(
+        pc.is_in(rows.column("kind"), value_set=pa.array(INDEX_KINDS, pa.string())),
+        pa.scalar(False),
+    )
 
 
 def _content_digest(path: Path) -> str:
@@ -1683,20 +2347,23 @@ def _copy_into(carried: _Copy, root: Path, undo: _Undo) -> None:
 
 def _sorted(table: pa.Table, kind: str) -> pa.Table:
     """*table* stable-sorted by the columns a package file of *kind* declares
-    (:func:`_sorted_by`), so each timeline's rows keep their order."""
+    (:func:`_sorted_by`), so each timeline's rows keep their order; a
+    pre-parsed table keeps its order."""
+    keys = _sorted_by(kind)
+    if not keys:
+        return table
     return table.take(
-        pc.sort_indices(
-            table, sort_keys=[(name, "ascending") for name in _sorted_by(kind)]
-        )
+        pc.sort_indices(table, sort_keys=[(name, "ascending") for name in keys])
     )
 
 
 def _joined_tables(pending: Sequence[_Written]) -> dict[str, pa.Table]:
-    """The table of each type a package writes for the bundles *pending*: the
-    rows of every bundle holding the type, in one table, sorted
-    (:func:`_sorted`). The timelines of two bundles are distinct, so each
-    timeline's rows keep the order its bundle's table gives them; a further
-    column joins the columns of the type in the order first met.
+    """The pre-parsed table of each kind and the MatchClaim table a package
+    writes for the bundles *pending*: the rows of every bundle holding one,
+    in one table, sorted (:func:`_sorted`). The timelines of two bundles are
+    distinct, so each timeline's rows keep the order its bundle's table
+    gives them; a further column joins the declared ones in the order first
+    met.
 
     Raises:
         ValueError: If two bundles hold a column of one name in two types,
@@ -1704,11 +2371,14 @@ def _joined_tables(pending: Sequence[_Written]) -> dict[str, pa.Table]:
     """
     by_kind: dict[str, list[tuple[str, pa.Table]]] = {}
     for written in pending:
-        for kind, table in written.tables.items():
+        tables = dict(written.contents)
+        if written.claims is not None:
+            tables["MatchClaim"] = written.claims
+        for kind, table in tables.items():
             by_kind.setdefault(kind, []).append((written.url, table))
     joined: dict[str, pa.Table] = {}
     for kind, parts in by_kind.items():
-        schema = _joined_schema(parts[0][1].schema, parts, kind, holder="manifest")
+        schema = _joined_schema(parts[0][1].schema, parts, kind)
         table = pa.concat_tables(
             [
                 pa.Table.from_arrays(
@@ -1729,6 +2399,37 @@ def _joined_tables(pending: Sequence[_Written]) -> dict[str, pa.Table]:
     return joined
 
 
+def _joined_schema(
+    declared: pa.Schema, parts: list[tuple[str, pa.Table]], kind: str
+) -> pa.Schema:
+    """The columns of the parts of a table of *kind* in one, each part a
+    manifest's (its URL given): the first part's columns, then every
+    further one in the order first met.
+
+    Raises:
+        ValueError: If two parts hold a column of one name in two types.
+    """
+    fields: dict[str, tuple[pa.Field, str | None]] = {
+        column.name: (column, None) for column in declared
+    }
+    for url, part in parts:
+        for column in part.schema:
+            held = fields.get(column.name)
+            if held is None:
+                fields[column.name] = (column, url)
+            elif held[0].type != column.type:
+                raise ValueError(
+                    f"The {kind} table cannot hold the column {column.name!r} of "
+                    f"the manifest {url!r} ({column.type}): the manifest "
+                    f"{held[1] or parts[0][0]!r} holds it as {held[0].type}, and a "
+                    f"column has one type in a table."
+                )
+    metadata: dict[bytes | str, bytes | str] = {
+        key: value for key, value in (declared.metadata or {}).items()
+    }
+    return pa.schema([column for column, _ in fields.values()], metadata=metadata)
+
+
 def _file_name(kind: str, table: pa.Table, folder: Path) -> str:
     """The name of a new file of *table* in *folder*: ``part_`` and 13 base-36
     characters minted from the table's content, drawn again where a file of
@@ -1738,6 +2439,151 @@ def _file_name(kind: str, table: pa.Table, folder: Path) -> str:
         name = f"{minter.mint(_PART_PREFIX)}.parquet"
         if not (folder / name).exists() and not (folder / f".{name}").exists():
             return name
+
+
+# endregion
+
+
+# region Resolving
+
+
+def _local_path(target: str | os.PathLike[str]) -> Path:
+    """The local path a manifest or package root *target* names: a path, or
+    a ``file:`` URL.
+
+    Raises:
+        ValueError: If *target* is a URL of another scheme.
+    """
+    if isinstance(target, str):
+        parts = urlsplit(target)
+        if parts.scheme == "file":
+            if parts.netloc not in ("", "localhost"):
+                raise ValueError(
+                    f"{target!r} names a file on the host {parts.netloc!r}; "
+                    f"resolve reads local files"
+                )
+            return Path(url2pathname(parts.path))
+        if parts.scheme and len(parts.scheme) > 1:
+            raise ValueError(
+                f"{target!r} is a {parts.scheme}: URL; resolve reads a local "
+                f"manifest or package root, a path or a file: URL"
+            )
+    return Path(target)
+
+
+#: The element kinds :func:`_resolve` answers with a library object; every
+#: other element is answered with its object in the manifest.
+_ELEMENT_OBJECTS = frozenset({"Manifest", "Timeline", "Group", "Resource", "Region"})
+
+
+def _element(
+    bundle: AlignmentBundle, manifest: Mapping[str, Any], kind: str, row: Any, id: str
+) -> Any:
+    """The element *id* of *kind* of the manifest *bundle* was read from."""
+    if kind == "Manifest":
+        return bundle
+    if kind == "Timeline":
+        return bundle.get_timeline(id)
+    if kind == "Group":
+        return bundle.groups[id]
+    if kind == "Resource":
+        return next(resource for resource in bundle.resources if resource.id == id)
+    if kind == "Region":
+        holder = None if row is None else row.get("timeline_id")
+        if holder is not None:
+            return bundle.get_timeline(holder).get_region(id)
+    for identifier, path in manifest_ids(manifest):
+        if identifier == id:
+            element: Any = manifest
+            for step in path[:-1]:
+                element = element[step]
+            return element
+    raise KeyError(f"The manifest holds no element {quote_id(id)}.")
+
+
+def _event_scalar(row: Mapping[str, Any], content: Mapping[str, Any] | None) -> Any:
+    """The event of a registry row (in the package form) and its pre-parsed
+    content, as its scalar: positions on the axis of its timeline's root, as
+    the registry states them."""
+    from timetoalign import core
+
+    kind = row["kind"]
+    scalar = getattr(core, kind, None)
+    if not (isinstance(scalar, type) and issubclass(scalar, core.Event)):
+        scalar = core.Event
+    memory = registry_rows_in_memory(
+        pa.Table.from_pylist([dict(row)], schema=REGISTRY_SCHEMA), "the registry"
+    ).to_pylist()[0]
+    values: dict[str, Any] = {**(content or {}), **memory}
+    if issubclass(scalar, core.Projection):
+        # A Projection reads coordinate cells, which name their own axis.
+        for name in ("start", "duration"):
+            if values.get(name) is not None:
+                values[name] = {
+                    **values[name],
+                    "unit": row["unit"],
+                    "number_type": row["number_type"],
+                }
+        return core.Projection.from_row(values)
+    return scalar.from_row(values, unit=row["unit"], number_type=row["number_type"])
+
+
+def _resolve(target: str | os.PathLike[str], id: str) -> list[Any]:
+    """Implement :func:`timetoalign.alignment.resolve`."""
+    from timetoalign.alignment.bundle import AlignmentBundle
+
+    path = _local_path(target)
+    found = timetoshare_resolve(path, id)
+    bare = timetoshare.ids.from_file_id(id) if id.startswith("#") else id
+    root = path if path.is_dir() else _package_root(path)[0]
+    bundles: dict[str, tuple[AlignmentBundle, Mapping[str, Any]]] = {}
+
+    def bundle_at(location: str) -> tuple[AlignmentBundle, Mapping[str, Any]]:
+        if location not in bundles:
+            file = resource_path(root, location)
+            manifest = timetoshare.with_bare_ids(
+                loads(file.read_text(encoding="utf-8"))
+            )
+            bundles[location] = (AlignmentBundle.from_file(file), manifest)
+        return bundles[location]
+
+    answers: list[Any] = []
+    for resolution in found:
+        kind, location, row = resolution.kind, resolution.location, resolution.row
+        if kind in ELEMENT_KINDS:
+            bundle, manifest = bundle_at(resolution.manifest or location or "")
+            answers.append(_element(bundle, manifest, kind, row, bare))
+            continue
+        assert row is not None
+        if kind == "MatchClaim":
+            table = read_table(
+                resource_path(root, str(location)), ids=[bare], type="MatchClaim"
+            )
+            answers.extend(MatchClaimField.from_package_table(table).to_claims())
+        elif kind == "Extraction":
+            table = read_table(
+                resource_path(root, str(location)), ids=[bare], type="Extraction"
+            )
+            answers.extend(Extraction.from_row(item) for item in table.to_pylist())
+        else:
+            content = None
+            where = None if location is None else _location_path(root, location)
+            if where is not None:
+                table = read_table(where, ids=[bare], type=kind)
+                if table.num_rows:
+                    table = content_in_memory(
+                        table,
+                        TimeUnit(row["unit"]),
+                        NumberType[row["number_type"]],
+                        f"{kind} table '{where.name}'",
+                    )
+                    content = {
+                        key: value
+                        for key, value in table.to_pylist()[0].items()
+                        if key != "id"
+                    }
+            answers.append(_event_scalar(row, content))
+    return answers
 
 
 # endregion

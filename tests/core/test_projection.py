@@ -11,7 +11,6 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-import timetoshare
 from pydantic import ValidationError
 from timetoshare.tables import (
     PROJECTION_SCHEMA,
@@ -19,6 +18,7 @@ from timetoshare.tables import (
     projection_problems,
 )
 
+from timetoalign.alignment import AlignmentBundle
 from timetoalign.core import (
     Coordinate,
     Duration,
@@ -35,7 +35,7 @@ from timetoalign.core.time import (
     PACKAGE_NUMBER_TYPE,
     package_cells,
 )
-from timetoalign.timelines.manifest import read_projection_table
+from timetoalign.timelines import Timeline
 
 REFERENCE = EventReference(timeline_id="clt_6", event_id="x1azmn68")
 
@@ -307,12 +307,13 @@ class TestAxesPerCell:
 
 
 def _fixture_projections() -> pa.Table:
-    """TimeToShare's fixture Projections table, shipped with the installed package."""
+    """TimeToShare's fixture pre-parsed Projection table, shipped with the installed package."""
     return pq.read_table(fixture_path("projections.parquet"))
 
 
-#: The Projections of TimeToShare's fixture table, in row order: by timeline
-#: (clt_2, cpt_1, dpt_1), each timeline's own order kept.
+#: The Projections of TimeToShare's fixture package, in its registry's order
+#: (by timeline, each timeline's by exact start: clt_2, cpt_1, dpt_1), each
+#: on its own timeline's axis.
 FIXTURE_PROJECTIONS = [
     Projection(
         id="projection_10",
@@ -321,15 +322,15 @@ FIXTURE_PROJECTIONS = [
         projection_of=EventReference(timeline_id="dpt_1", event_id="onset_1"),
     ),
     Projection(
+        id="projection_12",
+        start=Coordinate(11.25, TimeUnit.seconds),
+        projection_of=EventReference(timeline_id="clt_1", event_id="note_14"),
+    ),
+    Projection(
         id="projection_11",
         start=Coordinate(12.5, TimeUnit.seconds),
         duration=Duration(0.75, TimeUnit.seconds),
         projection_of=EventReference(timeline_id="clt_1", event_id="note_16"),
-    ),
-    Projection(
-        id="projection_12",
-        start=Coordinate(11.25, TimeUnit.seconds),
-        projection_of=EventReference(timeline_id="clt_1", event_id="note_14"),
     ),
     Projection(
         id="projection_1",
@@ -358,14 +359,14 @@ FIXTURE_PROJECTIONS = [
         projection_of=EventReference(timeline_id="clt_1", event_id="note_5"),
     ),
     Projection(
-        id="projection_8",
-        start=Coordinate(441000, TimeUnit.samples),
-        projection_of=EventReference(timeline_id="clt_1", event_id="note_11"),
-    ),
-    Projection(
         id="projection_9",
         start=Coordinate(396900, TimeUnit.samples),
         projection_of=EventReference(timeline_id="clt_2", event_id="note_13"),
+    ),
+    Projection(
+        id="projection_8",
+        start=Coordinate(441000, TimeUnit.samples),
+        projection_of=EventReference(timeline_id="clt_1", event_id="note_11"),
     ),
     Projection(id="inserted_1", start=Coordinate(573300, TimeUnit.samples)),
 ]
@@ -381,19 +382,42 @@ def _package_numbers(cells: pa.StructArray) -> pa.StructArray:
     )
 
 
+def _projections(timeline: Timeline) -> list[Projection]:
+    """The Projections *timeline* holds, each on its own axis, in its order."""
+    axis = {"unit": timeline.unit.value, "number_type": timeline.number_type.name}
+    return [
+        Projection.from_row(
+            {
+                **row,
+                "start": {**row["start"], **axis},
+                "duration": (
+                    None if row["duration"] is None else {**row["duration"], **axis}
+                ),
+            }
+        )
+        for row in timeline.events.table.to_pylist()
+        if row["event_type"] == "Projection"
+    ]
+
+
 class TestTimeToShareFixture:
     def test_the_fixture_rows_read_as_projections(self) -> None:
-        manifest = timetoshare.loads(
-            fixture_path("manifest.yaml").read_text(encoding="utf-8")
-        )
-        read = read_projection_table(fixture_path("projections.parquet"), manifest)
-        assert read == {
-            "dpt_1": FIXTURE_PROJECTIONS[3:],
-            "cpt_1": FIXTURE_PROJECTIONS[1:3],
-            "clt_2": [FIXTURE_PROJECTIONS[0]],
+        bundle = AlignmentBundle.from_file(fixture_path("manifest.yaml"))
+        read = {
+            timeline_id: _projections(timeline)
+            for timeline_id, timeline in sorted(bundle._known_timelines().items())
+            if timeline.n_events
         }
-        timelines = _fixture_projections().column("timeline_id").to_pylist()
-        assert timelines == ["clt_2"] + ["cpt_1"] * 2 + ["dpt_1"] * 8
+        assert read == {
+            "clt_2": [FIXTURE_PROJECTIONS[0]],
+            "cpt_1": FIXTURE_PROJECTIONS[1:3],
+            "dpt_1": FIXTURE_PROJECTIONS[3:],
+        }
+        registry = pq.read_table(fixture_path("registry.parquet")).to_pylist()
+        events = [row for row in registry if row["start"] is not None]
+        assert [row["timeline_id"] for row in events] == (
+            ["clt_2"] + ["cpt_1"] * 2 + ["dpt_1"] * 8
+        )
 
         def types(projections: list[Projection]) -> list[tuple[type, type | None]]:
             return [
@@ -405,24 +429,35 @@ class TestTimeToShareFixture:
             ]
 
         assert types(read["dpt_1"]) == [(int, None), (int, int)] + [(int, None)] * 6
-        assert types(read["cpt_1"]) == [(float, float), (float, None)]
+        assert types(read["cpt_1"]) == [(float, None), (float, float)]
         assert types(read["clt_2"]) == [(Fraction, Fraction)]
 
-    def test_the_field_in_the_package_form_is_the_fixture_table(self) -> None:
-        table = _fixture_projections()
+    def test_the_field_in_the_package_form_is_the_fixture_tables(self) -> None:
         field = ProjectionField.from_projections(FIXTURE_PROJECTIONS)
-        start = field.data.field("start")
         written = pa.Table.from_arrays(
-            [
-                field.data.field("id"),
-                table.column("timeline_id").combine_chunks(),
-                start.field("unit"),
-                start.field("number_type"),
-                _package_numbers(start),
-                _package_numbers(field.data.field("duration")),
-                field.data.field("projection_of"),
-            ],
+            [field.data.field("id"), field.data.field("projection_of")],
             schema=PROJECTION_SCHEMA,
         )
         assert projection_problems(written) == []
-        assert written.equals(table)
+        assert written.equals(_fixture_projections().replace_schema_metadata(None))
+        start = field.data.field("start")
+        registry = pq.read_table(fixture_path("registry.parquet")).to_pylist()
+        events = [row for row in registry if row["start"] is not None]
+        # The registry holds each start on its root's axis: clt_2 lies at 8
+        # on clt_1, the others are roots.
+        offsets = {"clt_2": 8}
+        assert [(row["id"], row["unit"], row["number_type"]) for row in events] == list(
+            zip(
+                field.data.field("id").to_pylist(),
+                start.field("unit").to_pylist(),
+                start.field("number_type").to_pylist(),
+                strict=True,
+            )
+        )
+        packaged = _package_numbers(start).to_pylist()
+        assert [row["start"] for row in events[1:]] == packaged[1:]
+        assert events[0]["start"] == {"numerator": 23, "denominator": 2, "value": None}
+        assert Fraction(7, 2) + offsets["clt_2"] == Fraction(23, 2)
+        assert [row["duration"] for row in events] == _package_numbers(
+            field.data.field("duration")
+        ).to_pylist()

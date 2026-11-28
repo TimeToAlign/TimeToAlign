@@ -111,6 +111,25 @@ the keys the library writes in every row it keeps (`name`, `start_repeat`,
 expected text is the case with that one row as the library writes it,
 spelled out in the test, unknown `tempo` included.
 
+**The package's tables, both ways.** `package_fixture_path("acceptances")`
+lists the package's acceptance packages (the shared package with one change
+each that its package check accepts: a recording resource, a timeline in
+two manifests, a single-file registry, an event only re-parsable, an
+external location), each beside an `expected.yaml` of its resolutions. For
+every case, `Package.from_file` opens it and every manifest it lists reads
+through `Package.bundle`, the events of every timeline read (its registry
+rows installed, each pre-parsed content read by ID); for every resolution
+the case states, the library's `resolve` gives one object per row the
+package's `resolve` finds, each of the ID asked for. The case's oracle is
+the package's own data, so a reader that refused a valid package, or
+answered an ID with another count, fails. A bundle built here (a root with
+a child holding a Note and a Projection, a recording holding a Box)
+written with `to_file(events=True)` gives a registry, an Extraction table
+and a Projection table that the package's table checks accept against the
+manifest written (`registry_problems`, `extraction_problems`,
+`projection_problems` all `[]`), and a registry whose index is the
+package's `index_rows` of the manifest read as a package of one manifest.
+
 **The unit table is the package's.** For every `TimeUnit`, its domain,
 modality (`is_discrete`), default number type and admitted number types
 equal the row of the package's `UNITS` exactly, and the two hold the same

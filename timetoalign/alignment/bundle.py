@@ -69,9 +69,6 @@ from timetoalign.timelines.manifest import (
     FileForm,
     ManifestFileMixin,
     Resource,
-    event_table,
-    event_types,
-    projection_table,
 )
 from timetoalign.timelines.statements import (
     MutableStatementsMixin,
@@ -161,9 +158,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             with their :attr:`provenance` (see
             :mod:`~timetoalign.timelines.statements`).
         resources: The files the manifest names (its ``resources``), each a
-            :class:`~timetoalign.timelines.manifest.Resource`: the
-            MatchClaim table and the Projections table that :meth:`to_file`
-            writes beside the manifest, and any other kept as read.
+            :class:`~timetoalign.timelines.manifest.Resource`: the registry
+            and the MatchClaim table that :meth:`to_file` writes beside the
+            manifest, and any other kept as read.
 
     Note:
         Every reader of the MatchClaims (queries, the matchstamp getters,
@@ -215,12 +212,12 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     styling: dict[str, Any] = field(default_factory=dict)
 
     # The files the manifest names; ``to_file`` rewrites the entries of the
-    # MatchClaim table and the Projections table it writes.
+    # registry and the MatchClaim table it writes.
     resources: list[Resource] = field(default_factory=list)
-    # The table resources read as no table of events or MatchClaims (their
-    # files lack an event table's columns, or a folder holds no Parquet
-    # file), each ID with the file or folder it was read at: carried as
-    # they stand, never written over; a package copies them from there.
+    # The table resources of a type the bundle does not read (neither the
+    # registry nor a MatchClaim table), each ID with the file or folder it
+    # was read at: carried as they stand, never written over; a package
+    # copies them from there.
     _carried_tables: dict[str, Path] = field(
         default_factory=dict, init=False, repr=False, compare=False
     )
@@ -380,9 +377,9 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         timelines and regions travel with them, and their prefixes; the
         source bundles' own statements describe their manifests and are not
         carried. The sources' :attr:`resources` are carried, each under
-        its own ID and as it stands: the merge has one MatchClaim table, one
-        Projections table and one Box table, so the first source's entry of
-        each table type names the merged table (:meth:`to_file` writes it
+        its own ID and as it stands: the merge has one registry and one
+        MatchClaim table, so the first source's entry of each table type
+        names the merged table (:meth:`to_file` writes it
         there under that entry's ID) and a later source's entry of that type
         is not carried; every other resource, such as an audio file a
         resource names, is. Each source group is entered as
@@ -3156,93 +3153,62 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             "meta": self.meta,
         }
 
-    def _read_tables(self, directory: Path, data: Mapping[str, Any]) -> None:
-        """Read the package tables the manifest names, lying in *directory*.
+    def _read_tables(self, path: Path, data: Mapping[str, Any]) -> bool:
+        """Read the package tables the manifest lying at *path* names.
 
-        The Projections table first, after TimeToShare's check of the table
-        against the manifest; then every other event table, the Box table
-        among them (:func:`~timetoalign.timelines.manifest.read_event_table`):
-        each timeline's rows are added to it as a table, of the resource's
-        type, as the events a source states (no ID minted, an ID held in
-        the tree refused, each row on the timeline's own axis, the length
-        held as :meth:`Timeline.add_events
+        The registry first: the event rows of each resource of type
+        ``Registry``, read through ``timetoshare.tables.read_table`` with the
+        timelines the resource lists (a package's registry holds the rows of
+        its other manifests too; a single file of a manifest alone is read
+        whole, and a row of a timeline the manifest lacks is refused), are
+        checked against the manifest (``timetoshare.tables.check_registry``)
+        and installed in the registry of each timeline's family
+        (:meth:`EventRegistry.add_rows
+        <timetoalign.storage.EventRegistry.add_rows>`), their positions on
+        the axis of the root: a family read so never becomes a child. The
+        extractions they name are read from the Extraction table their
+        index rows locate; each event's content is read from the pre-parsed
+        table its ``location`` names, by ID, when the events of its family
+        are first read (a Projection table checked against the manifest
+        then, ``timetoshare.tables.check_projections``); an event without a
+        location keeps its registry columns alone (it is re-parsable from
+        its source). The length is held as :meth:`Timeline.add_events
         <timetoalign.timelines.Timeline.add_events>` holds it: an unlocked
-        timeline grows to a row ending past it, a locked one refuses it),
-        each Box checked against its shape and its timeline's image as any
-        Box added is, a Projection the timeline holds under a row's ID
-        already (read from the manifest's event rows) kept. Then the
-        MatchClaim table, added as
-        :meth:`add_match_claim_field` adds a field, every ID kept, its
-        further columns kept as read (:meth:`MatchClaimField.from_package_table`).
-        Every table resource is read (:attr:`Resource.is_table
-        <timetoalign.timelines.manifest.Resource.is_table>`) but one whose
-        files hold no event table's columns (``id``, ``timeline_id``,
-        ``unit``, ``number_type``, ``start``) and is neither a MatchClaim
-        nor a Projections table, or a folder holding no Parquet file: that
-        one holds other rows (or none) and is carried as it stands, never
-        read, never written over, its place recorded so that
-        :meth:`Package.write_bundle
-        <timetoalign.alignment.Package.write_bundle>` can copy it. Every
-        resource of a type in the order :attr:`resources` lists them: a
-        manifest may keep the rows of one type in several files, each
-        listing its own timelines. A resource naming a single file reads
-        the whole file, every row of which is the manifest's; one naming a
-        folder (its URL ends in ``/``), and every one of a manifest read
-        through its :class:`~timetoalign.alignment.Package`, reads its files
-        through ``timetoshare.tables.read_table``, keeping the rows of the
-        timelines it lists (a MatchClaim's either of whose timelines it
-        lists), since a package's files may hold other manifests' rows too;
-        the rows kept are then read as a file's are. A table the manifest
-        names that does not lie there is not read: the manifest loads
-        without it, and its entry stays in :attr:`resources`. A table is
-        read as it lies, whatever it was when its entry's size and digest
-        were stated.
+        timeline grows to a row ending past it, a locked one refuses it.
+        Then the MatchClaim table, added as :meth:`add_match_claim_field`
+        adds a field, every ID kept, its further columns kept as read
+        (:meth:`MatchClaimField.from_package_table`); one naming a folder,
+        or read through a :class:`~timetoalign.alignment.Package`, keeps the
+        rows of the timelines its resource lists.
+
+        Every other table resource (:attr:`Resource.is_table
+        <timetoalign.timelines.manifest.Resource.is_table>`) is carried as
+        it stands, never read, never written over, its place recorded so
+        that :meth:`Package.write_bundle
+        <timetoalign.alignment.Package.write_bundle>` can copy it. A table
+        the manifest names that does not lie there is not read: the
+        manifest loads without it, and its entry stays in
+        :attr:`resources`.
+
+        Returns:
+            Whether the registry held events of a kind other than
+            Projection and Box, which :meth:`to_file` then writes again.
 
         Raises:
             ValueError: If a resource lies elsewhere than on disk relative
-                to the manifest, or a table breaks a rule (a
-                ``timetoshare.tables.TableError`` for the Projections table
-                and for a folder whose files state another type or cannot be
-                read as one table; a row off its timeline's axis, a Box
-                refused as :meth:`Timeline.add_events
-                <timetoalign.timelines.Timeline.add_events>` refuses it, an
-                ID held twice; as :meth:`MatchClaimField.from_package_table`
-                and :meth:`add_match_claim_field` for the MatchClaim table).
-            KeyError: If a row of a file names a timeline the bundle does
-                not hold.
+                to the manifest, a table breaks a rule (a
+                ``timetoshare.tables.TableError`` for the registry, the
+                Extraction table and, when its events are read, the
+                Projection table; a number off its row's number type), an
+                event names an extraction the package does not locate or a
+                location that does not lie in the package, an event lies on
+                another axis than its timeline's root or ends past a locked
+                timeline, an ID is held twice in a family, or as
+                :meth:`MatchClaimField.from_package_table` and
+                :meth:`add_match_claim_field` refuse the MatchClaim table.
+            KeyError: If a row names a timeline the bundle does not hold.
         """
-        return package._read_tables(self, directory, data)
-
-    def _event_tables(self, *, events: bool = False) -> dict[str, pa.Table]:
-        """The package's event tables by resource type, each holding a row.
-
-        The Projections table
-        (:func:`~timetoalign.timelines.manifest.projection_table`) and the
-        Box table (:func:`~timetoalign.timelines.manifest.event_table`) of
-        every timeline of the bundle's trees; with *events*, then the event
-        table of every other event type they hold, by name. A table without
-        a row is left out.
-
-        Raises:
-            ValueError: As :func:`~timetoalign.timelines.manifest.projection_table`
-                refuses a Projection ID held by two timelines, or as
-                :func:`~timetoalign.timelines.manifest.event_table` refuses a
-                further column of one name in two types.
-        """
-        known = self._known_timelines()
-        timelines = [known[tid] for tid in sorted(known)]
-        kinds = ["Projection", "Box"]
-        if events:
-            kinds += [kind for kind in event_types(timelines) if kind not in kinds]
-        tables = {
-            kind: (
-                projection_table(timelines)
-                if kind == "Projection"
-                else event_table(timelines, kind)
-            )
-            for kind in kinds
-        }
-        return {kind: table for kind, table in tables.items() if table.num_rows}
+        return package._read_tables(self, path, data)
 
     def to_file(
         self,
@@ -3258,18 +3224,23 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         As :meth:`ManifestFileMixin.to_file
         <timetoalign.timelines.manifest.ManifestFileMixin.to_file>` writes
-        a manifest, with the MatchClaim table and the event tables
-        (:meth:`_write_tables`), written between a first writing of the
-        manifest, which validates and serializes it before any file is
-        written, and the writing that names them. The tables of Projections
-        and of Boxes are written always; with ``events`` (given, or as the
-        file read had event rows or event files), the event table of every
-        other event type the bundle's timelines hold as well, one file per
-        type beside the manifest (``Note.parquet``), MatchClaims or none. A
-        manifest never names an event's ID: the bundle's events lie in their
-        tables alone, and ``events`` writes no event rows into the manifest.
-        A bundle of a package's manifest (one whose resources name folders)
-        is written into its package with :meth:`Package.write_bundle
+        a manifest, with the bundle's tables (:meth:`_write_tables`),
+        written between a first writing of the manifest, which validates and
+        serializes it before any file is written, and the writing that names
+        them. Beside the manifest: the registry (``registry.parquet``, the
+        index rows of the manifest's elements, its MatchClaims and its
+        extractions, then one event row per event on the axis of its
+        timeline's root), the Extraction table (``extractions.parquet``),
+        one pre-parsed table per kind (``projections.parquet``,
+        ``boxes.parquet``, ``Note.parquet``) and the MatchClaim table
+        (``match_claims.parquet``). Projections and Boxes are written
+        always; with ``events`` (given, or as the file read had events of
+        other kinds), every other kind the bundle's timelines hold as well.
+        The manifest names the registry and the MatchClaim table, never an
+        event: its events lie in the tables alone, and ``events`` writes no
+        event rows into it. A bundle of a package's manifest (one whose
+        resources name folders) is written into its package with
+        :meth:`Package.write_bundle
         <timetoalign.alignment.Package.write_bundle>`.
 
         Raises:
@@ -3293,64 +3264,60 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         rows: the bundle writes its events into its tables."""
         return super()._file_text(replace(form, events=False))
 
-    def _write_tables(self, directory: Path, *, events: bool = False) -> bool:
-        """Write the package tables into *directory* and name them in :attr:`resources`.
+    def _write_tables(self, path: Path, *, events: bool = False) -> bool:
+        """Write the package tables beside the manifest file *path* and name
+        them in :attr:`resources`.
 
-        A bundle holding MatchClaims writes its MatchClaim table
+        The events of the bundle's registry (:attr:`registry`), Projections
+        and Boxes always and, with *events*, every kind
+        (:func:`~timetoalign.timelines.manifest.event_tables`): the
+        registry, one file of the index rows (the manifest's elements, as
+        the manifest written names them, its MatchClaims and its
+        extractions, each at its location from the manifest's folder,
+        sorted by location and ID) followed by the event rows (sorted by
+        extraction, timeline, exact start and ID); the Extraction table; one
+        pre-parsed table per kind, each event's ``location`` naming it (an
+        event with nothing to store whose extraction names a source file
+        stays re-parsable, its ``location`` null). A bundle holding
+        MatchClaims writes its MatchClaim table
         (:attr:`match_claim_table`, :meth:`MatchClaimField.to_parquet`, so
-        that a table already lying there must be succeeded). A bundle one
-        of whose timelines holds Projections, with MatchClaims or without,
-        writes the Projections table of every timeline of its trees
-        (:func:`~timetoalign.timelines.manifest.projection_table`), and one
-        of whose timelines holds Boxes writes their Box table likewise
-        (:func:`~timetoalign.timelines.manifest.event_table`); with
-        *events*, every other event type its timelines hold writes its
-        event table too. Each lies where its entry read with the manifest
-        places it, else beside the manifest (``match_claims.parquet``,
-        ``projections.parquet``, ``boxes.parquet``, else the type's name,
-        :func:`~timetoalign.timelines.manifest.event_file_name`);
-        its entry keeps its ID (a new entry's is minted,
-        :meth:`Resource.of_file <timetoalign.timelines.manifest.Resource.of_file>`) and
-        names the timelines it holds data for (sorted, or in the order the
-        entry read lists them where it lists the same), the Parquet media
-        type, the file's size and its SHA-256 digest. An entry of a table
-        type whose table is not written stays where its file lies in
-        *directory* and goes where it does not. A bundle writing no table
-        keeps its :attr:`resources` as they are: a manifest read without
-        its tables names them still.
-
-        The bundle writes one table of each type. Where :attr:`resources`
-        holds several entries of one type (a manifest keeping that type's
-        rows in several files), the table, holding every row of the type,
-        lies at the first entry's URL under its ID, and the other entries
-        of that type are left out of the manifest written; their files are
-        neither read again nor removed. A table resource naming a folder is
-        refused where the bundle writes rows of its type: the library writes
-        no table into a folder, whose files other manifests of a package may
-        share, but through :meth:`Package.write_bundle
-        <timetoalign.alignment.Package.write_bundle>`; a folder of another
-        type, and a table read as one of other rows, are carried as they
-        stand.
+        that a table already lying there must be succeeded). The registry
+        and the MatchClaim table lie where the entry read with the manifest
+        places them, else beside it (``registry.parquet``,
+        ``match_claims.parquet``); the Extraction and pre-parsed tables lie
+        beside it (``extractions.parquet``, ``projections.parquet``,
+        ``boxes.parquet``, else the kind's name,
+        :func:`~timetoalign.timelines.manifest.pre_parsed_file_name`).
+        Each entry keeps its ID (a new entry's is minted,
+        :meth:`Resource.of_file <timetoalign.timelines.manifest.Resource.of_file>`)
+        and names the timelines it holds rows of (sorted, or in the order
+        the entry read lists them where it lists the same), the Parquet
+        media type, the file's size and its SHA-256 digest. Any other
+        entry stays as it is; a later entry of the type of one written is
+        left out of the manifest written (its file neither read again nor
+        removed). A bundle writing no table keeps its :attr:`resources` as
+        they are. Every file is written under a hidden name and renamed
+        into place once all are written; a failing write restores the files
+        it replaced.
 
         Args:
-            directory: The manifest's directory.
-            events: Write the event table of every event type.
+            path: The manifest file.
+            events: Write every kind of event.
 
         Returns:
             Whether a table was written.
 
         Raises:
-            NotImplementedError: If an entry of a table type written names
-                a folder, naming the entry, before any file is written.
+            NotImplementedError: If the registry's or the MatchClaim table's
+                entry names a folder, naming the entry, before any file is
+                written.
             ValueError: As :meth:`MatchClaimField.to_parquet` refuses the
                 MatchClaim table, or as
-                :func:`~timetoalign.timelines.manifest.projection_table`
-                refuses a Projection ID held by two timelines, or
-                :func:`~timetoalign.timelines.manifest.event_table` a further
-                column of one name in two types, or if a new entry's id is
+                :func:`~timetoalign.timelines.manifest.event_tables` refuses
+                an event ID held by two timelines, or if a new entry's id is
                 held in the manifest, before any file is written.
         """
-        return package._write_tables(self, directory, events=events)
+        return package._write_tables(self, path, events=events)
 
     def to_dict(
         self,
@@ -3525,3 +3492,65 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
 
 # endregion
+
+
+def resolve(target: str | PathLike[str], id: str) -> list[Any]:
+    """Everything an ID names, through a manifest or a package root.
+
+    An ID combined with a manifest's persistent location names an element,
+    an event, a MatchClaim or an extraction of its package. *target* is a
+    manifest file or a package root (the folder of ``package.yaml``), as a
+    path or a ``file:`` URL; *id* is bare, or written ``#id``. The
+    resolutions are TimeToShare's (``timetoshare.tables.resolve``): through
+    a manifest, its element of that ID first, then the registry rows of that
+    ID that belong to it; through a package root, every registry row of that
+    ID, an element ID repeated across manifests once per manifest. Each is
+    answered as a library object:
+
+    - a manifest element: the :class:`AlignmentBundle` for the manifest
+      itself, the :class:`~timetoalign.timelines.Timeline`, the
+      :class:`~timetoalign.timelines.TimelineGroup`, the
+      :class:`~timetoalign.timelines.manifest.Resource` or the
+      :class:`~timetoalign.timelines.Region` of the manifest read (its
+      events read as :meth:`from_file` reads them); any other element as
+      its object in the manifest, IDs bare;
+    - a MatchClaim: the :class:`~timetoalign.alignment.MatchClaim`, read
+      from its table by ID;
+    - an event: its scalar (a :class:`~timetoalign.core.Projection`, a
+      :class:`~timetoalign.core.Box`, else an
+      :class:`~timetoalign.core.Event`), its position on the axis of its
+      timeline's root as the registry states it, its content read from its
+      pre-parsed table by ID (none for an event only re-parsable);
+    - an extraction: the :class:`~timetoalign.storage.Extraction`.
+
+    Args:
+        target: A manifest file or a package root.
+        id: The ID.
+
+    Returns:
+        The objects, in the order of the resolutions; an empty list where
+        nothing holds the ID.
+
+    Raises:
+        FileNotFoundError: If *target* is neither a package root nor a file.
+        ValueError: If *target* is a URL of another scheme than ``file:``.
+
+    Examples:
+        >>> import tempfile
+        >>> from pathlib import Path
+        >>> from timetoalign.alignment import AlignmentBundle, resolve
+        >>> from timetoalign.timelines import ContinuousLogicalTimeline
+        >>> score = ContinuousLogicalTimeline(length=4, uid="score")
+        >>> _ = score.add_projections([{"id": "p1", "event_type": "Projection", "start": 1}])
+        >>> bundle = AlignmentBundle(id="piece")
+        >>> _ = bundle.add_timeline(score)
+        >>> path = bundle.to_file(Path(tempfile.mkdtemp()) / "piece.yaml")
+        >>> [type(found).__name__ for found in resolve(path, "score")]
+        ['ContinuousLogicalTimeline']
+        >>> projection = resolve(path, "#p1")[0]
+        >>> projection.id, projection.start
+        ('p1', Coordinate(Fraction(1, 1), quarters))
+        >>> resolve(path, "nowhere")
+        []
+    """
+    return package._resolve(target, id)

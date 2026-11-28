@@ -7,6 +7,7 @@ synchronization. See the Conceptual Model documentation
 Public API:
 - AlignmentBundle: Primary entry point for alignment workflows
 - Package: A folder of manifests sharing their tables (package.yaml)
+- resolve: Everything an ID names, through a manifest or a package root
 - AlignmentAnchor: Atomic coordinate pair claim
 - MatchClaim: Low-level match between two events
 - MatchClaimField: The MatchClaim table, ``SemanticField[MatchClaim]``
@@ -23,7 +24,7 @@ from __future__ import annotations
 
 from timetoalign.core import Belief, Provenance
 
-from .bundle import AlignmentBundle
+from .bundle import AlignmentBundle, resolve
 from .claims import AlignmentAnchor, ClaimType, MatchClaim, MatchClaimField
 from .filters import ClaimFilter
 from .graph import InferredEdge, MatchGraph, MatchIntervalStamp, MatchStamp
@@ -42,6 +43,7 @@ __all__ = [
     # Bundle (Primary Entry Point)
     "AlignmentBundle",
     "Package",
+    "resolve",
     # Anchors and Claims
     "AlignmentAnchor",
     "Belief",

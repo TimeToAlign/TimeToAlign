@@ -29,12 +29,13 @@ Interface
 A loader describes each page with three small records and calls one of two
 functions:
 
-- :class:`PageBox` ``(shape, source_id=None)``: one area that becomes a Box.
+- :class:`PageBox` ``(shape, source_id=None, locator=None)``: one area that
+  becomes a Box.
 - :class:`PageAccolade` ``(name=None, area=None, boxes=())``: what the
   source states about ONE piece of the page's path: its name, its area and
   the Boxes it holds.
 - :class:`Page` ``(name, image, path, source_id=None, accolades=None,
-  boxes=(), statements=())``: one page. ``accolades`` (one per piece, in
+  boxes=(), statements=(), source=None)``: one page. ``accolades`` (one per piece, in
   path order) is given when the source states accolades; ``boxes`` are the
   areas the source assigns to no accolade, each placed on the piece it lies
   on (:meth:`PiecewisePath.piece_of`).
@@ -48,7 +49,10 @@ functions:
 Boxes ``box_…``) is drawn from its minter in document order (the volume,
 then each page followed by its accolades, each accolade followed by its
 Boxes); a timeline or Box the call names takes none. A page for which the
-loader can make no path is simply not handed over.
+loader can make no path is simply not handed over. The Boxes of a page read
+from a file (``Page.source``) name that file's extraction and their
+``PageBox.locator``, the loader's place of the area in the file
+(:attr:`Loader.extractions <timetoalign.loader.base.Loader.extractions>`).
 
 Identity
 --------
@@ -151,6 +155,7 @@ from timetoalign.storage import mint_event_ids
 from timetoalign.timelines import DiscreteGraphicalTimeline, SegmentLine, Timeline
 
 if TYPE_CHECKING:
+    from timetoalign.loader._sources import Source
     from timetoalign.loader.base import Loader
 
 #: The axis of every timeline built here.
@@ -183,10 +188,13 @@ class PageBox:
         shape: The area, in the pixels of the page's image.
         source_id: The id the source gives the area (an MEI zone's
             ``xml:id``); it becomes the Box's id unless ``box_ids`` is given.
+        locator: Where the source file states the area, by the loader's
+            rule: the Box's ``locator``.
     """
 
     shape: Shape
     source_id: str | None = None
+    locator: str | None = None
 
 
 @dataclass(frozen=True)
@@ -225,6 +233,8 @@ class Page:
         boxes: The areas the source assigns to no accolade, in document
             order; each is placed on the piece it lies on.
         statements: ``(property, value)`` pairs the page's timeline states.
+        source: The file the page's areas were read from: its Boxes name
+            that file's extraction. None for areas made in code.
     """
 
     name: str | None
@@ -234,6 +244,7 @@ class Page:
     accolades: Sequence[PageAccolade] | None = None
     boxes: Sequence[PageBox] = ()
     statements: Sequence[tuple[str, Any]] = ()
+    source: Source | None = None
 
 
 # endregion
@@ -594,9 +605,16 @@ def _timeline(
 
 
 def _build_line(
-    owner: Loader[Any], plan: _AccoladePlan, image: str | None
+    owner: Loader[Any],
+    plan: _AccoladePlan,
+    image: str | None,
+    source: Source | None,
 ) -> DiscreteGraphicalTimeline:
-    """Build the timeline along one piece, with its area and its Boxes."""
+    """Build the timeline along one piece, with its area and its Boxes.
+
+    The Boxes of a page read from the file *source* name its extraction and
+    their locators.
+    """
     meta: dict[str, Any] = {}
     if plan.area is not None:
         meta["box"] = plan.area.to_dict()
@@ -619,16 +637,24 @@ def _build_line(
                 owner._id_minter,
             ).to_pylist()
         )
-        timeline.add_events(
-            [
-                Box.from_shape(
-                    box.shape,
-                    origin=plan.area.x_min,
-                    id=next(minted) if box_id is None else box_id,
-                )
-                for box, box_id in zip(plan.boxes, plan.box_ids)
-            ]
-        )
+        boxes = [
+            Box.from_shape(
+                box.shape,
+                origin=plan.area.x_min,
+                id=next(minted) if box_id is None else box_id,
+            )
+            for box, box_id in zip(plan.boxes, plan.box_ids)
+        ]
+        if source is None:
+            timeline.add_events(boxes)
+        else:
+            owner._add_events(
+                timeline,
+                [
+                    {**box.to_event_row(), **owner._stamp(source, page_box.locator)}
+                    for box, page_box in zip(boxes, plan.boxes, strict=True)
+                ],
+            )
     return timeline
 
 
@@ -641,7 +667,7 @@ def _build_page(
     if plan.accolades is None:
         assert plan.line is not None
         plan.line.name = plan.name
-        timeline = _build_line(owner, plan.line, image)
+        timeline = _build_line(owner, plan.line, image, plan.page.source)
     else:
         timeline = _timeline(
             owner,
@@ -652,7 +678,9 @@ def _build_page(
             meta={} if image is None else {"image": image},
         )
         for accolade in plan.accolades:
-            timeline.append_segment(_build_line(owner, accolade, image))
+            timeline.append_segment(
+                _build_line(owner, accolade, image, plan.page.source)
+            )
     for statement_property, value in plan.page.statements:
         timeline.add_statement(statement_property, value)
     return timeline

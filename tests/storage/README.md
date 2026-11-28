@@ -785,7 +785,14 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   none): `source="score.txt"` is recorded as given. Equal extractions hash
   alike (`hash(extraction) == hash(extraction.id)`, so a set holds them). A
   source without its digest is refused. `extraction_table` has the columns
-  of `EXTRACTION_SCHEMA`.
+  of `EXTRACTION_SCHEMA`. **A member of a ZIP archive is read in place**: the
+  bytes `abc` as the member `inner/score.txt` of an archive written by the
+  test give the digest of `abc` and the ID of the same bytes on disk
+  (`one/score.txt`), and the recorded source is the member's `jar:` URI,
+  `jar:<the archive's file URI>!/inner/score.txt` (the archive's URI by
+  `Path.as_uri()`), unless a `source` is given; a member of an archive
+  opened from a file object (`io.BytesIO` of its bytes), without a
+  `source`, is refused (it has no URI) and with one is read.
 - **A table carries its extractions to the timeline made of it.** An
   `EventData` of two Notes naming `extraction_id` `e1`'s ID with the
   locators `m0`, `m1`, carrying `e1` (`with_extractions(e1)`), made a

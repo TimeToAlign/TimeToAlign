@@ -1258,7 +1258,9 @@ class Ieee1599Loader(XmlLoader):
                 ),
             )
             return
-        self._store.add(name, EventData(_table_from_rows(rows), unit, number_type))
+        self._store.add(
+            name, self._carrying(EventData(_table_from_rows(rows), unit, number_type))
+        )
 
     # endregion
 
@@ -1570,7 +1572,7 @@ class Ieee1599Loader(XmlLoader):
             name=name,
         )
         if rows:
-            timeline.add_events(rows)
+            self._add_events(timeline, rows)
         return timeline
 
     def _build_graphical(
@@ -1630,7 +1632,7 @@ class Ieee1599Loader(XmlLoader):
                     uid=mint_timeline_id(_GRAPHIC_UNIT, self._id_minter),
                     name=f"accolade_{accolade_index}",
                 )
-                accolade.add_events(segment_spec.rows)
+                self._add_events(accolade, segment_spec.rows)
                 page.append_segment(accolade)
             # The edition was made with a length, which appending keeps known.
             length = timeline.length
@@ -1683,7 +1685,7 @@ class Ieee1599Loader(XmlLoader):
             meta=meta,
         )
         if spec.rows:
-            timeline.add_events(spec.rows)
+            self._add_events(timeline, spec.rows)
         return timeline
 
     # endregion

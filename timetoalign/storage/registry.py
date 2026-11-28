@@ -44,12 +44,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import zipfile
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 import numpy as np
 import pyarrow as pa
@@ -166,6 +168,21 @@ def _extraction_id(*parts: object) -> str:
     return IdMinter(seed_from(_EXTRACTION_PREFIX, *parts)).mint(_EXTRACTION_PREFIX)
 
 
+def _member_uri(member: zipfile.Path) -> str:
+    """The ``jar:`` URI of a member of a ZIP archive opened from its path.
+
+    Raises:
+        ValueError: If the archive was opened from a file object.
+    """
+    filename = member.root.filename
+    if filename is None:
+        raise ValueError(
+            f"the ZIP archive of member '{member.at}' was opened from a file object: "
+            "it has no URI; give the extraction's source"
+        )
+    return f"jar:{Path(filename).absolute().as_uri()}!/{quote(member.at.rstrip('/'))}"
+
+
 def _canonical_json(value: Mapping[str, Any]) -> str:
     """*value* as canonical JSON text: sorted keys, no spaces (RFC 8785's form)."""
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -255,7 +272,7 @@ class Extraction:
     @classmethod
     def of_source(
         cls,
-        path: str | PathLike[str],
+        path: str | PathLike[str] | zipfile.Path,
         *,
         source: str | None = None,
         parser: str,
@@ -277,10 +294,14 @@ class Extraction:
         run and every process.
 
         Args:
-            path: The source file, read here.
+            path: The source file, read here: a path, or a member of a ZIP
+                archive read in place (a ``zipfile.Path`` of an archive
+                opened from its path).
             source: The reference recorded for it (a path relative to a
-                package's root, a URI); *path* as given (POSIX separators)
-                when None.
+                package's root, a URI); when None, *path* as given (POSIX
+                separators), a member's ``jar:`` URI
+                (``jar:file:///data/set.zip!/notes/1.csv``, the archive's
+                absolute path and the member's path percent-encoded).
             parser: The parser's name.
             parser_version: Its version.
             parameters: The parameters it ran with.
@@ -292,9 +313,17 @@ class Extraction:
 
         Raises:
             OSError: If the file cannot be read.
+            ValueError: If *path* is a member of an archive opened from a
+                file object and *source* is None: it has no URI.
         """
+        if isinstance(path, zipfile.Path):
+            source = _member_uri(path) if source is None else source
+            opened = path.open("rb")
+        else:
+            source = Path(path).as_posix() if source is None else source
+            opened = open(path, "rb")
         digest = hashlib.sha256()
-        with open(path, "rb") as source_file:
+        with opened as source_file:
             for block in iter(lambda: source_file.read(1 << 20), b""):
                 digest.update(block)
         seed_text = None if seed is None else str(seed)
@@ -311,7 +340,7 @@ class Extraction:
             )
         return cls(
             id=id,
-            source=Path(path).as_posix() if source is None else source,
+            source=source,
             source_integrity=integrity,
             parser=parser,
             parser_version=parser_version,

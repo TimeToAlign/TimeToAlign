@@ -182,9 +182,16 @@ class ScoreLoader(EventLoader):
     def _accept_source(
         self, path: Source, source_meta: dict[str, Any], payload: ScoreStore
     ) -> None:
-        """Record one source and extend the loader's store with its data."""
+        """Record one source and extend the loader's store with its data.
+
+        Each table of *payload* carries the extractions its rows name.
+        """
         self._sources.append(path)
         self._source_metadata.append(source_meta)
+        payload.notes = self._carrying(payload.notes)
+        payload.measures = self._carrying(payload.measures)
+        payload.controls = self._carrying(payload.controls)
+        payload.annotations = self._carrying(payload.annotations)
         self._store.extend(payload)
 
     def clear(self) -> None:
@@ -647,7 +654,15 @@ class ScoreLoader(EventLoader):
         loader._number_type = loader._unit.default_number_type
         loader._events = cls._event_data_class.empty(loader._unit, loader._number_type)
         loader._store = store
-        loader._read_back(path, seed)
+        loader._read_back(
+            path,
+            seed,
+            [
+                extraction
+                for _, data in store.items()
+                for extraction in data.extractions
+            ],
+        )
         return loader
 
     # endregion

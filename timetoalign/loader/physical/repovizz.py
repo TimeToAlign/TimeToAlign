@@ -39,6 +39,7 @@ import re
 import xml.etree.ElementTree as ET
 from typing import TYPE_CHECKING, Any
 
+import pyarrow.compute as pc
 from typing_extensions import Self
 
 from timetoalign.core import NumberType, TimeUnit, resolve_id
@@ -388,9 +389,11 @@ class RepoVizzLoader(ManifestLoader):
         if not notes_files:
             return
 
-        # Load all notes via EepNotesLoader
+        # Load all notes via EepNotesLoader: each row names its file's
+        # extraction and its data row there, which this loader holds too.
         loader = EepNotesLoader()
         loader.load(*sort_sources(notes_files))
+        self._adopt_extractions(loader)
 
         # Store combined notes
         combined_notes = loader.events
@@ -400,14 +403,10 @@ class RepoVizzLoader(ManifestLoader):
         staff_to_instrument = {1: "vln1", 2: "vln2", 3: "vla", 4: "cello"}
         notes_by_instrument: dict[str, EventData] = {}
 
-        df = combined_notes.to_dataframe()
         for staff_num, instrument in staff_to_instrument.items():
-            mask = df["staff"] == staff_num
-            instrument_df = df.loc[mask].copy()  # type: ignore[arg-type]
-            if len(instrument_df) > 0:
-                notes_by_instrument[instrument] = EventData.from_dataframe(
-                    instrument_df, unit=TimeUnit.seconds  # type: ignore[arg-type]
-                )
+            instrument_notes = combined_notes.where(pc.field("staff") == staff_num)
+            if len(instrument_notes) > 0:
+                notes_by_instrument[instrument] = instrument_notes
 
         self._store.set_notes(combined_notes, notes_by_instrument)
 

@@ -326,7 +326,8 @@ class MatchfileLoader(AlignmentLoader):
         # New event — add to timeline and cache
         self._score_events[snote_id] = (onset_tta, end_tta)
         if self._score_timeline is not None:
-            self._score_timeline.add_events(
+            self._add_events(
+                self._score_timeline,
                 [
                     {
                         "id": snote_id,
@@ -452,7 +453,7 @@ class MatchfileLoader(AlignmentLoader):
                 )
                 self._score_events[sid] = (onset_tta, end_tta)
 
-            self._score_timeline.add_events(score_event_dicts)
+            self._add_events(self._score_timeline, score_event_dicts)
 
             # Attach ShiftMap to convert normalised TTA coordinates back
             # to raw partitura coordinates (for display in timestamps).
@@ -521,7 +522,7 @@ class MatchfileLoader(AlignmentLoader):
             uid=mint_timeline_id(TimeUnit.ticks, self._id_minter, role="perf"),
             name=perf_stem,
         )
-        perf_tl.add_events(perf_event_dicts)
+        self._add_events(perf_tl, perf_event_dicts)
 
         # Attach ticks_to_seconds ScalarMap
         seconds_per_tick = Fraction(midi_clock_rate, midi_clock_units * 1_000_000)

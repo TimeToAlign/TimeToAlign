@@ -990,6 +990,7 @@ class VerovioLoader(ScoreLoader):
                 convert,
                 first,
                 last - first,
+                carrying=self._carrying,
                 **kwargs,
             )
 
@@ -1120,9 +1121,15 @@ def _timeline(
     convert: Callable[[Fraction], Fraction],
     origin: Fraction,
     length: Fraction,
+    *,
+    carrying: Callable[[EventData], EventData],
     **kwargs: Any,
 ) -> Timeline:
-    """Create a timeline of *length* holding *rows*, positions relative to *origin*."""
+    """Create a timeline of *length* holding *rows*, positions relative to *origin*.
+
+    *carrying* gives the rows' table the extractions its rows name
+    (:meth:`Loader._carrying <timetoalign.loader.base.Loader._carrying>`).
+    """
     notes = [row for row in rows if row["temporal_type"] == "interval"]
     tempos = [row for row in rows if row["temporal_type"] == "instant"]
     parts: list[EventData] = []
@@ -1140,7 +1147,9 @@ def _timeline(
         return timeline_cls(
             length=length, unit=unit, number_type=NumberType.fraction, **kwargs
         )
-    timeline = timeline_cls.from_event_data(parts[0].concat(*parts[1:]), **kwargs)
+    timeline = timeline_cls.from_event_data(
+        carrying(parts[0].concat(*parts[1:])), **kwargs
+    )
     timeline.length = length
     return timeline
 

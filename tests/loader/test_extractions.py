@@ -16,9 +16,13 @@ import pyarrow.compute as pc
 import pytest
 
 from timetoalign import __version__
+from timetoalign.loader.alignment.matchfile import MatchfileLoader
 from timetoalign.loader.midi import PerformanceMidiLoader
 from timetoalign.loader.tabular import CsvLoader
 from timetoalign.timelines import ContinuousLogicalTimeline
+from timetoalign.timelines.factory import create_timeline_from_event_data
+
+from .conftest import VIENNA_DATA_DIR
 
 #: The notes the test file holds: (onset, end, pitch, velocity) in ticks.
 NOTES = [(0, 240, 60, 64), (480, 720, 64, 70), (960, 1200, 67, 80)]
@@ -154,6 +158,37 @@ class TestLocators:
             ).events.table
             assert "locator" not in events.column_names
             assert "extraction_id" not in events.column_names
+
+    def test_the_table_carries_them_to_any_timeline(self, tmp_path: Path) -> None:
+        path = write_midi(tmp_path / "a.mid", NOTES)
+        loader = PerformanceMidiLoader().load(path)
+        (extraction,) = loader.extractions
+        assert loader.events.extractions == (extraction,)
+        timeline = create_timeline_from_event_data(loader.events, uid="dpt_store")
+        assert timeline.registry.extractions == [extraction]
+        assert set(timeline.registry.table.column("extraction_id").to_pylist()) == {
+            extraction.id
+        }
+
+    def test_saved_events_keep_them(self, tmp_path: Path) -> None:
+        path = write_midi(tmp_path / "a.mid", NOTES)
+        loader = PerformanceMidiLoader().load(path)
+        (extraction,) = loader.extractions
+        saved = tmp_path / "events.parquet"
+        loader.to_parquet(saved)
+        back = PerformanceMidiLoader.from_parquet(saved)
+        assert back.extractions == [extraction]
+        assert back.create_timeline().registry.extractions == [extraction]
+
+    def test_rows_added_as_dictionaries_bring_them(self) -> None:
+        loader = MatchfileLoader().load(VIENNA_DATA_DIR / "Chopin_op10_no3_p01.match")
+        (extraction,) = loader.extractions
+        timelines = loader.create_timelines()
+        assert timelines
+        for timeline in timelines:
+            assert timeline.registry.extractions == [extraction]
+            named = timeline.registry.table.column("extraction_id").to_pylist()
+            assert set(named) == {extraction.id}
 
     def test_csv_data_rows(self, tmp_path: Path) -> None:
         path = tmp_path / "events.csv"

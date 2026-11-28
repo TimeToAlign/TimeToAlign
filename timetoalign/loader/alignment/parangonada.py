@@ -80,7 +80,6 @@ from __future__ import annotations
 
 import csv
 import logging
-from collections.abc import Callable
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any
 
@@ -90,7 +89,7 @@ from typing_extensions import Self
 
 from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Provenance, TimeUnit
-from timetoalign.core.ids import CLAIM_PREFIX, CMAP_PREFIX, IdMinter
+from timetoalign.core.ids import CLAIM_PREFIX, CMAP_PREFIX
 from timetoalign.display.html import code
 from timetoalign.loader._ids import give_event_ids
 from timetoalign.loader._sources import (
@@ -330,7 +329,8 @@ class ParangonadaLoader(AlignmentLoader):
             uid=mint_timeline_id(TimeUnit.quarters, self._id_minter, role="score"),
             name=self._name,
         )
-        score_clt.add_events(
+        self._add_events(
+            score_clt,
             [
                 {
                     "id": row["id"],
@@ -344,7 +344,7 @@ class ParangonadaLoader(AlignmentLoader):
                     **self._stamp(part, f"row:{i}"),
                 }
                 for i, row in enumerate(score_rows)
-            ]
+            ],
         )
 
         score_dlt = DiscreteLogicalTimeline(
@@ -353,7 +353,8 @@ class ParangonadaLoader(AlignmentLoader):
             uid=mint_timeline_id(TimeUnit.ticks, self._id_minter, role="score"),
             name=self._name,
         )
-        score_dlt.add_events(
+        self._add_events(
+            score_dlt,
             [
                 {
                     "id": row["id"],
@@ -364,7 +365,7 @@ class ParangonadaLoader(AlignmentLoader):
                     **self._stamp(part, f"row:{i}"),
                 }
                 for i, row in enumerate(score_rows)
-            ]
+            ],
         )
         # divs → quarters: quarters = div / 32 - 1/2 (the score's anacrusis
         # places div 0 at quarter -1/2; 32 divs per quarter).
@@ -423,7 +424,8 @@ class ParangonadaLoader(AlignmentLoader):
             uid=mint_timeline_id(TimeUnit.seconds, self._id_minter, role="perf"),
             name=performer_key,
         )
-        perf_cpt.add_events(
+        self._add_events(
+            perf_cpt,
             [
                 {
                     "id": row["id"],
@@ -434,16 +436,14 @@ class ParangonadaLoader(AlignmentLoader):
                     **self._stamp(ppart, f"row:{i}"),
                 }
                 for i, row in enumerate(ppart_rows)
-            ]
+            ],
         )
 
         # Measured per-beat features (variable tempo + dynamics) extend
         # the seconds timeline with Beat / Dynamics events.  The schema
         # grows (new columns) per successive add_events call; absent
         # columns are null-filled.
-        self._add_feature_events(
-            performer_key, features_dir, perf_cpt, self._id_minter, self._stamp
-        )
+        self._add_feature_events(performer_key, features_dir, perf_cpt)
 
         perf_dpt = DiscretePhysicalTimeline(
             length=samples_length,
@@ -451,7 +451,8 @@ class ParangonadaLoader(AlignmentLoader):
             uid=mint_timeline_id(TimeUnit.samples, self._id_minter, role="perf"),
             name=performer_key,
         )
-        perf_dpt.add_events(
+        self._add_events(
+            perf_dpt,
             [
                 {
                     "id": row["id"],
@@ -462,7 +463,7 @@ class ParangonadaLoader(AlignmentLoader):
                     **self._stamp(ppart, f"row:{i}"),
                 }
                 for i, row in enumerate(ppart_rows)
-            ]
+            ],
         )
         perf_dpt.add_conversion_map(
             SamplesToSeconds(
@@ -475,14 +476,11 @@ class ParangonadaLoader(AlignmentLoader):
 
         self._build_claims(performer_key, performer_dir, perf_cpt)
 
-    @classmethod
     def _add_feature_events(
-        cls,
+        self,
         performer_key: str,
         features_dir: Source,
         perf_cpt: ContinuousPhysicalTimeline,
-        minter: IdMinter,
-        stamp: Callable[[Source, str], dict[str, str | None]],
     ) -> None:
         """Add measured ``Beat`` / ``Dynamics`` events to the seconds timeline.
 
@@ -505,15 +503,12 @@ class ParangonadaLoader(AlignmentLoader):
             perf_cpt: The performer's seconds (``cpt``) timeline, already
                 holding its ``Note`` events; feature events are appended in
                 place via ``add_events(..., allow_expansion=True)``.
-            minter: The loader's minter, which the events' IDs come from.
-            stamp: The loader's registry keys of an event read from a file
-                at a locator (:meth:`Loader._stamp`).
         """
-        beats_path = cls._glob_feature_file(features_dir, performer_key, "beats")
-        dyn_path = cls._glob_feature_file(features_dir, performer_key, "dyn")
+        beats_path = self._glob_feature_file(features_dir, performer_key, "beats")
+        dyn_path = self._glob_feature_file(features_dir, performer_key, "dyn")
 
-        beats_rows = cls._read_tsv(beats_path)
-        dyn_rows = cls._read_tsv(dyn_path)
+        beats_rows = self._read_tsv(beats_path)
+        dyn_rows = self._read_tsv(dyn_path)
 
         # Onset lookup for the .dyn join: (measure_number, beat) -> onset_sec.
         onset_by_key: dict[tuple[str, str], float] = {
@@ -545,7 +540,7 @@ class ParangonadaLoader(AlignmentLoader):
                 "bpm": float(row["BPM"]),
                 "interp": int(row["interp"]),
                 "swap": int(row["swap"]),
-                **stamp(beats_path, f"row:{i}"),
+                **self._stamp(beats_path, f"row:{i}"),
             }
             for i, row in enumerate(beats_rows)
         ]
@@ -558,15 +553,15 @@ class ParangonadaLoader(AlignmentLoader):
                 "velocity_mean": float(row["velocity_mean"]),
                 "velocity_max": float(row["velocity_max"]),
                 "interp": int(row["interp"]),
-                **stamp(dyn_path, f"row:{i}"),
+                **self._stamp(dyn_path, f"row:{i}"),
             }
             for i, row in enumerate(dyn_rows)
         ]
-        give_event_ids(beat_events, minter)
-        give_event_ids(dyn_events, minter)
+        give_event_ids(beat_events, self._id_minter)
+        give_event_ids(dyn_events, self._id_minter)
 
-        perf_cpt.add_events(beat_events, allow_expansion=True)
-        perf_cpt.add_events(dyn_events, allow_expansion=True)
+        self._add_events(perf_cpt, beat_events, allow_expansion=True)
+        self._add_events(perf_cpt, dyn_events, allow_expansion=True)
 
     @staticmethod
     def _glob_feature_file(

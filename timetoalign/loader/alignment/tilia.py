@@ -958,7 +958,7 @@ class TiliaJsonLoader(JsonLoader):
             )
 
         if events:
-            tl.add_events(events)
+            self._add_events(tl, events)
 
         return tl
 

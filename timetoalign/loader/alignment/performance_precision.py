@@ -427,7 +427,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
                 }
             )
         give_event_ids(rows, self._id_minter)
-        score_tl.add_events(rows)
+        self._add_events(score_tl, rows)
 
         # Expose the measure/beat conversion on the timeline.  The
         # MetricalPositionMap is a multi-output CombinationMap (no single
@@ -501,7 +501,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
             if time_str != _DANGLING
         ]
         give_event_ids(perf_events, self._id_minter)
-        perf_note_ids = perf_tl.add_events(perf_events)
+        perf_note_ids = self._add_events(perf_tl, perf_events)
         self._performance_timelines[performer_key] = perf_tl
         self._resolve_rows(
             granularity_rows,

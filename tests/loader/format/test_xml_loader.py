@@ -10,6 +10,8 @@ See Also:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pyarrow as pa
 import pytest
 
@@ -496,3 +498,29 @@ def test_source_recorded_in_metadata() -> None:
     assert sorted(entry) == ["loaded_at", "path"]
     assert entry["path"] == str(XML_PATH)
     assert loader.metadata["source_count"] == 1
+
+
+LOCATED_XML = (
+    '<root><item xml:id="i1" v="1"/><item v="2"/><group><item v="3"/></group></root>'
+)
+ITEM_LOCATORS = ["i1", "/root/item[2]", "/root/group/item"]
+
+
+class TestLocators:
+    """Each row's locator is its element's xml:id, else the element's path."""
+
+    @pytest.mark.parametrize("propagate", [True, False])
+    def test_the_stated_id_else_the_path(self, tmp_path: Path, propagate: bool) -> None:
+        path = tmp_path / "located.xml"
+        path.write_text(LOCATED_XML, encoding="utf-8")
+        loader = XmlLoader(principal_tags=["item"], propagate_ancestors=propagate)
+        table = loader.load(path).get_table("item")
+        assert table.column("locator").to_pylist() == ITEM_LOCATORS
+        (extraction,) = loader.extractions
+        assert table.column("extraction_id").to_pylist() == [extraction.id] * 3
+
+    def test_a_string_names_no_extraction(self) -> None:
+        loader = XmlLoader(principal_tags=["item"]).load_string(LOCATED_XML)
+        table = loader.get_table("item")
+        assert table.column("locator").to_pylist() == ITEM_LOCATORS
+        assert "extraction_id" not in table.column_names

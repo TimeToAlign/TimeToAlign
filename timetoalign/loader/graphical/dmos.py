@@ -84,12 +84,15 @@ class _DmosSystem:
         name: DMOS's system id, as a string (ids repeat on some pages).
         area: The system's region.
         measures: The regions of its measures, in document order.
+        locators: Per measure, its place in the file: the JSON Pointer
+            ``/pages/<i>/systems/<k>/measures/<j>`` (each index from 0).
     """
 
     position: int
     name: str
     area: Quadrilateral
     measures: tuple[Quadrilateral, ...]
+    locators: tuple[str, ...]
 
     @property
     def has_x_extent(self) -> bool:
@@ -213,7 +216,8 @@ def _read_document(source: Source) -> _DmosDocument:
     """
     document = json.loads(source.read_text(encoding="utf-8"))
     pages = []
-    for page in _member(document, "pages", f"The DMOS file {describe_source(source)}"):
+    listed = _member(document, "pages", f"The DMOS file {describe_source(source)}")
+    for i, page in enumerate(listed):
         number = _member(page, "no_page", f"A page of {describe_source(source)}")
         where = f"DMOS page {number}"
         systems = []
@@ -240,6 +244,10 @@ def _read_document(source: Source) -> _DmosDocument:
                     name=str(_member(system, "id", at)),
                     area=area,
                     measures=tuple(measures),
+                    locators=tuple(
+                        f"/pages/{i}/systems/{k - 1}/measures/{j}"
+                        for j in range(len(measures))
+                    ),
                 )
             )
         pages.append(
@@ -274,7 +282,8 @@ class DmosLoader(Loader[_DmosDocument]):
     pixels: ``start`` is the measure's least x minus the system's least x
     and ``duration`` the measure's x extent, so the accolade's
     ``meta["box"]`` and the Box's shape, both in image space, agree with the
-    interval.
+    interval. A Box's ``locator`` is its measure's JSON Pointer in the file,
+    ``/pages/<i>/systems/<k>/measures/<j>`` (each index from 0).
 
     Known limits: measures have no id and no number in DMOS, so their Boxes
     are minted ``box_…`` unless ``box_ids`` names them; DMOS
@@ -403,10 +412,16 @@ class DmosLoader(Loader[_DmosDocument]):
                     PageAccolade(
                         name=system.name,
                         area=system.area,
-                        boxes=[PageBox(measure) for measure in system.measures],
+                        boxes=[
+                            PageBox(measure, locator=locator)
+                            for measure, locator in zip(
+                                system.measures, system.locators, strict=True
+                            )
+                        ],
                     )
                     for system in page.path_systems
                 ],
+                source=self._sources[0],
             )
             for page, path in self._pages_with_paths()
         ]

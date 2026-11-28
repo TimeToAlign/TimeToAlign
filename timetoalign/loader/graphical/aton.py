@@ -585,7 +585,7 @@ class ATONLoader(Loader[list[ATONHole]]):
             )
         ]
         give_event_ids(hole_events, self._id_minter)
-        timeline.add_events(hole_events)
+        self._add_events(timeline, hole_events)
 
         return timeline
 

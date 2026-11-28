@@ -141,11 +141,17 @@ def _normalise_array(
     return pa.table(arrays)
 
 
+def _pointer(parent: str, token: str | int) -> str:
+    """The JSON Pointer (RFC 6901) of the member *token* of the value at *parent*."""
+    return f"{parent}/{str(token).replace('~', '~0').replace('/', '~1')}"
+
+
 def _collect_nested_rows(
     data: Any,
     key_path: list[str],
     parent_context: dict[str, Any] | None = None,
-) -> list[dict[str, Any]]:
+    pointer: str = "",
+) -> list[tuple[str, dict[str, Any]]]:
     """Walk a nested JSON structure and collect rows for a given key path.
 
     For a key path like ``["audio", "cueData", "hotCuePoints"]``, this
@@ -159,9 +165,10 @@ def _collect_nested_rows(
         data: The root JSON object (dict or list).
         key_path: Sequence of keys to walk.
         parent_context: Inherited scalar fields from parent objects.
+        pointer: The JSON Pointer of *data* in the document.
 
     Returns:
-        List of flat dicts, one per leaf-level element.
+        Per leaf-level element, its JSON Pointer and its flat dict.
     """
     if parent_context is None:
         parent_context = {}
@@ -170,22 +177,20 @@ def _collect_nested_rows(
         # We've consumed all keys -- ``data`` should be a list of objects
         if isinstance(data, list):
             results = []
-            for item in data:
+            for i, item in enumerate(data):
+                row = dict(parent_context)
                 if isinstance(item, dict):
-                    row = dict(parent_context)
                     row.update(_flatten_dict(item))
-                    results.append(row)
                 else:
-                    row = dict(parent_context)
                     row["value"] = item
-                    results.append(row)
+                results.append((_pointer(pointer, i), row))
             return results
         elif isinstance(data, dict):
             row = dict(parent_context)
             row.update(_flatten_dict(data))
-            return [row]
+            return [(pointer, row)]
         else:
-            return [dict(parent_context, value=data)]
+            return [(pointer, dict(parent_context, value=data))]
 
     head, *tail = key_path
     if isinstance(data, dict):
@@ -203,16 +208,27 @@ def _collect_nested_rows(
                 if isinstance(v, (dict, list)):
                     continue  # skip non-scalar
                 ctx[k] = v
-            for item in child:
-                results.extend(_collect_nested_rows(item, tail, parent_context=ctx))
+            at = _pointer(pointer, head)
+            for i, item in enumerate(child):
+                results.extend(
+                    _collect_nested_rows(
+                        item, tail, parent_context=ctx, pointer=_pointer(at, i)
+                    )
+                )
             return results
         else:
             # Not a list -- descend
-            return _collect_nested_rows(child, tail, parent_context)
+            return _collect_nested_rows(
+                child, tail, parent_context, pointer=_pointer(pointer, head)
+            )
     elif isinstance(data, list):
         results = []
-        for item in data:
-            results.extend(_collect_nested_rows(item, key_path, parent_context))
+        for i, item in enumerate(data):
+            results.extend(
+                _collect_nested_rows(
+                    item, key_path, parent_context, pointer=_pointer(pointer, i)
+                )
+            )
         return results
     else:
         return []
@@ -323,6 +339,11 @@ class JsonLoader(NormalisedTablesLoader):
 
     Scalar top-level keys (like ``"width": 604``) are stored as table-
     level metadata on every resulting ``pa.Table``.
+
+    A row's ``locator`` is the JSON Pointer of the object it was read from
+    (``/audio/0``; ``/audio/1/cueData/hotCuePoints/0`` for a nested key); a
+    row read from a file names that file's extraction (:attr:`extractions`),
+    one read from a dict none.
 
     Follows the standard two-phase pattern:
 
@@ -598,7 +619,9 @@ class JsonLoader(NormalisedTablesLoader):
         """Normalise a single principal key into a ``pa.Table``.
 
         Handles both top-level keys (``"audio"``) and nested paths
-        (``"hotCuePoints"`` found by searching inside ``audio[*]``).
+        (``"hotCuePoints"`` found by searching inside ``audio[*]``). Each
+        row's ``locator`` is the JSON Pointer of the object it was read
+        from (:meth:`_stamped`).
 
         Args:
             data: The root JSON object.
@@ -613,25 +636,34 @@ class JsonLoader(NormalisedTablesLoader):
         if key in array_keys:
             arr = array_keys[key]
             if arr and isinstance(arr[0], dict):
-                return _normalise_array(arr, sep=self._sep)
+                at = _pointer("", key)
+                return self._stamped(
+                    _normalise_array(arr, sep=self._sep),
+                    [_pointer(at, i) for i in range(len(arr))],
+                )
             return None
 
         # Case 2: dotted path (e.g., "cueData.hotCuePoints")
+        found: list[tuple[str, dict[str, Any]]] = []
         if self._sep in key:
             parts = key.split(self._sep)
             head = parts[0]
             tail = parts[1:]
             if head in array_keys:
-                rows = _collect_nested_rows(array_keys[head], tail)
-                if rows:
-                    return _normalise_array(rows, sep=self._sep)
-            return None
-
-        # Case 3: search for the key recursively in all array values
-        # E.g., "hotCuePoints" found in audio[*].cueData.hotCuePoints
-        rows = self._search_for_key(data, key)
-        if rows:
-            return _normalise_array(rows, sep=self._sep)
+                found = _collect_nested_rows(
+                    array_keys[head], tail, pointer=_pointer("", head)
+                )
+            if not found:
+                return None
+        else:
+            # Case 3: search for the key recursively in all array values
+            # E.g., "hotCuePoints" found in audio[*].cueData.hotCuePoints
+            found = self._search_for_key(data, key)
+        if found:
+            return self._stamped(
+                _normalise_array([row for _, row in found], sep=self._sep),
+                [pointer for pointer, _ in found],
+            )
 
         self._logger.warning(f"Principal key {key!r} not found in JSON structure.")
         return None
@@ -641,7 +673,8 @@ class JsonLoader(NormalisedTablesLoader):
         data: Any,
         target_key: str,
         parent_context: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
+        pointer: str = "",
+    ) -> list[tuple[str, dict[str, Any]]]:
         """Recursively search for a key in a nested JSON structure.
 
         Collects all values found under *target_key* across all nesting
@@ -651,13 +684,14 @@ class JsonLoader(NormalisedTablesLoader):
             data: Current JSON node.
             target_key: The key name to find.
             parent_context: Inherited scalar fields from parent objects.
+            pointer: The JSON Pointer of *data* in the document.
 
         Returns:
-            List of flat row dicts.
+            Per value found, its JSON Pointer and its flat row dict.
         """
         if parent_context is None:
             parent_context = {}
-        results: list[dict[str, Any]] = []
+        results: list[tuple[str, dict[str, Any]]] = []
 
         if isinstance(data, dict):
             # Gather scalar context from this dict
@@ -670,28 +704,37 @@ class JsonLoader(NormalisedTablesLoader):
 
             if target_key in data:
                 value = data[target_key]
+                at = _pointer(pointer, target_key)
                 if isinstance(value, list):
-                    for item in value:
+                    for i, item in enumerate(value):
                         if isinstance(item, dict):
                             row = dict(ctx)
                             row.update(_flatten_dict(item, sep=self._sep))
-                            results.append(row)
+                            results.append((_pointer(at, i), row))
                         else:
-                            results.append(dict(ctx, value=item))
+                            results.append((_pointer(at, i), dict(ctx, value=item)))
                 elif isinstance(value, dict):
                     row = dict(ctx)
                     row.update(_flatten_dict(value, sep=self._sep))
-                    results.append(row)
+                    results.append((at, row))
                 else:
-                    results.append(dict(ctx, value=value))
+                    results.append((at, dict(ctx, value=value)))
             else:
                 # Recurse into sub-dicts and sub-lists
                 for k, v in data.items():
                     if isinstance(v, (dict, list)):
-                        results.extend(self._search_for_key(v, target_key, ctx))
+                        results.extend(
+                            self._search_for_key(
+                                v, target_key, ctx, _pointer(pointer, k)
+                            )
+                        )
         elif isinstance(data, list):
-            for item in data:
-                results.extend(self._search_for_key(item, target_key, parent_context))
+            for i, item in enumerate(data):
+                results.extend(
+                    self._search_for_key(
+                        item, target_key, parent_context, _pointer(pointer, i)
+                    )
+                )
 
         return results
 

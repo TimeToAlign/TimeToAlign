@@ -124,6 +124,22 @@ prove it, on a small MIDI file the test writes with mido into `tmp_path`
   the notes carry the same locators and the extraction ID, and the
   timeline's registry lists the extraction (equal to the loader's); the
   events of the timeline hold neither column (they are registry columns).
+* **The table carries its extractions, whoever makes the timeline.** The
+  events a loader holds (`loader.events`) carry its extractions
+  (`EventData.extractions`, equal to `loader.extractions`), so a timeline
+  made from them by the timeline factory, not by a loader door
+  (`create_timeline_from_event_data(loader.events)`), lists the extraction
+  in its registry and its rows name it. A loader's events saved with
+  `to_parquet` and read back with `from_parquet` keep the extraction (the
+  read-back loader lists the one extraction, equal to the original, and
+  its timeline's registry lists it): no row names an extraction its
+  timeline does not hold.
+* **Rows added through `add_events` bring their extractions.** A
+  `MatchfileLoader` over `Chopin_op10_no3_p01.match` (vienna_1x22), whose
+  loaders add their rows as event dictionaries: the extraction of the
+  file is the only one of every timeline of its bundle, and every row of
+  those timelines names it (the timelines' registries list exactly the
+  loader's extraction).
 * **A CSV's locator is its data row.** `CsvLoader` over a three-row CSV in
   `tmp_path` gives `row:0`, `row:1`, `row:2`, the parser `CsvLoader`, the
   version naming pandas.

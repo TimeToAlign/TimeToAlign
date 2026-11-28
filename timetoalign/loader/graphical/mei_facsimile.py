@@ -48,7 +48,7 @@ from typing import Any, ClassVar
 
 from timetoalign.core import Shape, TimeUnit
 from timetoalign.loader._sources import Source, describe_source, readable
-from timetoalign.loader._xml import XML_ID
+from timetoalign.loader._xml import XML_ID, element_paths
 from timetoalign.loader.base import Loader
 from timetoalign.loader.graphical._located import located
 from timetoalign.loader.graphical._pages import (
@@ -82,11 +82,15 @@ Paths = TimeAxisPath | Mapping[str | int, TimeAxisPath] | None
 
 @dataclass(frozen=True)
 class _MeiZone:
-    """One zone with coordinates: its ``xml:id`` and ``@type`` (if any), its shape."""
+    """One zone with coordinates: its ``xml:id`` and ``@type`` (if any), its shape.
+
+    ``locator`` is its place in the file: its ``xml:id``, else its path.
+    """
 
     id: str | None
     type: str | None
     shape: Shape
+    locator: str
 
 
 @dataclass(frozen=True)
@@ -155,12 +159,16 @@ def _pixel_size(text: str | None) -> Fraction | None:
     return None if match is None else Fraction(match.group(1))
 
 
-def _surface(surface: ET.Element, missing: list[str]) -> _MeiSurface:
+def _surface(
+    surface: ET.Element, missing: list[str], paths: Mapping[int, str]
+) -> _MeiSurface:
     """Read one surface, its graphic and its zones.
 
     Args:
         surface: The ``surface`` element.
         missing: Receives the ids of zones stating no coordinates.
+        paths: The path of every element of the file, by ``id(element)``
+            (:func:`~timetoalign.loader._xml.element_paths`).
 
     Raises:
         ValueError: If a zone is refused, naming the zone.
@@ -192,7 +200,14 @@ def _surface(surface: ET.Element, missing: list[str]) -> _MeiSurface:
                 f"{where} ends at x {shape.x_max.value}, past the right edge of its "
                 f"image at x {right}."
             )
-        zones.append(_MeiZone(id=zone_id, type=zone.get("type"), shape=shape))
+        zones.append(
+            _MeiZone(
+                id=zone_id,
+                type=zone.get("type"),
+                shape=shape,
+                locator=zone_id or paths[id(zone)],
+            )
+        )
     return _MeiSurface(
         id=surface_id,
         name=surface.get("n"),
@@ -215,8 +230,9 @@ def _read_facsimile(source: Source) -> _MeiFacsimile:
             f"namespace {MEI_NAMESPACE}."
         )
     missing: list[str] = []
+    paths = element_paths(root)
     surfaces = tuple(
-        _surface(surface, missing)
+        _surface(surface, missing, paths)
         for facsimile in root.iter(f"{_MEI}facsimile")
         for surface in facsimile.findall(f"{_MEI}surface")
     )
@@ -262,7 +278,10 @@ class MeiFacsimileLoader(Loader[_MeiFacsimile]):
     needs a path; a zone without ``xml:id`` is minted ``box_…`` from the
     loader's minter and cannot be pointed to; an element without ``xml:id``
     is left out of :attr:`facs`, and a zone stating no coordinates out of the
-    timelines (:attr:`zones_without_coordinates` lists those with an id). A
+    timelines (:attr:`zones_without_coordinates` lists those with an id).
+    A Box's ``locator`` is its zone's ``xml:id``, else the zone's path in
+    the file (``/mei/music/facsimile/surface/zone[2]``, local names, a
+    position among same-named siblings where there are several). A
     zone whose ``@points`` are not four points bounding a convex area (five
     points, a concave or crossed outline) cannot be a
     :class:`~timetoalign.core.Quadrilateral` and refuses the file, the
@@ -381,7 +400,10 @@ class MeiFacsimileLoader(Loader[_MeiFacsimile]):
         pages = []
         for position, surface in enumerate(surfaces):
             zones = surface.taking_part(types)
-            boxes = [PageBox(zone.shape, source_id=zone.id) for zone in zones]
+            boxes = [
+                PageBox(zone.shape, source_id=zone.id, locator=zone.locator)
+                for zone in zones
+            ]
             path = given.get(position)
             accolades = None
             if path is None:
@@ -410,6 +432,7 @@ class MeiFacsimileLoader(Loader[_MeiFacsimile]):
                     source_id=surface.id,
                     accolades=accolades,
                     boxes=boxes,
+                    source=self._sources[0],
                 )
             )
         return pages

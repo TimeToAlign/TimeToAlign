@@ -254,6 +254,15 @@ corners): `m1` [0, 940) and `m2` [930, 1554) on `dgt_…`, `m3` [0, 974) on
 accolades hold four Boxes together, volume and pages none, and the
 image-space invariant holds over the tree read.
 
+**Locators and the extraction.** Each Box names the one extraction of the
+file read (`loader.extractions`, source the scan's path) and, as its
+`locator`, the JSON Pointer of its measure in the document the test
+writes, each index from 0: `m1` `/pages/0/systems/0/measures/0`, `m2`
+`/pages/0/systems/0/measures/1`, `m3` `/pages/0/systems/1/measures/0`,
+`m4` `/pages/1/systems/0/measures/0` (the scan excerpt keeps measures of
+page 0's systems 0 and 1 and of page 1's system 0); the volume's registry
+lists that extraction only.
+
 ## `MeiFacsimileLoader`
 
 **Source:** `001_Ach bleib bei uns, Herr Jesu Christ_facsimile.mei` of the
@@ -303,6 +312,12 @@ other numbers.
   at offset 2806, length 2804, `meta["box"]` (498, 858, 2804, 529); both
   state the page's image. The given page id takes number 1 of the minted
   ids.
+- **A Box's locator is its zone's place in the file**: the zone's `xml:id`
+  where it states one (the nine Boxes of the excerpt: their locators are
+  the nine zone ids, in document order), else the zone's path (a zone
+  without `xml:id`, the second of its surface's zones in a file the test
+  writes: `/mei/music/facsimile/surface/zone[2]`). Every Box names the
+  file's one extraction, which the page's registry lists alone.
 - **Zones are Boxes of their accolade** with the zone's `xml:id`, shape as
   written (MEI corners are points, so a width is `lrx - ulx`), start =
   `ulx` less the accolade's left edge. All nine are asserted literally:

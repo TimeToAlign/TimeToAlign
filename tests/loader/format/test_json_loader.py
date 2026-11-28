@@ -11,6 +11,9 @@ See Also:
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pyarrow as pa
 import pytest
 
@@ -338,3 +341,52 @@ def test_source_recorded_in_metadata() -> None:
     assert sorted(entry) == ["loaded_at", "path"]
     assert entry["path"] == str(DJ_STUDIO_PATH)
     assert loader.metadata["source_count"] == 1
+
+
+LOCATED = {
+    "title": "x",
+    "audio": [
+        {"name": "a", "cueData": {"hotCuePoints": [{"t": 1}, {"t": 2}]}},
+        {"name": "b", "cueData": {"hotCuePoints": [{"t": 3}]}},
+    ],
+    "a/b": [{"x": 1}],
+}
+CUE_POINTERS = [
+    "/audio/0/cueData/hotCuePoints/0",
+    "/audio/0/cueData/hotCuePoints/1",
+    "/audio/1/cueData/hotCuePoints/0",
+]
+
+
+class TestLocators:
+    """Each row's locator is the JSON Pointer of the object it was read from."""
+
+    @pytest.fixture
+    def located(self, tmp_path: Path) -> Path:
+        path = tmp_path / "located.json"
+        path.write_text(json.dumps(LOCATED), encoding="utf-8")
+        return path
+
+    def test_a_top_level_key(self, located: Path) -> None:
+        loader = JsonLoader(principal_keys=["audio"]).load(located)
+        table = loader.get_table("audio")
+        assert table.column("locator").to_pylist() == ["/audio/0", "/audio/1"]
+        (extraction,) = loader.extractions
+        assert extraction.source == located.as_posix()
+        assert table.column("extraction_id").to_pylist() == [extraction.id] * 2
+
+    @pytest.mark.parametrize("key", ["hotCuePoints", "audio.cueData.hotCuePoints"])
+    def test_a_nested_key(self, located: Path, key: str) -> None:
+        table = JsonLoader(principal_keys=[key]).load(located).get_table(key)
+        assert table.column("locator").to_pylist() == CUE_POINTERS
+
+    def test_a_slash_is_escaped(self, located: Path) -> None:
+        table = JsonLoader(principal_keys=["a/b"]).load(located).get_table("a/b")
+        assert table.column("locator").to_pylist() == ["/a~1b/0"]
+
+    def test_a_dict_names_no_extraction(self) -> None:
+        loader = JsonLoader(principal_keys=["audio"]).load_dict(LOCATED)
+        table = loader.get_table("audio")
+        assert table.column("locator").to_pylist() == ["/audio/0", "/audio/1"]
+        assert "extraction_id" not in table.column_names
+        assert loader.extractions == []

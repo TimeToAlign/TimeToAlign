@@ -411,6 +411,24 @@ class TestZones:
         (accolade,) = _segments(page)
         assert _placed(accolade) == [(ZONE_1, 0, 354)]
 
+    def test_a_box_names_its_zone_and_the_file(self, source: Path) -> None:
+        loader = MeiFacsimileLoader.from_file(source)
+        (page,) = loader.create_timelines()
+        (extraction,) = loader.extractions
+        rows = page.registry.filter(kinds="Box").table
+        assert rows.column("locator").to_pylist() == ZONE_IDS
+        assert set(rows.column("extraction_id").to_pylist()) == {extraction.id}
+        assert page.registry.extractions == [extraction]
+
+    def test_a_zone_without_an_id_is_located_by_its_path(self, tmp_path: Path) -> None:
+        zones = SMALL_ZONE + '<zone ulx="520" uly="390" lrx="874" lry="1019"/>'
+        (page,) = _load(tmp_path, _surface(zones, graphic=CANVAS)).create_timelines()
+        rows = page.registry.filter(kinds="Box").table
+        assert rows.column("locator").to_pylist() == [
+            "z1",
+            "/mei/music/facsimile/surface/zone[2]",
+        ]
+
     def test_a_zone_without_an_id_is_minted(self, tmp_path: Path) -> None:
         zone = '<zone ulx="520" uly="390" lrx="874" lry="1019"/>'
         (page,) = _load(tmp_path, _surface(zone, graphic=CANVAS)).create_timelines()

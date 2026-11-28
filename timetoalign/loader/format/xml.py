@@ -53,6 +53,7 @@ from typing_extensions import Self
 
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.loader._sources import Source, readable
+from timetoalign.loader._xml import XML_ID, element_paths
 from timetoalign.loader.base import LoadSourceResult
 from timetoalign.storage.store import DictStore
 
@@ -163,7 +164,7 @@ def _collect_elements_by_tag(
     sep: str = ".",
     include_text: bool = True,
     text_key: str = "_text",
-) -> list[dict[str, Any]]:
+) -> list[tuple[ET.Element, dict[str, Any]]]:
     """Collect all elements with a given tag, flattening each to a dict.
 
     Walks the entire tree and collects all elements matching *tag*,
@@ -178,12 +179,13 @@ def _collect_elements_by_tag(
         text_key: Key name for element text content.
 
     Returns:
-        List of flat dicts, one per matching element.
+        Per matching element, in document order, the element and its flat
+        dict.
     """
     if parent_context is None:
         parent_context = {}
 
-    results: list[dict[str, Any]] = []
+    results: list[tuple[ET.Element, dict[str, Any]]] = []
 
     def _walk(elem: ET.Element, context: dict[str, Any]) -> None:
         # Build context from this element's attributes
@@ -198,7 +200,7 @@ def _collect_elements_by_tag(
             # Merge parent context (parent attrs appear first)
             row = dict(ctx)
             row.update(elem_dict)
-            results.append(row)
+            results.append((elem, row))
         else:
             # Recurse into children
             for child in elem:
@@ -303,7 +305,12 @@ class XmlLoader(NormalisedTablesLoader):
 
     Each element's attributes become fields.  Nested child elements are
     flattened with dot-separated field names.  Ancestor attributes are
-    propagated downward with ``parent_<tag>_<attr>`` prefixes.
+    propagated downward with ``parent_<tag>_<attr>`` prefixes. A row's
+    ``locator`` is its element's ``xml:id``, else the element's path in the
+    document (``/root/item[2]``: local names, a position among same-named
+    siblings where there are several); a row read from a file names that
+    file's extraction (:attr:`extractions`), one read from a string or an
+    element none.
 
     Follows the standard two-phase pattern:
 
@@ -520,20 +527,27 @@ class XmlLoader(NormalisedTablesLoader):
         # Determine principal tags
         principal = self._determine_principal_tags(root)
 
-        # Normalise each principal tag
+        # Normalise each principal tag; a row's locator is its element's
+        # xml:id, else the element's path.
+        paths: dict[int, str] | None = None
         for tag in principal:
             if self._propagate_ancestors:
-                rows = _collect_elements_by_tag(
+                found = _collect_elements_by_tag(
                     root, tag, sep=self._sep, include_text=self._include_text
                 )
             else:
-                rows = [
-                    _element_to_dict(elem, self._sep, self._include_text)
+                found = [
+                    (elem, _element_to_dict(elem, self._sep, self._include_text))
                     for elem in root.iter(tag)
                 ]
 
-            if rows:
-                table = _normalise_elements(rows)
+            if found:
+                if paths is None:
+                    paths = element_paths(root)
+                table = self._stamped(
+                    _normalise_elements([row for _, row in found]),
+                    [elem.get(XML_ID) or paths[id(elem)] for elem, _ in found],
+                )
 
                 # Store metadata on the table
                 meta_bytes = {

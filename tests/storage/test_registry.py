@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import zipfile
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -888,6 +890,35 @@ class TestExtractions:
         ]
         assert hash(runs[0]) == hash(runs[0].id)
         assert {runs[2], runs[3]} == {runs[2]}
+
+    def test_a_member_of_a_zip_archive_is_read_in_place(self, tmp_path: Path) -> None:
+        (tmp_path / "one").mkdir()
+        disk = tmp_path / "one" / "score.txt"
+        disk.write_bytes(b"abc")
+        archive = tmp_path / "set.zip"
+        with zipfile.ZipFile(archive, "w") as handle:
+            handle.writestr("inner/score.txt", b"abc")
+        run = {"parser": "P", "parser_version": "2", "date": "2026-11-28T00:00:00Z"}
+
+        member = Extraction.of_source(
+            zipfile.Path(archive, at="inner/score.txt"), **run
+        )
+        named = Extraction.of_source(
+            zipfile.Path(archive, at="inner/score.txt"), source="score.txt", **run
+        )
+
+        assert member.source_integrity == {
+            "algorithm": "SHA-256",
+            "digest": ABC_SHA256,
+        }
+        assert member.id == Extraction.of_source(disk, **run).id
+        assert member.source == f"jar:{archive.as_uri()}!/inner/score.txt"
+        assert named.source == "score.txt"
+        with zipfile.ZipFile(io.BytesIO(archive.read_bytes())) as from_object:
+            inside = zipfile.Path(from_object, at="inner/score.txt")
+            with pytest.raises(ValueError, match="opened from a file object"):
+                Extraction.of_source(inside, **run)
+            assert Extraction.of_source(inside, source="score.txt", **run) == named
 
     def test_a_table_carries_its_extractions_to_its_timeline(
         self, tmp_path: Path

@@ -4,7 +4,7 @@ Tests for the format-level loaders in `timetoalign.loader.format`.
 
 ## Test Files
 
-### `test_json_loader.py` (29 tests)
+### `test_json_loader.py` (45 tests)
 
 Tests for `JsonLoader`, the configurable JSON normaliser that produces flat
 PyArrow tables from nested JSON structures.
@@ -35,9 +35,25 @@ PyArrow tables from nested JSON structures.
 - Parent context propagation in nested search (audio item scalars appear on hotCuePoints rows)
 - Auto-detection correctly identifies all top-level keys with list-of-dict values
 
+**Locators** (`TestLocators`, a document the test writes into `tmp_path`):
+`{"title": "x", "audio": [{"name": "a", "cueData": {"hotCuePoints":
+[{"t": 1}, {"t": 2}]}}, {"name": "b", "cueData": {"hotCuePoints": [{"t":
+3}]}}], "a/b": [{"x": 1}]}`. Each row's `locator` is the JSON Pointer of
+the object it was read from, written out by hand from the document:
+
+- principal key `audio`: `/audio/0`, `/audio/1`;
+- `hotCuePoints`, found by the search, and the dotted path
+  `audio.cueData.hotCuePoints` alike: `/audio/0/cueData/hotCuePoints/0`,
+  `/audio/0/cueData/hotCuePoints/1`, `/audio/1/cueData/hotCuePoints/0`;
+- the key `a/b` is escaped as RFC 6901 writes it: `/a~1b/0`.
+
+Read from the file, every row names the loader's one extraction (its source
+the file); read with `load_dict`, the rows hold the locators and no
+`extraction_id` column, and the loader lists no extraction.
+
 ---
 
-### `test_xml_loader.py` (45 tests)
+### `test_xml_loader.py` (49 tests)
 
 Tests for `XmlLoader`, a generic XML-to-flat-table loader using `xml.etree.ElementTree`.
 
@@ -54,6 +70,7 @@ Tests for `XmlLoader`, a generic XML-to-flat-table loader using `xml.etree.Eleme
 | `TestXmlLoaderStore` | 8 | `store` DictStore integration and iteration |
 | `TestXmlLoaderEdgeCases` | 11 | Error handling, empty/single-element XML, clear/repr, ancestor toggle |
 | `TestLoadElement` | 2 | `load_element()` from an `ElementTree` |
+| `TestLocators` | 3 | Each row's `locator` and extraction (below) |
 
 **Test Specimens:**
 
@@ -72,15 +89,24 @@ Tests for `XmlLoader`, a generic XML-to-flat-table loader using `xml.etree.Eleme
 - Text content extraction as `_text` field
 - Error handling for malformed XML
 
+**Locators** (`TestLocators`). The document `<root><item xml:id="i1"
+v="1"/><item v="2"/><group><item v="3"/></group></root>`, written into
+`tmp_path`, principal tag `item`: the locators are `i1` (the stated
+`xml:id`), `/root/item[2]` and `/root/group/item` (the elements' paths,
+written out by hand: `root` holds two `item`s, `group` one), in document
+order, with ancestors propagated or not alike. Read from the file, every
+row names the loader's one extraction; read with `load_string`, the rows
+hold the locators and no `extraction_id` column.
+
 ---
 
 ## Test Results
 
 | Test File | Tests | Status |
 |-----------|-------|--------|
-| `test_json_loader.py` | 29 | All pass |
-| `test_xml_loader.py` | 45 | All pass |
-| **Total** | **74** | **All pass** |
+| `test_json_loader.py` | 45 | All pass |
+| `test_xml_loader.py` | 49 | All pass |
+| **Total** | **94** | **All pass** |
 
 All tests pass in parallel mode (`pytest-xdist -n auto`).
 

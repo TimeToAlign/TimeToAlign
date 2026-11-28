@@ -247,7 +247,7 @@ the same files through this loader.
   loaded `pitch` column holds exactly 837 `♭` and 118 `♯`, and no `#` and no `b` after a step
   letter.
 
-### `test_repovizz_loader.py` (27 tests)
+### `test_repovizz_loader.py` (28 tests)
 
 Tests for `RepoVizzLoader`, a manifest-style loader for RepoVizz XML manifests
 and legacy 2-line CSV sensor files from the EEP (Expressive Ensemble Performance)
@@ -259,7 +259,7 @@ dataset.
 |-------|-------|-------|
 | `TestCatalogueEntry` | 3 | Frozen dataclass for catalogue entries |
 | `TestRepovizzDictStore` | 2 | DictStore subclass with category properties |
-| `TestRepoVizzLoaderXmlMode` | 8 | XML manifest parsing and timeline creation |
+| `TestRepoVizzLoaderXmlMode` | 9 | XML manifest parsing and timeline creation; the notes' extractions and locators |
 | `TestRepoVizzLoaderCsvMode` | 7 | Legacy CSV backwards compatibility |
 | `TestRepoVizzLoaderErrors` | 4 | Error handling and edge cases |
 | `TestRepoVizzLoaderIntegration` | 2 | Cross-recording content and group iteration |
@@ -280,6 +280,17 @@ that the two takes carry distinct audio content: the shared cardioid-ambient
 entry (`ROOT0_Audi1_Audi0_Ambi0`, "Cardioid microphone", 44100 Hz) has
 **11753638** samples in the Normal recording and **12426696** in the
 Mechanical one.
+
+**The notes keep where they were read.** The four `.notes` files of the
+`Normal` recording are read by `EepNotesLoader`, and `RepoVizzLoader`
+lists their four extractions (`loader.extractions`), their sources the
+four files in sorted order. Each note names its file's extraction and its
+data row there: the rows naming a file's extraction hold the locators
+`row:0` to `row:<n-1>`, in order, *n* the file's line count as the test
+counts it (817 cello, 928 viola, 1266 first violin, 1015 second violin;
+the files have no header). `store.notes_for_instrument("vln1")` holds the
+first violin's 1266 rows only, all naming its file's extraction, and a
+timeline made of them by the timeline factory lists that one extraction.
 
 **Test Specimens:**
 

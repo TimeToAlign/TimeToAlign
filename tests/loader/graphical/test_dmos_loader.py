@@ -670,6 +670,27 @@ class TestIdentity:
         m2 = _boxes(_segments(first)[0])[1]
         assert (m2.id, m2.start.value, m2.duration.value) == ("m2", 930, 624)
 
+    def test_a_box_names_its_measure_and_the_file(self, scan: Path) -> None:
+        loader = DmosLoader.from_file(scan)
+        volume = loader.create_timeline(uid="scan", box_ids="m{n}")
+        (extraction,) = loader.extractions
+        assert extraction.source == scan.as_posix()
+        rows = volume.registry.filter(kinds="Box").table
+        assert dict(
+            zip(
+                rows.column("id").to_pylist(),
+                rows.column("locator").to_pylist(),
+                strict=True,
+            )
+        ) == {
+            "m1": "/pages/0/systems/0/measures/0",
+            "m2": "/pages/0/systems/0/measures/1",
+            "m3": "/pages/0/systems/1/measures/0",
+            "m4": "/pages/1/systems/0/measures/0",
+        }
+        assert set(rows.column("extraction_id").to_pylist()) == {extraction.id}
+        assert volume.registry.extractions == [extraction]
+
     def test_a_template_of_positions(self, scan: Path) -> None:
         pages = DmosLoader.from_file(scan).create_timelines(
             page_ids="page{page}",

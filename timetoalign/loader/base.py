@@ -24,11 +24,12 @@ import html
 import importlib
 import importlib.metadata
 import inspect
+import json
 import logging
 import re
 import zipfile
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -49,6 +50,7 @@ from urllib.request import url2pathname
 import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.parquet as pq
 from typing_extensions import Self
 
 from timetoalign.core import (
@@ -57,16 +59,16 @@ from timetoalign.core import (
     TimeUnit,
 )
 from timetoalign.core.fields import TIMETOALIGN_METADATA_KEY, field_metadata
-from timetoalign.core.ids import CMAP_PREFIX, IdMinter, minting_from, seed_from
+from timetoalign.core.ids import (
+    CMAP_PREFIX,
+    ID_MINTER,
+    IdMinter,
+    minting_from,
+    seed_from,
+)
 from timetoalign.core.time import struct_to_coordinate
 from timetoalign.display.html import affordance_html, code
 from timetoalign.storage import EventData, EventRegistry, Extraction
-from timetoalign.storage.registry import (
-    ID_MINTER,
-    SEGMENT_KIND,
-    _canonical_json,
-    _extraction_id,
-)
 
 from ._sources import (
     Source,
@@ -87,6 +89,11 @@ LOCATOR = "locator"
 #: of a loader comes from (:attr:`Loader.extractions`).
 EXTRACTION_ID = "extraction_id"
 
+#: The key of a Parquet file's schema metadata under which a loader saving
+#: its events (``to_parquet``) keeps the extractions they name: their rows
+#: of the Extraction table, as a JSON array.
+EXTRACTIONS_KEY = b"timetoalign.extractions"
+
 # Event loaders return source metadata and a vectorized field dictionary. Other
 # payload families return their payload directly and use ``_accept_source``.
 LoadSourceResult = tuple[
@@ -103,6 +110,8 @@ module_logger = logging.getLogger(__name__)
 
 # Type variable for polymorphic loader payloads.
 PayloadT = TypeVar("PayloadT")
+
+_EventDataT = TypeVar("_EventDataT", bound=EventData)
 
 
 def _source_part(source: Source) -> bytes | str:
@@ -132,6 +141,34 @@ def _canonical(value: object) -> object:
     if isinstance(value, (list, tuple)):
         return [_canonical(member) for member in value]
     return value
+
+
+def write_events(data: EventData, path: Path | str) -> None:
+    """Write *data*'s table to the Parquet file *path*, with the extractions it carries.
+
+    The extractions (:attr:`EventData.extractions
+    <timetoalign.storage.EventData.extractions>`) go into the file's schema
+    metadata under :data:`EXTRACTIONS_KEY`; :func:`read_extractions` gives
+    them back to the table read from it.
+    """
+    table = data.table
+    if data.extractions:
+        rows = [extraction.to_row() for extraction in data.extractions]
+        table = table.replace_schema_metadata(
+            {
+                **(table.schema.metadata or {}),
+                EXTRACTIONS_KEY: json.dumps(rows, sort_keys=True).encode(),
+            }
+        )
+    pq.write_table(table, path)
+
+
+def read_extractions(data: _EventDataT) -> _EventDataT:
+    """*data*, read from a file :func:`write_events` wrote, carrying its extractions."""
+    saved = (data.table.schema.metadata or {}).get(EXTRACTIONS_KEY)
+    if saved is None:
+        return data
+    return data.with_extractions(*map(Extraction.from_row, json.loads(saved)))
 
 
 def row_locators(count: int, start: int = 0) -> pa.Array:
@@ -167,59 +204,6 @@ def _source_of_text(text: str, root: Path | None) -> Source:
         return zipfile.Path(url2pathname(urlparse(archive).path), at=unquote(member))
     path = Path(text)
     return path if root is None or path.is_absolute() else root / path
-
-
-def _member_extraction(source: zipfile.Path, text: str, **fields: Any) -> Extraction:
-    """The extraction of a run over a member of a ZIP archive, read in place.
-
-    Its fields and ID as :meth:`Extraction.of_source
-    <timetoalign.storage.Extraction.of_source>` gives them for a file on
-    disk, the member named by its ``jar:`` URI.
-    """
-    digest = source_digest(source).hex()
-    parameters = fields["parameters"]
-    seed = None if fields["seed"] is None else str(fields["seed"])
-    return Extraction(
-        id=_extraction_id(
-            text,
-            digest,
-            fields["parser"],
-            fields["parser_version"],
-            None if parameters is None else _canonical_json(parameters),
-            fields["minter"],
-            fields["id_length"],
-            seed,
-        ),
-        source=text,
-        source_integrity={"algorithm": "SHA-256", "digest": digest},
-        parser=fields["parser"],
-        parser_version=fields["parser_version"],
-        parameters=parameters,
-        minter=fields["minter"],
-        id_length=fields["id_length"],
-        seed=seed,
-    )
-
-
-def _families_of(result: object) -> list[Any]:
-    """The families of timelines *result* reaches (a timeline, group, bundle, or a collection)."""
-    found: dict[int, Any] = {}
-
-    def visit(item: object) -> None:
-        if isinstance(item, Mapping):
-            for member in item.values():
-                visit(member)
-        elif isinstance(item, (list, tuple)):
-            for member in item:
-                visit(member)
-        else:
-            registry = getattr(item, "registry", None)
-            if isinstance(registry, EventRegistry):
-                for family, _ in registry._families():
-                    found.setdefault(id(family), family)
-
-    visit(result)
-    return list(found.values())
 
 
 def _walk(result: object) -> list[Any]:
@@ -263,13 +247,9 @@ def _update_plans(
     plans: list[tuple[Any, str, EventData, Extraction]] = []
     unmatched: list[str] = []
     for timeline in _walk(built):
-        own = timeline.registry.filter(timelines=timeline.id)
+        own = timeline.registry.filter(within=timeline.id)
         rows = own.table
-        keep = pc.and_(
-            rows.column(LOCATOR).is_valid(),
-            pc.not_equal(rows.column("kind"), pa.scalar(SEGMENT_KIND)),
-        )
-        rows = rows.filter(keep)
+        rows = rows.filter(rows.column(LOCATOR).is_valid())
         if not rows.num_rows:
             continue
         extractions = {extraction.id: extraction for extraction in own.extractions}
@@ -348,7 +328,6 @@ def _minting_from_the_loader(
     sources does not depend on anything built before it in the process.
     """
 
-    creates = method.__name__.startswith("create_")
     loads = method.__name__ == "load"
 
     @functools.wraps(method)
@@ -364,8 +343,6 @@ def _minting_from_the_loader(
                 self._loading = False
         if outermost_load:
             self._load_calls.append((args, dict(kwargs)))
-        if creates:
-            self._file_extractions(result)
         return result
 
     return door
@@ -375,9 +352,7 @@ def _mint_doors_from_the_loader(cls: type) -> None:
     """Wrap every door *cls* defines: ``load``, ``load_*`` and ``create_*`` methods.
 
     See :func:`_minting_from_the_loader`. The outermost ``load`` call is
-    recorded (its arguments, for :meth:`Loader.update`); what a ``create_*``
-    method returns holds the loader's extractions afterwards
-    (:meth:`Loader._file_extractions`).
+    recorded (its arguments, for :meth:`Loader.update`).
     """
     for name, member in list(vars(cls).items()):
         door = name == "load" or name.startswith(("load_", "create_"))
@@ -641,13 +616,18 @@ class Loader(ABC, Generic[PayloadT]):
             "sources": self._source_metadata,
         }
 
-    def _read_back(self, path: Path | str, seed: int | None) -> None:
+    def _read_back(
+        self,
+        path: Path | str,
+        seed: int | None,
+        extractions: Iterable[Extraction] = (),
+    ) -> None:
         """Set the shared state of a loader made from its own saved events at *path*.
 
-        The loader holds no sources. The IDs it mints later come from
-        ``IdMinter(seed)``, else from a minter seeded with
-        :func:`~timetoalign.core.ids.seed_from` of the class name and the
-        digest of *path* (a folder's files).
+        The loader holds no sources, and the *extractions* its saved events
+        name. The IDs it mints later come from ``IdMinter(seed)``, else
+        from a minter seeded with :func:`~timetoalign.core.ids.seed_from` of
+        the class name and the digest of *path* (a folder's files).
         """
         self._sources = []
         self._source_metadata = []
@@ -655,6 +635,8 @@ class Loader(ABC, Generic[PayloadT]):
             seed = seed_from(type(self).__name__, _source_part(Path(path)))
         self._reset_minter(seed)
         self._reset_extractions()
+        for extraction in extractions:
+            self._extractions.setdefault(extraction.source or extraction.id, extraction)
 
     def clear(self) -> None:
         """Clear shared source state; the next ``load`` seeds as the first did."""
@@ -723,10 +705,7 @@ class Loader(ABC, Generic[PayloadT]):
             "id_length": self._id_minter.length,
             "seed": self._seed,
         }
-        if isinstance(source, Path):
-            extraction = Extraction.of_source(source, **fields)
-        else:
-            extraction = _member_extraction(source, text, **fields)
+        extraction = Extraction.of_source(source, source=text, **fields)
         self._extractions[text] = extraction
         return extraction
 
@@ -778,22 +757,54 @@ class Loader(ABC, Generic[PayloadT]):
             row[EXTRACTION_ID] = extraction_id
         return rows
 
-    def _file_extractions(self, result: object) -> None:
-        """Hold the loader's extractions in the registries of what it created.
+    def _carrying(self, data: _EventDataT) -> _EventDataT:
+        """*data* carrying the extractions of this loader that its rows name.
 
-        *result* is what a ``create_*`` method returned: a timeline, a group,
-        a bundle, or a sequence or mapping of them. Each family of timelines
-        it reaches holds every extraction of this loader that its rows name.
+        A timeline made from *data* (by the timeline factory, as
+        :meth:`create_timeline` makes it) holds them with the rows
+        (:attr:`EventData.extractions <timetoalign.storage.EventData.extractions>`).
         """
-        if not self._extractions:
-            return
-        by_id = {extraction.id: extraction for extraction in self._extractions.values()}
-        for family in _families_of(result):
-            named = pc.unique(family.table().column(EXTRACTION_ID)).to_pylist()
-            for extraction_id in named:
-                extraction = by_id.get(extraction_id)
-                if extraction is not None:
-                    family._record(extraction)
+        table = data.table
+        if EXTRACTION_ID not in table.column_names or not self._extractions:
+            return data
+        named = set(pc.unique(table.column(EXTRACTION_ID)).to_pylist())
+        carried = [e for e in self._extractions.values() if e.id in named]
+        return data.with_extractions(*carried) if carried else data
+
+    def _add_events(
+        self, timeline: Timeline, rows: list[dict[str, Any]], **kwargs: Any
+    ) -> list[str]:
+        """Add *rows*, events read from source files, to *timeline*, with their extractions.
+
+        :meth:`Timeline.add_events
+        <timetoalign.timelines.Timeline.add_events>` takes event
+        dictionaries, which carry no extractions, so the registry of
+        *timeline*'s family holds the extractions the rows name before the
+        rows join it; if the rows are refused, it holds them no longer.
+
+        Args:
+            timeline: The timeline the rows join.
+            rows: Event dictionaries naming their extraction
+                (``extraction_id``) and locator.
+            **kwargs: As :meth:`Timeline.add_events` takes them.
+
+        Returns:
+            The IDs of the events added, in the order of *rows*.
+        """
+        named = {row.get(EXTRACTION_ID) for row in rows}
+        family = timeline._registry._family
+        fresh = [
+            extraction
+            for extraction in self._extractions.values()
+            if extraction.id in named and extraction.id not in family.extractions
+        ]
+        family._record(fresh)
+        try:
+            return timeline.add_events(rows, **kwargs)
+        except BaseException:
+            for extraction in fresh:
+                del family.extractions[extraction.id]
+            raise
 
     @classmethod
     def _config_of(cls, parameters: Mapping[str, Any]) -> dict[str, Any]:
@@ -854,9 +865,7 @@ class Loader(ABC, Generic[PayloadT]):
                 extraction names a source file.
         """
         own = [e for e in registry.extractions if e.parser == cls.__name__]
-        recorded = {
-            None if e.parameters is None else _canonical_json(e.parameters) for e in own
-        }
+        recorded = {json.dumps(e.parameters, sort_keys=True) for e in own}
         if len(recorded) > 1:
             raise ValueError(
                 f"the registry's extractions of {cls.__name__} ran with "
@@ -1331,7 +1340,9 @@ class EventLoader(Loader[LoadSourceResult]):
             return events
 
         filtered_table = table.select(ordered)
-        return EventData(filtered_table, events.unit, events.number_type)
+        return EventData(
+            filtered_table, events.unit, events.number_type
+        ).with_extractions(*events.extractions)
 
     # endregion
 
@@ -1382,7 +1393,7 @@ class EventLoader(Loader[LoadSourceResult]):
             extra_fields=extra_fields,
             interval_policy=self._interval_policy,
             minter=self._id_minter,
-        )
+        ).with_extractions(self._extraction_of(path))
         if len(self._events) == 0:
             self._events = new_data
         else:
@@ -1728,12 +1739,14 @@ class EventLoader(Loader[LoadSourceResult]):
     def to_parquet(self, path: Path | str) -> None:
         """Save the loaded events to a Parquet file.
 
-        The metadata (including source info) is preserved in the file.
+        The metadata (including source info) is preserved in the file, and
+        the extractions the events name (:attr:`extractions`), which a
+        loader read back from it (:meth:`from_parquet`) holds again.
 
         Args:
             path: Path to write the Parquet file.
         """
-        self.events.to_parquet(path)
+        write_events(self._carrying(self.events), path)
 
     @classmethod
     def from_parquet(cls, path: Path | str, *, seed: int | None = None) -> Self:
@@ -1752,12 +1765,12 @@ class EventLoader(Loader[LoadSourceResult]):
         Returns:
             A new Loader with events loaded from the file.
         """
-        events = cls._event_data_class.from_parquet(path)
+        events = read_extractions(cls._event_data_class.from_parquet(path))
         loader = cls.__new__(cls)
         loader._unit = events.unit
         loader._number_type = events.number_type
         loader._events = events
-        loader._read_back(path, seed)
+        loader._read_back(path, seed, events.extractions)
         return loader
 
     # endregion

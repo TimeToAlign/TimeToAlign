@@ -315,24 +315,15 @@ def _walk(result: object) -> list[Any]:
     return found
 
 
-def _update_plans(
-    built: object, registry: EventRegistry
-) -> list[tuple[Any, str, EventData, Extraction]]:
-    """What :meth:`Loader.update` updates: per timeline built and extraction, the target.
+def _rows_read_again(built: object) -> list[tuple[str, EventData, Extraction]]:
+    """What :meth:`Loader.update` hands the registry, per timeline *built* and extraction.
 
-    Each entry is the family of *registry* holding the target timeline, its
-    ID, the rows (local to it, with their locators) and the extraction. The
-    target holds most of the rows the rows' locators name among the rows of
-    extractions of the same source file; where none is named, the timeline
-    of the built one's ID.
-
-    Raises:
-        ValueError: If rows match no timeline of *registry*.
+    For each timeline *built* (and each descendant) and each extraction its
+    located rows name: the timeline's ID, its events of that extraction
+    with their locators (a column ``locator``), local to the timeline, and
+    the extraction. Rows that name no locator are left out.
     """
-    families = [family for family, _ in registry._families()]
-    held = registry.table
-    plans: list[tuple[Any, str, EventData, Extraction]] = []
-    unmatched: list[str] = []
+    pieces: list[tuple[str, EventData, Extraction]] = []
     for timeline in _walk(built):
         own = timeline.registry.filter(within=timeline.id)
         rows = own.table
@@ -343,58 +334,21 @@ def _update_plans(
         events = timeline.events
         table = events.table
         for extraction_id in pc.unique(rows.column(EXTRACTION_ID)).to_pylist():
-            extraction = extractions[extraction_id]
             mine = rows.filter(pc.equal(rows.column(EXTRACTION_ID), extraction_id))
-            same_source = pa.array(
-                [
-                    held_id
-                    for family in families
-                    for held_id, held_extraction in family.extractions.items()
-                    if held_extraction.source == extraction.source
-                ],
-                pa.string(),
-            )
-            candidates = held.filter(
-                pc.and_(
-                    pc.is_in(held.column(EXTRACTION_ID), value_set=same_source),
-                    pc.is_in(held.column(LOCATOR), value_set=mine.column(LOCATOR)),
-                )
-            )
-            target: str | None = None
-            if candidates.num_rows:
-                counted = (
-                    candidates.select(["timeline_id"])
-                    .group_by("timeline_id", use_threads=False)
-                    .aggregate([("timeline_id", "count")])
-                    .sort_by([("timeline_id_count", "descending")])
-                )
-                target = counted.column("timeline_id")[0].as_py()
-            elif any(timeline.id in family.parts for family in families):
-                target = timeline.id
-            if target is None:
-                unmatched.append(f"{timeline.id} ({extraction.source})")
-                continue
-            family = next(family for family in families if target in family.parts)
             ids = mine.column("id")
             picked = table.filter(pc.is_in(table.column("id"), value_set=ids))
             at = pc.index_in(picked.column("id"), value_set=ids)
             picked = picked.append_column(
                 LOCATOR, mine.column(LOCATOR).combine_chunks().take(at)
             )
-            plans.append(
+            pieces.append(
                 (
-                    family,
-                    target,
+                    timeline.id,
                     type(events)(picked, events.unit, events.number_type),
-                    extraction,
+                    extractions[extraction_id],
                 )
             )
-    if unmatched:
-        raise ValueError(
-            "rows read again match no timeline of the registry, by locator or by "
-            f"ID: those of {unmatched}; nothing is updated"
-        )
-    return plans
+    return pieces
 
 
 _LoaderT = TypeVar("_LoaderT", bound="Loader[Any]")
@@ -867,41 +821,6 @@ class Loader(ABC, Generic[PayloadT]):
         carried = [e for e in self._extractions.values() if e.id in named]
         return data.with_extractions(*carried) if carried else data
 
-    def _add_events(
-        self, timeline: Timeline, rows: list[dict[str, Any]], **kwargs: Any
-    ) -> list[str]:
-        """Add *rows*, events read from source files, to *timeline*, with their extractions.
-
-        :meth:`Timeline.add_events
-        <timetoalign.timelines.Timeline.add_events>` takes event
-        dictionaries, which carry no extractions, so the registry of
-        *timeline*'s family holds the extractions the rows name before the
-        rows join it; if the rows are refused, it holds them no longer.
-
-        Args:
-            timeline: The timeline the rows join.
-            rows: Event dictionaries naming their extraction
-                (``extraction_id``) and locator.
-            **kwargs: As :meth:`Timeline.add_events` takes them.
-
-        Returns:
-            The IDs of the events added, in the order of *rows*.
-        """
-        named = {row.get(EXTRACTION_ID) for row in rows}
-        family = timeline._registry._family
-        fresh = [
-            extraction
-            for extraction in self._extractions.values()
-            if extraction.id in named and extraction.id not in family.extractions
-        ]
-        family._record(fresh)
-        try:
-            return timeline.add_events(rows, **kwargs)
-        except BaseException:
-            for extraction in fresh:
-                del family.extractions[extraction.id]
-            raise
-
     @classmethod
     def _config_of(cls, parameters: Mapping[str, Any]) -> dict[str, Any]:
         """The constructor arguments an extraction's *parameters* record.
@@ -1047,10 +966,24 @@ class Loader(ABC, Generic[PayloadT]):
         self.clear()
         for args, keywords in calls:
             self.load(*args, **keywords)
-        plans = _update_plans(self.create_timelines(), registry)
-        for family, timeline_id, data, extraction in plans:
-            family.update(timeline_id, data, extraction)
-        return list(dict.fromkeys(timeline_id for _, timeline_id, _, _ in plans))
+        planned: list[tuple[str, EventData, Extraction]] = []
+        unmatched: list[str] = []
+        for timeline_id, data, extraction in _rows_read_again(self.create_timelines()):
+            target = registry.update_target(data, extraction, timeline_id=timeline_id)
+            if target is None:
+                unmatched.append(f"{timeline_id} ({extraction.source})")
+            else:
+                planned.append((target, data, extraction))
+        if unmatched:
+            raise ValueError(
+                "rows read again match no timeline of the registry, by locator or by "
+                f"ID: those of {unmatched}; nothing is updated"
+            )
+        for target, data, extraction in planned:
+            # Through the view of the target alone, so that each update goes to
+            # the timeline chosen before any of them changed the registry.
+            registry.filter(within=target).update(data, extraction, timeline_id=target)
+        return list(dict.fromkeys(target for target, _, _ in planned))
 
     # endregion
 

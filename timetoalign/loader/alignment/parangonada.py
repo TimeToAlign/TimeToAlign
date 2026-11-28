@@ -331,8 +331,7 @@ class ParangonadaLoader(AlignmentLoader):
             uid=mint_timeline_id(TimeUnit.quarters, self._id_minter, role="score"),
             name=self._name,
         )
-        self._add_events(
-            score_clt,
+        score_clt.add_events(
             [
                 {
                     "id": row["id"],
@@ -347,6 +346,7 @@ class ParangonadaLoader(AlignmentLoader):
                 }
                 for i, row in enumerate(score_rows)
             ],
+            extractions=self.extractions,
         )
 
         score_dlt = DiscreteLogicalTimeline(
@@ -355,8 +355,7 @@ class ParangonadaLoader(AlignmentLoader):
             uid=mint_timeline_id(TimeUnit.ticks, self._id_minter, role="score"),
             name=self._name,
         )
-        self._add_events(
-            score_dlt,
+        score_dlt.add_events(
             [
                 {
                     "id": row["id"],
@@ -368,6 +367,7 @@ class ParangonadaLoader(AlignmentLoader):
                 }
                 for i, row in enumerate(score_rows)
             ],
+            extractions=self.extractions,
         )
         # divs → quarters: quarters = div / 32 - 1/2 (the score's anacrusis
         # places div 0 at quarter -1/2; 32 divs per quarter).
@@ -426,8 +426,7 @@ class ParangonadaLoader(AlignmentLoader):
             uid=mint_timeline_id(TimeUnit.seconds, self._id_minter, role="perf"),
             name=performer_key,
         )
-        self._add_events(
-            perf_cpt,
+        perf_cpt.add_events(
             [
                 {
                     "id": row["id"],
@@ -439,6 +438,7 @@ class ParangonadaLoader(AlignmentLoader):
                 }
                 for i, row in enumerate(ppart_rows)
             ],
+            extractions=self.extractions,
         )
 
         # Measured per-beat features (variable tempo + dynamics) extend
@@ -453,8 +453,7 @@ class ParangonadaLoader(AlignmentLoader):
             uid=mint_timeline_id(TimeUnit.samples, self._id_minter, role="perf"),
             name=performer_key,
         )
-        self._add_events(
-            perf_dpt,
+        perf_dpt.add_events(
             [
                 {
                     "id": row["id"],
@@ -466,6 +465,7 @@ class ParangonadaLoader(AlignmentLoader):
                 }
                 for i, row in enumerate(ppart_rows)
             ],
+            extractions=self.extractions,
         )
         perf_dpt.add_conversion_map(
             SamplesToSeconds(
@@ -562,8 +562,12 @@ class ParangonadaLoader(AlignmentLoader):
         give_event_ids(beat_events, self._id_minter)
         give_event_ids(dyn_events, self._id_minter)
 
-        self._add_events(perf_cpt, beat_events, allow_expansion=True)
-        self._add_events(perf_cpt, dyn_events, allow_expansion=True)
+        perf_cpt.add_events(
+            beat_events, allow_expansion=True, extractions=self.extractions
+        )
+        perf_cpt.add_events(
+            dyn_events, allow_expansion=True, extractions=self.extractions
+        )
 
     @staticmethod
     def _glob_feature_file(

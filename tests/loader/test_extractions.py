@@ -560,6 +560,25 @@ class TestUpdate:
         loader.update(timeline.registry)
         assert timeline.registry.table.to_pylist() == before
 
+    def test_every_timeline_of_a_bundle(self) -> None:
+        loader = MatchfileLoader().load(MATCH_FILE)
+        bundle = loader.create_bundle()
+        before = bundle.registry.table.to_pylist()
+        assert loader.update(bundle.registry) == bundle.timeline_ids
+        assert len(bundle.timeline_ids) == 2
+        assert bundle.registry.table.to_pylist() == before
+
+    def test_rows_of_another_file_are_refused(self, tmp_path: Path) -> None:
+        path = write_midi(tmp_path / "a.mid", NOTES)
+        other = write_midi(tmp_path / "b.mid", NOTES[:2])
+        timeline = PerformanceMidiLoader().load(path).create_timeline()
+        before = timeline.registry.table.to_pylist()
+        loader = PerformanceMidiLoader().load(other)
+        with pytest.raises(ValueError, match="match no timeline of the registry") as e:
+            loader.update(timeline.registry)
+        assert other.as_posix() in str(e.value)
+        assert timeline.registry.table.to_pylist() == before
+
 
 class TestFromRegistry:
     """A loader set up from a registry runs as its extractions record."""

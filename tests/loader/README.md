@@ -219,6 +219,16 @@ prove it, on a small MIDI file the test writes with mido into `tmp_path`
   ID, and nothing is deleted (the row count is unchanged); the registry
   then lists both extractions. A note added in the file is added with a
   new ID. Updating from an unchanged file changes no ID and marks nothing.
+* **`update` updates every timeline of a bundle, or nothing.** The
+  `MatchfileLoader` bundle of `Chopin_op10_no3_p01.match` (vienna_1x22),
+  updated through its own registry from the unchanged file, updates its
+  two timelines, score then performance (the IDs returned are the
+  bundle's `timeline_ids`), and its registry rows are equal before and
+  after. A MIDI file's timeline updated by a loader of another MIDI file
+  (whose rows no locator of the registry names and whose timelines'
+  IDs it does not hold) is refused with "match no timeline of the
+  registry", naming the other file, and its registry rows are equal
+  before and after: the targets are chosen before anything is updated.
 * **`from_registry` takes the recorded parameters.** A loader set up from
   a registry of `PerformanceMidiLoader(include_controls=False)` runs with
   `include_controls=False` (its configuration equals the recorded

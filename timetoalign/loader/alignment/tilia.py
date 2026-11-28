@@ -384,7 +384,7 @@ class TiliaDictStore(DictStore):
         # Concatenate all matching tables
         tables = [ed.table for ed in matching]
         merged = pa.concat_tables(tables, promote_options="default")
-        return EventData(merged, matching[0]._unit, matching[0]._number_type)
+        return EventData(merged, matching[0].unit, matching[0].number_type)
 
     @property
     def beat(self) -> EventData:
@@ -966,7 +966,7 @@ class TiliaJsonLoader(JsonLoader):
             )
 
         if events:
-            self._add_events(tl, events)
+            tl.add_events(events, extractions=self.extractions)
 
         return tl
 

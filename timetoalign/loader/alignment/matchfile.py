@@ -361,8 +361,7 @@ class MatchfileLoader(AlignmentLoader):
         # New event — add to timeline and cache
         self._score_events[snote_id] = (onset_tta, end_tta)
         if self._score_timeline is not None:
-            self._add_events(
-                self._score_timeline,
+            self._score_timeline.add_events(
                 [
                     {
                         "id": snote_id,
@@ -372,6 +371,7 @@ class MatchfileLoader(AlignmentLoader):
                     }
                 ],
                 allow_expansion=True,
+                extractions=self.extractions,
             )
         return True
 
@@ -491,7 +491,9 @@ class MatchfileLoader(AlignmentLoader):
                 )
                 self._score_events[sid] = (onset_tta, end_tta)
 
-            self._add_events(self._score_timeline, score_event_dicts)
+            self._score_timeline.add_events(
+                score_event_dicts, extractions=self.extractions
+            )
 
             # Attach ShiftMap to convert normalised TTA coordinates back
             # to raw partitura coordinates (for display in timestamps).
@@ -576,7 +578,7 @@ class MatchfileLoader(AlignmentLoader):
             uid=mint_timeline_id(TimeUnit.ticks, self._id_minter, role="perf"),
             name=perf_stem,
         )
-        given = self._add_events(perf_tl, perf_event_dicts)
+        given = perf_tl.add_events(perf_event_dicts, extractions=self.extractions)
         # Partitura's ID of each performed note -> the ID of its event.
         perf_ids = dict(zip((str(n["id"]) for n in perf_notes), given, strict=True))
         self._performed_ids.update(given)

@@ -843,8 +843,7 @@ class MpmLoader(AlignmentLoader):
             name=self._name,
         )
         msm = self._sources[1]
-        self._add_events(
-            score_dlt,
+        score_dlt.add_events(
             [
                 {
                     **self._msm_note_row(
@@ -854,13 +853,16 @@ class MpmLoader(AlignmentLoader):
                 }
                 for note in score_notes
             ],
+            extractions=self.extractions,
         )
         # Markup events carry a heterogeneous schema (tempo / dynamics /
         # articulation / asynchrony / …); add_events with allow_expansion
         # null-fills the columns absent from the Note batch.
         if markup_events:
             give_event_ids(markup_events, self._id_minter)
-            self._add_events(score_dlt, markup_events, allow_expansion=True)
+            score_dlt.add_events(
+                markup_events, allow_expansion=True, extractions=self.extractions
+            )
         score_dlt.add_conversion_map(
             TicksToQuarters(ppq=ppq, uid=self._id_minter.mint(CMAP_PREFIX))
         )
@@ -872,8 +874,7 @@ class MpmLoader(AlignmentLoader):
             uid=mint_timeline_id(TimeUnit.quarters, self._id_minter, role="score"),
             name=self._name,
         )
-        self._add_events(
-            score_clt,
+        score_clt.add_events(
             [
                 {
                     **self._msm_note_row(note, Fraction(note["date"], ppq)),
@@ -881,6 +882,7 @@ class MpmLoader(AlignmentLoader):
                 }
                 for note in score_notes
             ],
+            extractions=self.extractions,
         )
         self._tempo_map = self._build_tempo_table_map(tempo_entries, max_quarter_end)
         if self._tempo_map is not None:
@@ -969,8 +971,7 @@ class MpmLoader(AlignmentLoader):
             uid=mint_timeline_id(TimeUnit.seconds, self._id_minter, role="perf"),
             name=self._name,
         )
-        self._add_events(
-            perf_cpt,
+        perf_cpt.add_events(
             [
                 {
                     "id": note["ref"],
@@ -984,6 +985,7 @@ class MpmLoader(AlignmentLoader):
                 }
                 for note in alignment_notes
             ],
+            extractions=self.extractions,
         )
 
         perf_dpt = DiscretePhysicalTimeline(
@@ -992,8 +994,7 @@ class MpmLoader(AlignmentLoader):
             uid=mint_timeline_id(TimeUnit.samples, self._id_minter, role="perf"),
             name=self._name,
         )
-        self._add_events(
-            perf_dpt,
+        perf_dpt.add_events(
             [
                 {
                     "id": note["ref"],
@@ -1007,6 +1008,7 @@ class MpmLoader(AlignmentLoader):
                 }
                 for note in alignment_notes
             ],
+            extractions=self.extractions,
         )
         perf_dpt.add_conversion_map(
             SamplesToSeconds(

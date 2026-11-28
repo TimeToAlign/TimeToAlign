@@ -648,12 +648,12 @@ def _build_line(
         if source is None:
             timeline.add_events(boxes)
         else:
-            owner._add_events(
-                timeline,
+            timeline.add_events(
                 [
                     {**box.to_event_row(), **owner._stamp(source, page_box.locator)}
                     for box, page_box in zip(boxes, plan.boxes, strict=True)
                 ],
+                extractions=owner.extractions,
             )
     return timeline
 

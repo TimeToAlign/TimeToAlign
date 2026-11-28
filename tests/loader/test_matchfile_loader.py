@@ -910,21 +910,25 @@ class TestMatchfileLoaderCheckOrAddScoreEvent:
         """Known event with matching coordinates is compatible."""
         real_id = next(iter(p01_loader._score_events))
         onset, end = p01_loader._score_events[real_id]
-        assert p01_loader._check_or_add_score_event(real_id, onset, end, "test.match")
+        assert p01_loader._check_or_add_score_event(
+            real_id, onset, end, p01_loader.sources[0]
+        )
 
     def test_incompatible_event_returns_false(self, p01_loader: MatchfileLoader):
         """Known event with different onset is incompatible."""
         real_id = next(iter(p01_loader._score_events))
         onset, end = p01_loader._score_events[real_id]
         assert not p01_loader._check_or_add_score_event(
-            real_id, onset + 99.0, end + 99.0, "test.match"
+            real_id, onset + 99.0, end + 99.0, p01_loader.sources[0]
         )
 
     def test_new_event_added(self, p01_loader: MatchfileLoader):
         """Unknown event ID is added to the cache and timeline."""
         new_id = "n_brand_new_test_event"
         assert new_id not in p01_loader._score_events
-        result = p01_loader._check_or_add_score_event(new_id, 42.0, 43.0, "test.match")
+        result = p01_loader._check_or_add_score_event(
+            new_id, 42.0, 43.0, p01_loader.sources[0]
+        )
         assert result is True
         assert new_id in p01_loader._score_events
         assert p01_loader._score_events[new_id] == (42.0, 43.0)
@@ -932,7 +936,7 @@ class TestMatchfileLoaderCheckOrAddScoreEvent:
     def test_new_event_appears_on_timeline(self, p01_loader: MatchfileLoader):
         """Newly added event is retrievable via Timeline.get_event()."""
         new_id = "n_timeline_lookup_test"
-        p01_loader._check_or_add_score_event(new_id, 10.0, 11.0, "test.match")
+        p01_loader._check_or_add_score_event(new_id, 10.0, 11.0, p01_loader.sources[0])
         score_tl = p01_loader.create_timeline("score")
         event = score_tl.get_event(new_id)
         assert event is not None

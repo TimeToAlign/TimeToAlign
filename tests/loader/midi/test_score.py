@@ -486,6 +486,8 @@ class TestScoreMidiLoader:
             "control",
             "value",
             "program",
+            "locator",
+            "extraction_id",
         ]
         assert "voice" not in mido_loader.events.to_dataframe().columns
         assert "staff" not in mido_loader.events.to_dataframe().columns

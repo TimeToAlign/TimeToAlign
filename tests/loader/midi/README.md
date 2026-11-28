@@ -7,7 +7,9 @@ The MIDI tests cover the two supported interpretations of MIDI data:
 
 `MidiEventData` adds `pitch`, `velocity`, `channel`, `track`, `control`, `value`, and `program`.
 `ScoreMidiEventData` additionally adds `voice`, `staff`, and `part_id`. Performance stores must not
-contain those three score-only columns.
+contain those three score-only columns. A loader's events end with `locator` (the message read, `track:<i>
+message:<j>`) and `extraction_id` (the file's extraction), the two columns a timeline moves into
+its registry rows (`tests/loader/README.md`, "Extractions and locators").
 
 ## Test files
 

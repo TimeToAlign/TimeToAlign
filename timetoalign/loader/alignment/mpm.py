@@ -103,7 +103,7 @@ from timetoalign.loader._sources import (
     source_parent,
 )
 from timetoalign.loader._xml import XML_ID
-from timetoalign.loader.base import AlignmentLoader
+from timetoalign.loader.base import LOCATOR, AlignmentLoader
 from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.maps.convenience import SamplesToSeconds, TicksToQuarters
 from timetoalign.maps.linear import ScalarMap
@@ -176,6 +176,11 @@ def _snake_case(camel: str) -> str:
     return "".join(out)
 
 
+def _path(element: Any) -> str:
+    """The element's XPath in its document, as lxml writes it."""
+    return element.getroottree().getpath(element)
+
+
 def _as_float(text: str | None) -> float | None:
     """Parse an MPM float-string, or ``None`` if it is absent / not numeric."""
     if text is None:
@@ -217,6 +222,12 @@ class MpmLoader(AlignmentLoader):
 
     The loader reads the modelled performance and the observed alignment;
     it never runs an aligner.
+
+    Every event names the extraction of the file stating it (a score note
+    the ``.msm``, a markup event the ``.mpm``, an observed onset the
+    ``.mpr``) and, as its ``locator``, the ``xml:id`` its element states,
+    else the element's XPath in that file as lxml writes it
+    (``/mpr/audios/audio/alignment/part/note[3]``).
     """
 
     def __init__(self, *, seed: int | None = None) -> None:
@@ -234,6 +245,10 @@ class MpmLoader(AlignmentLoader):
         self._name: str | None = None
 
     # region Abstract-method satisfaction
+
+    def _backends(self) -> tuple[str, ...]:
+        """lxml reads the three files."""
+        return ("lxml",)
 
     def _load_source(self, source: Source) -> Any:
         """Not used: an MPM-Toolbox project is a single coherent unit.
@@ -448,6 +463,7 @@ class MpmLoader(AlignmentLoader):
             notes.append(
                 {
                     "xml_id": element.get(XML_ID),
+                    LOCATOR: element.get(XML_ID) or _path(element),
                     "date": int(float(element.get("date"))),
                     "pitch": int(float(element.get("midi.pitch"))),
                     "pitchname": element.get("pitchname"),
@@ -556,6 +572,7 @@ class MpmLoader(AlignmentLoader):
                 "id": element.get(XML_ID),
                 "start": date,
                 "event_type": event_type,
+                **self._stamp(self._sources[2], element.get(XML_ID) or _path(element)),
             }
 
             if tag == "tempo":
@@ -715,6 +732,7 @@ class MpmLoader(AlignmentLoader):
             notes.append(
                 {
                     "ref": element.get("ref"),
+                    LOCATOR: _path(element),
                     "pitch": int(float(element.get("midi.pitch"))),
                     "milliseconds_date": float(element.get("milliseconds.date")),
                     "velocity": int(float(element.get("velocity"))),
@@ -823,11 +841,15 @@ class MpmLoader(AlignmentLoader):
             uid=mint_timeline_id(TimeUnit.ticks, self._id_minter, role="score"),
             name=self._name,
         )
+        msm = self._sources[1]
         score_dlt.add_events(
             [
-                self._msm_note_row(
-                    note, note["date"], extra={"duration": note["duration"]}
-                )
+                {
+                    **self._msm_note_row(
+                        note, note["date"], extra={"duration": note["duration"]}
+                    ),
+                    **self._stamp(msm, note[LOCATOR]),
+                }
                 for note in score_notes
             ]
         )
@@ -850,7 +872,10 @@ class MpmLoader(AlignmentLoader):
         )
         score_clt.add_events(
             [
-                self._msm_note_row(note, Fraction(note["date"], ppq))
+                {
+                    **self._msm_note_row(note, Fraction(note["date"], ppq)),
+                    **self._stamp(msm, note[LOCATOR]),
+                }
                 for note in score_notes
             ]
         )
@@ -947,6 +972,7 @@ class MpmLoader(AlignmentLoader):
                     "id": note["ref"],
                     "start": note["milliseconds_date"] / 1000.0,
                     "event_type": "Note",
+                    **self._stamp(self._sources[0], note[LOCATOR]),
                     # Observed onsets carry a bare MIDI pitch: afford
                     # EnharmonicPitch via its {midi_number} struct.
                     "pitch": {"midi_number": note["pitch"]},
@@ -970,6 +996,7 @@ class MpmLoader(AlignmentLoader):
                         round(note["milliseconds_date"] / 1000.0 * sample_rate)
                     ),
                     "event_type": "Note",
+                    **self._stamp(self._sources[0], note[LOCATOR]),
                     "pitch": {"midi_number": note["pitch"]},
                     "velocity": note["velocity"],
                 }

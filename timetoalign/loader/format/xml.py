@@ -359,6 +359,8 @@ class XmlLoader(NormalisedTablesLoader):
         self._store: DictStore = DictStore()
         self._file_metadata: dict[str, Any] = {}
         self._raw_root: ET.Element | None = None
+        # The file being read, while it is (None for in-memory XML).
+        self._reading: Source | None = None
         self._logger = module_logger.getChild(self.__class__.__name__)
 
     def _seed_config(self) -> dict[str, object]:
@@ -424,7 +426,11 @@ class XmlLoader(NormalisedTablesLoader):
         with readable(source) as document:
             root = ET.parse(document).getroot()
         self._raw_root = root
-        self._process_xml(root)
+        self._reading = source
+        try:
+            self._process_xml(root)
+        finally:
+            self._reading = None
         self._logger.debug("Loaded %s: %s", source.name, list(self._store.keys()))
         return {}, {}
 

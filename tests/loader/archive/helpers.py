@@ -63,6 +63,19 @@ def file_members(
     return files
 
 
+def same_rows(archived: Any, on_disk: Any) -> bool:
+    """Whether two event tables are equal but for the extraction each row names.
+
+    An extraction names its source file (a path, a member's ``jar:`` URI),
+    so a member and the same bytes on disk are two extractions.
+    """
+    if "extraction_id" in archived.column_names:
+        archived = archived.drop_columns(["extraction_id"])
+    if "extraction_id" in on_disk.column_names:
+        on_disk = on_disk.drop_columns(["extraction_id"])
+    return archived.equals(on_disk)
+
+
 def same_timeline(archived: Any, on_disk: Any) -> None:
     """Assert both loaders created the same timeline, exactly."""
     assert archived.create_timeline().to_dict() == on_disk.create_timeline().to_dict()

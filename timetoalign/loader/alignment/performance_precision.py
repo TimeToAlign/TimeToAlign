@@ -80,7 +80,7 @@ from timetoalign.loader._sources import (
     on_disk,
     sibling_source,
 )
-from timetoalign.loader.base import AlignmentLoader
+from timetoalign.loader.base import EXTRACTION_ID, LOCATOR, AlignmentLoader
 from timetoalign.loader.tabular.solo import SoloLoader
 from timetoalign.maps.meter import MetricalPositionMap, MetricMap
 from timetoalign.timelines.factory import mint_timeline_id
@@ -143,7 +143,14 @@ class PerformancePrecisionLoader(AlignmentLoader):
         media_unit: Unit for the performance timelines. Default
             ``TimeUnit.seconds``.
         seed: The seed of the loader's ID minter (see ``Loader.load``).
+
+    Every score note names the ``.solo`` file's extraction and its data
+    row there (``row:<i>``, :class:`SoloLoader`'s rule); every performed
+    note the extraction of its performer's note-level alignment CSV and its
+    data row there, ``row:<i>`` counted from 0 below the header line.
     """
+
+    _enum_parameters = {"score_unit": TimeUnit, "media_unit": TimeUnit}
 
     def __init__(
         self,
@@ -375,7 +382,10 @@ class PerformancePrecisionLoader(AlignmentLoader):
         — no per-event scalar materialisation on the hot path.
         """
         solo = SoloLoader.from_file(solo_path)
+        self._adopt_extractions(solo)
         table = solo.events.table
+        locators = table.column(LOCATOR).to_pylist()
+        extraction_ids = table.column(EXTRACTION_ID).to_pylist()
 
         measures = [int(r["mn"]) for r in table.column("measure_number").to_pylist()]
         onsets = [
@@ -412,6 +422,8 @@ class PerformancePrecisionLoader(AlignmentLoader):
                     "velocity": velocities[i],
                     "note_id": note_ids[i],
                     "measure_number": measures[i],
+                    LOCATOR: locators[i],
+                    EXTRACTION_ID: extraction_ids[i],
                 }
             )
         give_event_ids(rows, self._id_minter)
@@ -483,8 +495,9 @@ class PerformancePrecisionLoader(AlignmentLoader):
             {
                 "start": float(time_str),
                 "event_type": "Note",
+                **self._stamp(note_file, f"row:{i}"),
             }
-            for _m, _off, time_str in granularity_rows["note"]
+            for i, (_m, _off, time_str) in enumerate(granularity_rows["note"])
             if time_str != _DANGLING
         ]
         give_event_ids(perf_events, self._id_minter)

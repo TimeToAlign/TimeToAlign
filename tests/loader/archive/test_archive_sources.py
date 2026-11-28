@@ -24,6 +24,7 @@ from timetoalign.loader._sources import (
     describe_source,
     find_sources,
     join_source,
+    member_uri,
     sort_sources,
     source_parent,
 )
@@ -35,7 +36,7 @@ from timetoalign.loader.score import MeasureMapLoader, Ms3Loader
 from timetoalign.loader.tabular import CsvLoader
 from timetoalign.testdata import ensure_data
 
-from .helpers import copies, file_members, lay_out, member, pack
+from .helpers import copies, file_members, lay_out, member, pack, same_rows
 from .helpers import same_timeline as same_result
 from .helpers import strings_in
 
@@ -77,15 +78,24 @@ class TestSameResultAsFilesystem:
         archive = pack(tmp_path / "data.zip", {"tables/test_events.csv": EVENTS_CSV})
         archived = CsvLoader.from_file(member(archive, "tables/test_events.csv"))
         on_disk = CsvLoader.from_file(EVENTS_CSV)
-        assert archived.events.table.equals(on_disk.events.table)
+        assert same_rows(archived.events.table, on_disk.events.table)
         same_result(archived, on_disk)
+        (inside,), (outside,) = archived.extractions, on_disk.extractions
+        assert inside.source == member_uri(member(archive, "tables/test_events.csv"))
+        assert outside.source == Path(EVENTS_CSV).as_posix()
+        assert inside.source_integrity == outside.source_integrity
+        assert (inside.parser, inside.parser_version, inside.parameters) == (
+            outside.parser,
+            outside.parser_version,
+            outside.parameters,
+        )
 
     def test_ms3_measures(self, tmp_path: Path) -> None:
         source = WOO71 / "WoO71.measures.tsv"
         archive = pack(tmp_path / "dcml.zip", {"repo/WoO71.measures.tsv": source})
         archived = Ms3Loader.from_file(member(archive, "repo/WoO71.measures.tsv"))
         on_disk = Ms3Loader.from_file(source)
-        assert archived.store.measures.table.equals(on_disk.store.measures.table)
+        assert same_rows(archived.store.measures.table, on_disk.store.measures.table)
         same_result(archived, on_disk)
 
     def test_ms3_auto_discover_flat(self, tmp_path: Path) -> None:
@@ -114,8 +124,9 @@ class TestSameResultAsFilesystem:
             "repo/WoO71.chords.tsv",
         ]
         for facet in ("notes", "measures", "controls"):
-            assert getattr(archived.store, facet).table.equals(
-                getattr(on_disk.store, facet).table
+            assert same_rows(
+                getattr(archived.store, facet).table,
+                getattr(on_disk.store, facet).table,
             )
         same_result(archived, on_disk)
 
@@ -138,7 +149,7 @@ class TestSameResultAsFilesystem:
         assert [
             source.at for source in archived.sources if isinstance(source, zipfile.Path)
         ] == ["notes/WoO71.notes.tsv", "measures/WoO71.measures.tsv"]
-        assert archived.store.measures.table.equals(on_disk.store.measures.table)
+        assert same_rows(archived.store.measures.table, on_disk.store.measures.table)
         same_result(archived, on_disk)
 
     def test_performance_midi(self, tmp_path: Path) -> None:
@@ -150,14 +161,14 @@ class TestSameResultAsFilesystem:
         )
         on_disk = PerformanceMidiLoader.from_file(PERFORMANCE_MIDI)
         assert archived.ticks_per_beat == on_disk.ticks_per_beat
-        assert archived.events.table.equals(on_disk.events.table)
+        assert same_rows(archived.events.table, on_disk.events.table)
         same_result(archived, on_disk)
 
     def test_score_midi_partitura(self, tmp_path: Path) -> None:
         archive = pack(tmp_path / "midi.zip", {"score/beethoven_mtd.mid": SCORE_MIDI})
         archived = ScoreMidiLoader.from_file(member(archive, "score/beethoven_mtd.mid"))
         on_disk = ScoreMidiLoader.from_file(SCORE_MIDI)
-        assert archived.events.table.equals(on_disk.events.table)
+        assert same_rows(archived.events.table, on_disk.events.table)
         same_result(archived, on_disk)
 
     def test_xml_loader(self, tmp_path: Path) -> None:
@@ -187,7 +198,7 @@ class TestSameResultAsFilesystem:
             member(archive, f"dcml/{MEASURE_MAP.name}")
         )
         on_disk = MeasureMapLoader.from_file(MEASURE_MAP)
-        assert archived.store.measures.table.equals(on_disk.store.measures.table)
+        assert same_rows(archived.store.measures.table, on_disk.store.measures.table)
         same_result(archived, on_disk)
 
     def test_iiif_manifest_json(self, tmp_path: Path) -> None:

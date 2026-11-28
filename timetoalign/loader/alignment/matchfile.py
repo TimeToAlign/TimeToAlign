@@ -121,6 +121,10 @@ class MatchfileLoader(AlignmentLoader):
     ``Provenance(method="imported", note="vienna_match v1.0.0")`` and
     ``certainty=1.0``.
 
+    Every note names the extraction of the file that first stated it and,
+    as its ``locator``, the ID that file gives it (``snote`` and ``note``
+    IDs).
+
     **Coordinate system and normalisation:**
     Score coordinates are stored as **normalised TTA coordinates** (shifted
     so the minimum onset is 0.0). A ``ShiftMap`` named ``"raw_quarters"``
@@ -284,7 +288,7 @@ class MatchfileLoader(AlignmentLoader):
         snote_id: str,
         onset_tta: Fraction,
         end_tta: Fraction,
-        source_file: str,
+        source: Source,
     ) -> bool:
         """Verify or register a score event on the shared timeline.
 
@@ -298,7 +302,8 @@ class MatchfileLoader(AlignmentLoader):
             snote_id: Score note identifier (e.g. ``"n1"``).
             onset_tta: Normalised start coordinate.
             end_tta: Normalised end coordinate.
-            source_file: Filename for diagnostic messages.
+            source: The file stating the note, named in messages; an event
+                added names its extraction.
 
         Returns:
             ``True`` if compatible (event matched or was added);
@@ -310,7 +315,7 @@ class MatchfileLoader(AlignmentLoader):
                 self._logger.warning(
                     "File '%s': snote '%s' has onset %s but timeline "
                     "stores %s — file rejected.",
-                    source_file,
+                    source.name,
                     snote_id,
                     onset_tta,
                     stored_start,
@@ -322,10 +327,21 @@ class MatchfileLoader(AlignmentLoader):
         self._score_events[snote_id] = (onset_tta, end_tta)
         if self._score_timeline is not None:
             self._score_timeline.add_events(
-                [{"id": snote_id, "start": onset_tta, "end": end_tta}],
+                [
+                    {
+                        "id": snote_id,
+                        "start": onset_tta,
+                        "end": end_tta,
+                        **self._stamp(source, snote_id),
+                    }
+                ],
                 allow_expansion=True,
             )
         return True
+
+    def _backends(self) -> tuple[str, ...]:
+        """Partitura reads the match file."""
+        return ("partitura",)
 
     def _load_source(self, path: Source) -> None:
         """Parse a single .match file and accumulate internal state.
@@ -431,6 +447,7 @@ class MatchfileLoader(AlignmentLoader):
                         "start": onset_tta,
                         "duration": end_tta - onset_tta,
                         "end": end_tta,
+                        **self._stamp(path, sid),
                     }
                 )
                 self._score_events[sid] = (onset_tta, end_tta)
@@ -472,9 +489,7 @@ class MatchfileLoader(AlignmentLoader):
                 onset_tta = self._to_tta_fraction(onset_raw, offset)
                 end_tta = self._to_tta_fraction(end_raw, offset)
 
-                if not self._check_or_add_score_event(
-                    sid, onset_tta, end_tta, path.name
-                ):
+                if not self._check_or_add_score_event(sid, onset_tta, end_tta, path):
                     self._rejected_files.append(path)
                     self._logger.warning(
                         "File '%s' rejected due to incompatible " "score coordinates.",
@@ -490,6 +505,7 @@ class MatchfileLoader(AlignmentLoader):
                     "id": note["id"],
                     "start": float(note["note_on_tick"]),
                     "end": float(note["note_off_tick"]),
+                    **self._stamp(path, str(note["id"])),
                 }
             )
 

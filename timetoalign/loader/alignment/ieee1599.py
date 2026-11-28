@@ -143,7 +143,8 @@ from timetoalign.core.ids import CMAP_PREFIX
 from timetoalign.display.html import code
 from timetoalign.loader._ids import give_event_ids
 from timetoalign.loader._sources import Source
-from timetoalign.loader.base import LoadSourceResult
+from timetoalign.loader._xml import element_paths
+from timetoalign.loader.base import EXTRACTION_ID, LOCATOR, LoadSourceResult
 from timetoalign.loader.format.xml import XmlLoader
 from timetoalign.loader.graphical.paths import group_into_accolades
 from timetoalign.maps.interval import IntervalToConstantMap
@@ -460,6 +461,13 @@ class Ieee1599Loader(XmlLoader):
     state gets no table, except that ``spine``, ``los``, ``notational`` and
     ``audio`` are always present with their stable schema, even when empty.
 
+    Every event names the file's extraction and, as its ``locator``, the
+    ``id`` its element states, else the element's path in the document
+    (``/ieee1599/logic/los/part/measure[2]/voice/chord[3]/notehead``; a
+    step's position among same-named siblings, from 1, where there are
+    several). A document read with ``load_string`` or ``load_element``
+    names no extraction.
+
     Examples:
         >>> loader = Ieee1599Loader.from_file("gymnopedie_01.xml")
         >>> bundle = loader.create_bundle()
@@ -494,6 +502,8 @@ class Ieee1599Loader(XmlLoader):
         self._claim_field: MatchClaimField | None = None
         self._timeline_cache: dict[str, Timeline] = {}
         self._name: str | None = None
+        #: The path of every element of the document read, by ``id(element)``.
+        self._paths: dict[int, str] = {}
 
     # region Loading
 
@@ -580,6 +590,7 @@ class Ieee1599Loader(XmlLoader):
         Args:
             root: The ``<ieee1599>`` root element.
         """
+        self._paths = element_paths(root)
         self._read_metadata(root)
         self._read_spine(root)
         self._read_los(root)
@@ -589,6 +600,20 @@ class Ieee1599Loader(XmlLoader):
         self._log_skipped_sections(root)
         self._store_tables()
         self._build_claim_field()
+
+    def _place(self, element: ET.Element) -> dict[str, str | None]:
+        """The registry keys of a row read from *element*: where, and by which extraction.
+
+        The locator is the element's ``id`` where it states one, else its
+        path in the document (``/ieee1599/logic/los/part/measure[2]/...``);
+        the extraction is the file's, none for a document read from XML in
+        memory.
+        """
+        reading = self._reading
+        return {
+            LOCATOR: element.get("id") or self._paths[id(element)],
+            EXTRACTION_ID: None if reading is None else self._extraction_of(reading).id,
+        }
 
     def _mint_timeline_uid(self, unit: TimeUnit, role: str) -> str:
         """Mint the uid of one layer's timeline and remember the role it leads with."""
@@ -642,6 +667,7 @@ class Ieee1599Loader(XmlLoader):
                     "event_type": "SpineEvent",
                     "instant": timing,
                     "hpos": hpos,
+                    **self._place(event),
                 }
             )
         self._spine_rows = _prune_columns(self._spine_rows)
@@ -752,11 +778,13 @@ class Ieee1599Loader(XmlLoader):
         )
 
         if element.tag == "rest":
-            self._los_rows.append(self._los_row(base, "Rest"))
+            self._los_rows.append(
+                self._los_row({**base, **self._place(element)}, "Rest")
+            )
             return
 
         for index, notehead in enumerate(element.findall("notehead")):
-            row = dict(base)
+            row = {**base, **self._place(notehead)}
             row["notehead_index"] = index
             pitch = notehead.find("pitch")
             if pitch is not None:
@@ -778,7 +806,7 @@ class Ieee1599Loader(XmlLoader):
         coordinate = self._coordinate_of(event_ref, "syllable")
         if coordinate is None:
             return
-        row = dict(context)
+        row = {**context, **self._place(syllable)}
         row["event_ref"] = event_ref
         row["instant"] = coordinate
         row["text"] = _text_or_none(syllable)
@@ -812,6 +840,8 @@ class Ieee1599Loader(XmlLoader):
             "tie": None,
             "text": None,
             "hyphen": None,
+            LOCATOR: None,
+            EXTRACTION_ID: None,
         }
         row.update({key: values[key] for key in values if key in row})
         return row
@@ -964,6 +994,7 @@ class Ieee1599Loader(XmlLoader):
             "source_bbox": None,
             "file_name": page["file_name"],
             "position_in_group": page["position_in_group"],
+            **self._place(graphic),
         }
         if any(value % 1 for value in source_coordinates):
             row["source_bbox"] = {
@@ -1027,6 +1058,7 @@ class Ieee1599Loader(XmlLoader):
                             "instant": start_time,
                             "event_ref": event_ref,
                             "file_name": file_name,
+                            **self._place(event),
                         }
                     )
             give_event_ids(spec.rows, self._id_minter)

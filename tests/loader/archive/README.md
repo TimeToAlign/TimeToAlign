@@ -20,7 +20,11 @@ test packs files into a ZIP archive in `tmp_path`, loads the member, loads
 the very same bytes from the filesystem, and compares the two results with
 exact equality:
 
-- event loaders: the events table (`pa.Table.equals`) and the created
+- event loaders: the events table (`pa.Table.equals`, every column but
+  `extraction_id`: an extraction names its source file, a path on disk or
+  the member's `jar:` URI, so the two readings are two extractions of the
+  same bytes, and `test_csv_loader` checks that their digests and
+  everything else they record but the source agree) and the created
   timeline (`to_dict()`);
 - score loaders: the store's facet tables and the created timeline (its
   events, its measure map), so ms3 companion discovery inside an archive is

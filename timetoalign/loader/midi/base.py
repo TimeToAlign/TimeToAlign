@@ -117,6 +117,10 @@ class MidiLoader(EventLoader):
     ``time_signatures`` (see :func:`_stated_meter_and_tempo`). The timeline
     :meth:`create_timeline` builds stays on ticks and carries them as its
     conversion maps and its measure map (:meth:`MidiStore.create_timeline`).
+    Every event names its file's extraction and, as its ``locator``, the
+    MIDI message it was read from: ``track:<i> message:<j>``, the track's
+    index in the file and the message's in the track, both from 0 (a
+    note's note-on message).
     """
 
     _default_unit: ClassVar[TimeUnit] = TimeUnit.ticks
@@ -124,6 +128,10 @@ class MidiLoader(EventLoader):
 
     #: The end of track of the file read last, in ticks; None before a file is read.
     _end_of_track: int | None = None
+
+    def _backends(self) -> tuple[str, ...]:
+        """mido reads the file's messages."""
+        return ("mido",)
 
     @property
     @abstractmethod
@@ -210,8 +218,9 @@ class MidiLoader(EventLoader):
             # active_notes: (channel, pitch) -> event_dict
             active_notes: dict[tuple[int, int], dict[str, Any]] = {}
 
-            for msg in track:
+            for j, msg in enumerate(track):
                 absolute_time += msg.time
+                locator = f"track:{i} message:{j}"
 
                 # Handle Note Events
                 if msg.type == "note_on" or msg.type == "note_off":
@@ -240,6 +249,7 @@ class MidiLoader(EventLoader):
                             "control": None,
                             "value": None,
                             "program": None,
+                            "locator": locator,
                         }
                         if parse_durations:
                             active_notes[(channel, note)] = note_event
@@ -280,6 +290,7 @@ class MidiLoader(EventLoader):
                         "pitch": None,
                         "velocity": None,
                         "program": None,
+                        "locator": locator,
                     }
                     events.append(cc_event)
 
@@ -300,6 +311,7 @@ class MidiLoader(EventLoader):
                         "velocity": None,
                         "control": None,
                         "value": None,
+                        "locator": locator,
                     }
                     events.append(pc_event)
 

@@ -60,7 +60,7 @@ def _quantized(time: int, unit: int | float) -> int | float:
 
 def _partitura_note_velocities(
     mid: mido.MidiFile, quantization_unit: int | float | None
-) -> list[tuple[int | float, int, int | float, int]]:
+) -> list[tuple[int | float, int, int | float, int, str]]:
     """Read every note of a MIDI file in Partitura's score numbering.
 
     ``partitura.load_score_midi`` pairs note-ons with note-offs but keeps no
@@ -75,25 +75,32 @@ def _partitura_note_velocities(
         quantization_unit: The quantization Partitura applies to times.
 
     Returns:
-        ``(onset, pitch, duration, velocity)`` per note, at index ``i`` for
-        Partitura's note ``n{i}``.
+        ``(onset, pitch, duration, velocity, locator)`` per note, at index
+        ``i`` for Partitura's note ``n{i}``; the locator names the note-on
+        message, ``track:<i> message:<j>``.
     """
-    notes: dict[tuple[int, int], list[tuple[int | float, int, int | float, int]]] = {}
+    notes: dict[
+        tuple[int, int], list[tuple[int | float, int, int | float, int, str]]
+    ] = {}
     for track_number, track in enumerate(mid.tracks):
         time = 0
-        sounding: dict[tuple[int, int], tuple[int | float, int]] = {}
-        for message in track:
+        sounding: dict[tuple[int, int], tuple[int | float, int, str]] = {}
+        for index, message in enumerate(track):
             time += message.time
             if message.type not in ("note_on", "note_off"):
                 continue
             at = _quantized(time, quantization_unit) if quantization_unit else time
             key = (message.channel, message.note)
             if message.type == "note_on" and message.velocity > 0:
-                sounding[key] = (at, message.velocity)
+                sounding[key] = (
+                    at,
+                    message.velocity,
+                    f"track:{track_number} message:{index}",
+                )
             elif key in sounding:
-                onset, velocity = sounding.pop(key)
+                onset, velocity, locator = sounding.pop(key)
                 notes.setdefault((track_number, message.channel), []).append(
-                    (onset, message.note, at - onset, velocity)
+                    (onset, message.note, at - onset, velocity, locator)
                 )
     return [note for key in sorted(notes) for note in notes[key]]
 
@@ -118,7 +125,11 @@ class ScoreMidiLoader(MidiLoader):
     the first such note; ``parser="mido"`` reads every velocity.
 
     A MIDI file states no note IDs, so every event ID is minted by the
-    loader's minter (``note_…``), whichever parser reads the file.
+    loader's minter (``note_…``), whichever parser reads the file. Each
+    note's ``locator`` names its note-on message (``track:<i> message:<j>``,
+    see :class:`MidiLoader`); a note the default path cannot join to the
+    file's messages, as for its velocity, names none (null), nor does any
+    note read with ``assign_note_ids=False``.
     """
 
     _event_data_class = ScoreMidiEventData
@@ -189,6 +200,10 @@ class ScoreMidiLoader(MidiLoader):
             "assign_note_ids": self._assign_note_ids,
         }
 
+    def _backends(self) -> tuple[str, ...]:
+        """mido reads the messages; Partitura, unless ``parser="mido"``, the score."""
+        return ("mido",) if self._parser == "mido" else ("mido", "partitura")
+
     @property
     def ticks_per_beat(self) -> int | None:
         """Return the ticks per beat (PPQ) of the loaded file."""
@@ -197,10 +212,10 @@ class ScoreMidiLoader(MidiLoader):
     def _stated_velocities(
         self,
         note_array: Any,
-        stated: list[tuple[int | float, int, int | float, int]],
+        stated: list[tuple[int | float, int, int | float, int, str]],
         source: Source,
-    ) -> list[int | None]:
-        """Return the velocity the file states for each of Partitura's notes.
+    ) -> list[tuple[int | None, str | None]]:
+        """Return the velocity and note-on message of each of Partitura's notes.
 
         A row is joined to the file's note of its number (``n{i}``) when that
         note has the row's onset, pitch and duration. A row that cannot be
@@ -214,13 +229,14 @@ class ScoreMidiLoader(MidiLoader):
             source: The file, named in the warning.
 
         Returns:
-            One velocity per row, None where Partitura assigned no note ID
+            One velocity and locator (``track:<i> message:<j>``) per row,
+            both None where Partitura assigned no note ID
             (``assign_note_ids=False``, so no note of the file is named) or
             where the row cannot be joined.
         """
         if not self._assign_note_ids:
-            return [None] * len(note_array)
-        velocities: list[int | None] = []
+            return [(None, None)] * len(note_array)
+        velocities: list[tuple[int | None, str | None]] = []
         first_unjoined: tuple[str, tuple[int, int, int]] | None = None
         for row in note_array:
             note_id = str(row["id"])
@@ -228,15 +244,15 @@ class ScoreMidiLoader(MidiLoader):
             number = int(match.group(1)) if match else len(stated)
             note = (int(row["onset_div"]), int(row["pitch"]), int(row["duration_div"]))
             if number < len(stated) and stated[number][:3] == note:
-                velocities.append(stated[number][3])
+                velocities.append((stated[number][3], stated[number][4]))
                 continue
-            velocities.append(None)
+            velocities.append((None, None))
             if first_unjoined is None:
                 first_unjoined = (note_id, note)
         if first_unjoined is not None:
             note_id, (onset, pitch, duration) = first_unjoined
             warnings.warn(
-                f"{velocities.count(None)} of {len(velocities)} notes of "
+                f"{velocities.count((None, None))} of {len(velocities)} notes of "
                 f"'{describe_source(source)}' "
                 f"are left without a velocity: Partitura's note {note_id!r} (onset "
                 f"{onset}, pitch {pitch}, duration {duration}) is the first that is "
@@ -332,7 +348,7 @@ class ScoreMidiLoader(MidiLoader):
         events = []
 
         # Iterate over structured array
-        for row, velocity in zip(note_array, velocities):
+        for row, (velocity, locator) in zip(note_array, velocities):
             # row fields: onset_div, duration_div, pitch, voice, id, staff, ...
             # No "id": a MIDI file states no note IDs. Partitura's numbering
             # serves the velocity join only; the loader mints the IDs.
@@ -356,6 +372,7 @@ class ScoreMidiLoader(MidiLoader):
                 "control": None,
                 "value": None,
                 "program": None,
+                "locator": locator,
             }
             events.append(event)
 

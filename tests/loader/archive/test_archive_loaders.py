@@ -19,7 +19,15 @@ import pytest
 from timetoalign.loader import AudioLoader
 from timetoalign.testdata import ensure_data
 
-from .helpers import copies, file_members, lay_out, member, pack, same_timeline
+from .helpers import (
+    copies,
+    file_members,
+    lay_out,
+    member,
+    pack,
+    same_rows,
+    same_timeline,
+)
 
 SCORE = ensure_data("score")
 AUDIO = ensure_data("audio")
@@ -74,7 +82,7 @@ class TestScoreLoaders:
             member(archive, f"flow/{source.name}"), **keywords
         )
         on_disk = loader_class.from_file(source, **keywords)
-        assert archived.events.table.equals(on_disk.events.table)
+        assert same_rows(archived.events.table, on_disk.events.table)
         same_timeline(archived, on_disk)
         assert [path.name for path in copies(cache_dir)] == [source.name]
 
@@ -183,7 +191,7 @@ class TestProjectLoaders:
         assert archived.catalogue == on_disk.catalogue
         assert archived.store.notes is not None and on_disk.store.notes is not None
         assert len(on_disk.store.notes.table) > 0
-        assert archived.store.notes.table.equals(on_disk.store.notes.table)
+        assert same_rows(archived.store.notes.table, on_disk.store.notes.table)
         entry = next(
             key
             for key, value in on_disk.catalogue.items()
@@ -418,7 +426,7 @@ class TestTabularJsonAndMaps:
         archive = pack(tmp_path / "labels.zip", {f"lab/{lab.name}": lab})
         archived = LabLoader().load(member(archive, f"lab/{lab.name}"))
         on_disk = LabLoader().load(lab)
-        assert archived.events.table.equals(on_disk.events.table)
+        assert same_rows(archived.events.table, on_disk.events.table)
         same_timeline(archived, on_disk)
 
     def test_solo_loader(self, tmp_path: Path) -> None:
@@ -427,7 +435,7 @@ class TestTabularJsonAndMaps:
         archive = pack(tmp_path / "solo.zip", {f"pp/{SOLO.name}": SOLO})
         archived = SoloLoader.from_file(member(archive, f"pp/{SOLO.name}"))
         on_disk = SoloLoader.from_file(SOLO)
-        assert archived.events.table.equals(on_disk.events.table)
+        assert same_rows(archived.events.table, on_disk.events.table)
         same_timeline(archived, on_disk)
 
     def test_json_loader(self, tmp_path: Path) -> None:

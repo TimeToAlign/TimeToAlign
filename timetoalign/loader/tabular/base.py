@@ -57,7 +57,12 @@ from timetoalign.core.time import (
     combine_number_columns,
 )
 from timetoalign.loader._sources import Source, describe_source, readable
-from timetoalign.loader.base import EventLoader, LoadSourceResult
+from timetoalign.loader.base import (
+    LOCATOR,
+    EventLoader,
+    LoadSourceResult,
+    row_locators,
+)
 from timetoalign.storage.schema import (
     ComputedField,
     Field,
@@ -142,6 +147,10 @@ class TabularLoader(EventLoader):
             :class:`SemanticField` instances that promote raw fields to
             paired semantic fields.
         coordinate_unit: TimeUnit for coordinate values.
+
+    Every event names its file's extraction and, as its ``locator``, its
+    data row: ``row:<i>``, counted from 0 in the rows pandas reads (the
+    header line and blank lines are not rows).
 
     Examples:
         >>> from timetoalign.core import IntField
@@ -540,6 +549,10 @@ class TabularLoader(EventLoader):
 
     # region Vectorized Loading
 
+    def _backends(self) -> tuple[str, ...]:
+        """pandas reads the table."""
+        return ("pandas",)
+
     def _load_source(self, source: Source) -> LoadSourceResult:
         """Load a single source file (VECTORIZED).
 
@@ -592,6 +605,9 @@ class TabularLoader(EventLoader):
 
         # Step 3c: Post-process hook (subclass extension point).
         self._post_process_columns(df, columns)
+
+        # Each event's place in the file: its data row, counted from 0.
+        columns[LOCATOR] = row_locators(len(df))
 
         # Step 4: Build metadata
         metadata = {

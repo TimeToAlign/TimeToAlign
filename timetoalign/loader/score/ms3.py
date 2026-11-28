@@ -28,6 +28,7 @@ from timetoalign.loader._sources import (
     source_parent,
     source_record,
 )
+from timetoalign.loader.base import row_locators
 
 from .base import ScoreLoader
 from .store import ScoreStore
@@ -110,6 +111,10 @@ class Ms3Loader(ScoreLoader):
     - duration, nominal_duration, scalar: Symbolic duration
     - tpc, midi, name, octave: Pitch info
     - tied, gracenote, chord_id: Note attributes
+
+    Every event names the extraction of its facet file and, as its
+    ``locator``, its data row there: ``row:<i>``, counted from 0 below the
+    header line.
     """
 
     # Known DCML/ms3 facet names (used for discovery).
@@ -308,6 +313,10 @@ class Ms3Loader(ScoreLoader):
         )
 
     # endregion
+
+    def _backends(self) -> tuple[str, ...]:
+        """ms3 reads a facet table (pandas the measures)."""
+        return ("ms3", "pandas")
 
     def _load_source(self, source: Source) -> ScoreStore:
         """Load TSV file(s) and return ScoreStore.
@@ -736,6 +745,8 @@ class Ms3Loader(ScoreLoader):
                 }
             )
 
+        # Row i of the table is the facet's data row i.
+        self._stamp_rows(note_rows, source, row_locators(len(df)).to_pylist())
         notes_data = NoteEventData.from_dicts(
             note_rows,
             unit=TimeUnit.quarters,
@@ -1067,6 +1078,8 @@ class Ms3Loader(ScoreLoader):
                 }
             )
 
+        # Row i of the table is the facet's data row i.
+        self._stamp_rows(measure_rows, source, row_locators(len(df)).to_pylist())
         measures_data = MeasureData.from_dicts(
             measure_rows,
             unit=TimeUnit.quarters,
@@ -1183,6 +1196,8 @@ class Ms3Loader(ScoreLoader):
                 }
             )
 
+        # Row i of the table is the facet's data row i.
+        self._stamp_rows(annotation_rows, source, row_locators(len(df)).to_pylist())
         annotations_data = AnnotationEventData.from_dicts(
             annotation_rows,
             unit=TimeUnit.quarters,
@@ -1295,6 +1310,8 @@ class Ms3Loader(ScoreLoader):
                 }
             )
 
+        # Row i of the table is the facet's data row i.
+        self._stamp_rows(control_rows, source, row_locators(len(df)).to_pylist())
         controls_data = ControlEventData.from_dicts(
             control_rows,
             unit=TimeUnit.quarters,

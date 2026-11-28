@@ -80,6 +80,7 @@ from __future__ import annotations
 
 import csv
 import logging
+from collections.abc import Callable
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any
 
@@ -165,6 +166,10 @@ class ParangonadaLoader(AlignmentLoader):
        individual timelines.
 
     The loader reads existing alignments; it never runs an aligner.
+
+    Every event names the extraction of the file stating it (``part.csv``,
+    ``ppart.csv``, a ``.beats`` or ``.dyn`` file) and, as its ``locator``,
+    its data row there: ``row:<i>``, counted from 0 below the header line.
     """
 
     def __init__(self, *, seed: int | None = None) -> None:
@@ -235,8 +240,9 @@ class ParangonadaLoader(AlignmentLoader):
         # The score is identical across performances; parse it once from
         # the first performer's part.csv.
         _first_key, first_dir = performers[0]
-        score_rows = self._read_csv(first_dir / "part.csv")
-        self._build_score_timelines(score_rows)
+        part = first_dir / "part.csv"
+        score_rows = self._read_csv(part)
+        self._build_score_timelines(score_rows, part)
 
         score_q_by_id = {
             row["id"]: Fraction(str(row["onset_quarter"])) for row in score_rows
@@ -299,7 +305,9 @@ class ParangonadaLoader(AlignmentLoader):
         with path.open("r", encoding="utf-8", newline="") as handle:
             return list(csv.DictReader(handle, delimiter="\t"))
 
-    def _build_score_timelines(self, score_rows: list[dict[str, str]]) -> None:
+    def _build_score_timelines(
+        self, score_rows: list[dict[str, str]], part: Source
+    ) -> None:
         """Build the two shared logical score timelines from ``part.csv``.
 
         The continuous timeline carries quarter-note onsets (exact
@@ -333,8 +341,9 @@ class ParangonadaLoader(AlignmentLoader):
                     # struct so the timeline affords the EP semantic field.
                     "pitch": {"midi_number": int(row["pitch"])},
                     "voice": int(row["voice"]),
+                    **self._stamp(part, f"row:{i}"),
                 }
-                for row in score_rows
+                for i, row in enumerate(score_rows)
             ]
         )
 
@@ -352,8 +361,9 @@ class ParangonadaLoader(AlignmentLoader):
                     "event_type": "Note",
                     "pitch": {"midi_number": int(row["pitch"])},
                     "voice": int(row["voice"]),
+                    **self._stamp(part, f"row:{i}"),
                 }
-                for row in score_rows
+                for i, row in enumerate(score_rows)
             ]
         )
         # divs → quarters: quarters = div / 32 - 1/2 (the score's anacrusis
@@ -390,7 +400,8 @@ class ParangonadaLoader(AlignmentLoader):
         """
         sample_rate = self._resolve_sample_rate(performer_key, audio_dir)
 
-        ppart_rows = self._read_csv(performer_dir / "ppart.csv")
+        ppart = performer_dir / "ppart.csv"
+        ppart_rows = self._read_csv(ppart)
         perf_sec_by_id = {row["id"]: float(row["onset_sec"]) for row in ppart_rows}
 
         # Physical timeline lengths from the recording's audio.
@@ -420,8 +431,9 @@ class ParangonadaLoader(AlignmentLoader):
                     "event_type": "Note",
                     "pitch": {"midi_number": int(row["pitch"])},
                     "velocity": int(row["velocity"]),
+                    **self._stamp(ppart, f"row:{i}"),
                 }
-                for row in ppart_rows
+                for i, row in enumerate(ppart_rows)
             ]
         )
 
@@ -429,7 +441,9 @@ class ParangonadaLoader(AlignmentLoader):
         # the seconds timeline with Beat / Dynamics events.  The schema
         # grows (new columns) per successive add_events call; absent
         # columns are null-filled.
-        self._add_feature_events(performer_key, features_dir, perf_cpt, self._id_minter)
+        self._add_feature_events(
+            performer_key, features_dir, perf_cpt, self._id_minter, self._stamp
+        )
 
         perf_dpt = DiscretePhysicalTimeline(
             length=samples_length,
@@ -445,8 +459,9 @@ class ParangonadaLoader(AlignmentLoader):
                     "event_type": "Note",
                     "pitch": {"midi_number": int(row["pitch"])},
                     "velocity": int(row["velocity"]),
+                    **self._stamp(ppart, f"row:{i}"),
                 }
-                for row in ppart_rows
+                for i, row in enumerate(ppart_rows)
             ]
         )
         perf_dpt.add_conversion_map(
@@ -467,6 +482,7 @@ class ParangonadaLoader(AlignmentLoader):
         features_dir: Source,
         perf_cpt: ContinuousPhysicalTimeline,
         minter: IdMinter,
+        stamp: Callable[[Source, str], dict[str, str | None]],
     ) -> None:
         """Add measured ``Beat`` / ``Dynamics`` events to the seconds timeline.
 
@@ -490,6 +506,8 @@ class ParangonadaLoader(AlignmentLoader):
                 holding its ``Note`` events; feature events are appended in
                 place via ``add_events(..., allow_expansion=True)``.
             minter: The loader's minter, which the events' IDs come from.
+            stamp: The loader's registry keys of an event read from a file
+                at a locator (:meth:`Loader._stamp`).
         """
         beats_path = cls._glob_feature_file(features_dir, performer_key, "beats")
         dyn_path = cls._glob_feature_file(features_dir, performer_key, "dyn")
@@ -527,8 +545,9 @@ class ParangonadaLoader(AlignmentLoader):
                 "bpm": float(row["BPM"]),
                 "interp": int(row["interp"]),
                 "swap": int(row["swap"]),
+                **stamp(beats_path, f"row:{i}"),
             }
-            for row in beats_rows
+            for i, row in enumerate(beats_rows)
         ]
         dyn_events = [
             {
@@ -539,8 +558,9 @@ class ParangonadaLoader(AlignmentLoader):
                 "velocity_mean": float(row["velocity_mean"]),
                 "velocity_max": float(row["velocity_max"]),
                 "interp": int(row["interp"]),
+                **stamp(dyn_path, f"row:{i}"),
             }
-            for row in dyn_rows
+            for i, row in enumerate(dyn_rows)
         ]
         give_event_ids(beat_events, minter)
         give_event_ids(dyn_events, minter)

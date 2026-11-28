@@ -655,41 +655,56 @@ equal length) changes one file in a copy of the extracted archive.
   MTD0807 is the CD track (holding the excerpt as its child), then the 13
   timelines of `THEME_FILES` in its order, named `B689 (MTD 0807), EDM-orig
   MIDI` … `B689 (MTD 0807), EDM-alig CSV`; the excerpt keeps `Theme B689
-  (MTD 0807)`. MIDI, MusicXML and Sibelius timelines are quarters,
-  fraction (`clt`); CSVs and the excerpt seconds, float (`cpt`); PDFs
-  points, float (`cgt`). For all four themes: 1 + 4 × 13 roots in the
-  bundle's order of tracks first.
+  (MTD 0807)`. A MIDI timeline is on the file's own axis, ticks, int
+  (`dlt`, a `DiscreteLogicalTimeline`), never quarters (T244); MusicXML and
+  Sibelius timelines are quarters, fraction (`clt`); CSVs and the excerpt
+  seconds, float (`cpt`); PDFs points, float (`cgt`). For all four themes:
+  1 + 4 × 13 roots in the bundle's order of tracks first.
+* **A MIDI file's timeline is the MIDI loader's.** Each MIDI timeline is
+  the one `ScoreMidiLoader(parser="mido")` builds of the file: its notes
+  hold the IDs that loader mints for the file read alone (equal lists),
+  their registry rows name its extraction (parser `ScoreMidiLoader`, the
+  file's `jar:` URI and SHA-256 digest) and, as locators, the note-on
+  messages (`track:1 message:1`, `track:1 message:3`, … for MTD0807's
+  EDM-corr file, whose second track holds the notes); the loader's
+  `extractions` are these four files' extractions. Quarters reach the
+  timeline only through its attached `TicksToQuarters` C-Map at 480 ticks
+  per quarter (`3840` ticks → `8` quarters).
 * **Each timeline is as long as its file states.** MIDI: the end of track
-  in exact quarters (MTD0807: EDM-orig `3839/480`, EDM-corr and SCORE `8`,
-  EDM-alig `1369/480`; the other themes as listed above over 480); the
+  in ticks, an int (MTD0807: EDM-orig `3839`, EDM-corr and SCORE `3840`,
+  EDM-alig `1369`; the other themes as listed above); the
   MusicXML: the end of its last measure (`9`, `17`, `6`, `17`); the
   excerpt `EndTime − StartTime` from the decimal strings (`2.8`, `4.5`,
   `7.9`, `5.55`, the last the float of `"5.55"`); every CSV, PDF and the
   Sibelius file `None`. A length that is the last note's end and not the
-  end of track (`3839/480` for EDM-corr) would show the accessor unused.
+  end of track (`3839` for EDM-corr) would show the accessor unused.
 * **Unequal known lengths take part through a child, never stretched.**
   The groups' members of known length that differ are the excerpt and the
   EDM-alig MIDI, and the MusicXML and the SCORE MIDI. In all four themes
   the EDM-alig MIDI ends after the excerpt, so the member is its child
   `B689 (MTD 0807), EDM-alig MIDI, span of the excerpt`, at offset 0, as
-  long as the excerpt in quarters: the excerpt's exact length as META's
-  decimals write it, `EndTime − StartTime` (`14/5`, `9/2`, `79/10`,
-  `111/20`), never the float of it rebuilt into a ratio (`Fraction(2.8)`
-  would be a dyadic the file never states). In all four themes the
+  long as the excerpt on the MIDI file's ticks: the excerpt's exact length
+  as META's decimals write it, `EndTime − StartTime` (`14/5`, `9/2`,
+  `79/10`, `111/20` quarters, EDM-alig's quarters being the excerpt's
+  seconds), through the C-Map at 480 ticks per quarter: `1344`, `2160`,
+  `3792`, `2664` ticks, int (T244; never the float of the seconds rebuilt
+  into a ratio). In all four themes the
   MusicXML ends after the SCORE MIDI (9 against 8, 17 against 16, 6
   against 5, 17 against 16) and takes part through its child `…, SCORE
   MusicXML, span of the SCORE MIDI` as long as the MIDI (8, 16, 5, 16).
   Three cases are made by editing a copy: MTD1044's MusicXML without its
   last bar (4 quarters, against the MIDI's 5) makes the SCORE MIDI the
   longer, taking part through its child `B926 (MTD 1044), SCORE MIDI, span
-  of the SCORE MusicXML` of length 4 (the SCORE group then holds the
+  of the SCORE MusicXML` of length `1920` ticks, int (4 quarters through
+  the C-Map; T244) (the SCORE group then holds the
   MusicXML whole and the MIDI's child); MTD0807's `EndTime` `00:03` →
   `00:04` makes
   the excerpt (3.8 s) the longer, and its child `Theme B689 (MTD 0807),
   span of the EDM-alig MIDI` is `float(1369/480)` = `2.8520833333333333`
-  seconds long, the EDM-alig MIDI taking part whole; an EDM-alig MIDI
-  rewritten to end at tick 1344 (`14/5`, the excerpt's `2.8` exactly)
-  gives no child on either side. A child is never a derivation target and
+  seconds long (the MIDI file's 1369 ticks in quarters through its C-Map),
+  the EDM-alig MIDI taking part whole; an EDM-alig MIDI rewritten to end
+  at tick 1344 (`14/5`, the excerpt's `2.8` exactly) gives no child on
+  either side, its length `1344`. A child is never a derivation target and
   never named by an item.
 * **Grouped by encoding.** `create_groups(timelines)` gives per theme four
   groups, named `B689 (MTD 0807), EDM-orig`, `…, EDM-corr`, `…, SCORE`,
@@ -708,15 +723,13 @@ equal length) changes one file in a copy of the extracted archive.
   the library's rule for members of unknown length, pinned here so that
   a change of it shows. The conversion is tested on the two members of
   known length grouped alone: the excerpt (`2.8` seconds, float) and the
-  child (`14/5` quarters, fraction). Start and end meet exactly (`0.0` s
-  → `0`, `2.8` s → `14/5`, `14/5` → `2.8` s), and so does `1.4` s → `7/5`.
-  Between them a position carries the rounding of the float axis, which
-  holds `2.8` as a dyadic a little under `14/5`: `1.0` s →
-  `15762598695796736/15762598695796735` quarters, `1` quarter →
-  `0.9999999999999999` s, `7/3` quarters → `2.333333333333333` s. These
-  are the values the library returns, asserted exactly; they are float
-  arithmetic, not a stretch, and a child of `Fraction(2.8)` would hide
-  that rounding by inventing a length the file does not state.
+  child (`1344` ticks, int; T244). Start and end meet exactly (`0.0` s →
+  `0`, `2.8` s → `1344`, `1344` → `2.8` s), and so does `1.4` s → `672`;
+  `1.0` s gives the int tick `480`. The other way a position carries the
+  rounding of the float axis, which holds `2.8` as a dyadic a little
+  under `14/5`: tick `480` → `0.9999999999999999` s, tick `1120` (`7/3`
+  quarters) → `2.333333333333333` s. These are the values the library
+  returns, asserted exactly; they are float arithmetic, not a stretch.
 * **Each timeline names its file.** Every one of the fourteen timelines
   states `lrmoo:R7i_is_exemplified_by` an item `{"type": ["melod:Item"],
   "label": "MTD/<folder>/<stem>.<ext>", "schema:isPartOf": [{"id":
@@ -741,14 +754,17 @@ equal length) changes one file in a copy of the extracted archive.
   semitone` after MTD0807's META is edited to `-1`; `dcterms:rights` In
   Copyright and `dcterms:accessRights` COAR metadata-only access, as the
   track has them; provenance note the theme's META file.
-* **The notes are the MIDI file's, in exact quarters.** MTD0807's EDM-corr
-  MIDI timeline holds 10 notes, onsets `0, 1, 2, 3, 4, 5, 13/2, 20/3,
-  41/6, 7` (ticks `0 … 3360` over 480), pitches `60, 65, 68, 72, 77, 80,
-  79, 77, 76, 77`, velocity 60, the ends `479/480 … 3839/480` (each a tick
-  before the next onset), the timeline `3840/480` long; the ten claims
-  name these notes in this order, at these onsets. A triplet onset that a
-  float could not hold (`20/3`) is the test that no float passed between
-  file and timeline. Every MIDI timeline holds its file's notes, with the
+* **The notes are the MIDI file's, in its ticks.** MTD0807's EDM-corr
+  MIDI timeline holds 10 notes, onsets `0, 480, 960, 1440, 1920, 2400,
+  3120, 3200, 3280, 3360` ticks (`0, 1, 2, 3, 4, 5, 13/2, 20/3, 41/6, 7`
+  quarters through the C-Map), pitches `60, 65, 68, 72, 77, 80, 79, 77,
+  76, 77` in the MIDI loader's `pitch` column (MIDI pitches as ints, as
+  `ScoreMidiLoader` writes them; T244), velocity 60, the ends `479 … 3839` (each a tick before the next
+  onset), the timeline `3840` ticks long; the ten claims name these notes
+  in this order, at these onsets. MTD1044's onsets are `0, 480, 960, 1520,
+  1600, 1680, 1760, 1840, 1920, 2040` (its sixths `19/6`, `10/3`, `11/3`,
+  `23/6` quarters on the tick grid). Every MIDI timeline holds its file's
+  notes, with the
   same pitches (EDM-orig's and SCORE's at the same onsets, EDM-alig's at
   the rows' ticks); `to_file(..., events=False)` writes none of them. The
   EDM-corr file is in the shape of MTD's EDM files (type 1 with a meta
@@ -757,9 +773,11 @@ equal length) changes one file in a copy of the extracted archive.
 * **Each alignment row but the last is one claim, at the exact onset.**
   Claims per theme = rows − 1 (10, 16, 10, 28; 64 in all), because every
   onset of these themes holds one note. MTD0807's row `6.66667;2.20401` is
-  the claim from the note at `20/3` (pitch 77) of the EDM-corr MIDI
-  timeline to CHUNK on the excerpt, anchored at exactly `Fraction(20, 3)`
-  quarters and `2.20401` seconds. MTD1044's `3.16667` is `19/6`. With
+  the claim from the note at tick `3200` (pitch 77) of the EDM-corr MIDI
+  timeline to CHUNK on the excerpt, anchored at tick `3200` (int, on the
+  MIDI timeline's own axis; T244) and `2.20401` seconds: the row's
+  quarters (`6.66667`) reach the ticks through the C-Map, within half a
+  tick of `3200`. MTD1044's `3.16667` is tick `1520`. With
   `theme_midi="data_SCORE_MID"` the claims name the notes of the SCORE
   MIDI timeline instead (the same onsets, velocity 80, which tells the
   two files apart). Provenance `imported`, basis the DOI. A row
@@ -780,13 +798,17 @@ equal length) changes one file in a copy of the extracted archive.
   source** (the archive's path, a `zipfile.Path` of it, the folder
   holding `MTD/` and `MTD/` itself give equal timelines, groups and
   MatchClaim tables, IDs included), **two fresh loaders mint equal IDs**.
-* **IDs are the minter's.** With `seed=0` the IDs are those a fresh
+* **IDs are the minters'.** With `seed=0` the IDs are those a fresh
   `IdMinter(0)` mints in the loader's order: per theme in file-name order
-  the notes of its MIDI files (EDM-orig, EDM-corr, SCORE, EDM-alig), the
-  excerpt (`cpt`), the 13 file timelines (`clt cpt cgt clt cpt cgt clt clt
-  clt cpt cgt clt cpt`), the children a longer member takes part through
-  (excerpt/EDM-alig pair first, then MusicXML/SCORE MIDI), the four groups
-  (`group`); then the tracks (`cpt`); then the claims (`claim`).
+  the excerpt (`cpt`), the 13 file timelines (`dlt cpt cgt dlt cpt cgt clt
+  clt dlt cpt cgt dlt cpt`), the four ticks → quarters C-Maps of the MIDI
+  files (`cmap`, EDM-orig, EDM-corr, SCORE, EDM-alig), the children a
+  longer member takes part through (excerpt/EDM-alig pair first, a
+  `dlt`, then MusicXML/SCORE MIDI, a `clt`), the four groups (`group`);
+  then the tracks (`cpt`); then the claims (`claim`). The notes are the
+  MIDI loaders' (T244): each MIDI file's ten notes are those a fresh
+  `IdMinter(seed_from(0, <the file's jar: URI>))` mints (`note`), the seed
+  of its `ScoreMidiLoader`.
 * **`create_timeline` gives one root by its ID and refuses the rest.**
 * **A derived timeline or group is written in its bundle, not alone.** A
   `dcterms:source` names a timeline of the same manifest, and a timeline

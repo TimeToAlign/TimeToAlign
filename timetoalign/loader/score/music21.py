@@ -21,6 +21,7 @@ from timetoalign.loader._sources import (
     readable,
     source_record,
 )
+from timetoalign.loader.base import LOCATOR
 
 from .base import ScoreLoader
 from .store import ScoreStore
@@ -54,6 +55,13 @@ class Music21Loader(ScoreLoader):
     same convention so that score timelines built from either source are
     directly comparable and compatible with ``MatchfileLoader``.
 
+    Every event names its file's extraction and, as its ``locator``, the
+    ``xml:id`` / ``id`` the source states for it, else its place in music21's
+    reading of the file: ``part:<p> element:<k>``, the part's index and the
+    element's in the part's flattened stream (``note:<n>`` added for a
+    chord's n-th note), and for a measure ``part:<p> measure:<i>``, all
+    from 0.
+
     Known issue: music21 gives a measure without timed content no length
     (the empty measures of an MEI skeleton, which leaves out the measures it
     repeats unchanged), and its MEI reader leaves out ``<ending>`` measures
@@ -74,6 +82,10 @@ class Music21Loader(ScoreLoader):
         loaded source, exact.  Zero when the score has no anacrusis.
         """
         return self._anacrusis_offset
+
+    def _backends(self) -> tuple[str, ...]:
+        """music21 reads the score."""
+        return ("music21",)
 
     def _load_source(self, source: Source) -> ScoreStore:
         """Load score and return ScoreStore.
@@ -220,6 +232,7 @@ class Music21Loader(ScoreLoader):
             for i, info in enumerate(measure_info):
                 measure_rows.append(
                     {
+                        LOCATOR: f"part:{part_idx} measure:{i}",
                         "name": info["mn"],
                         "temporal_type": "interval",
                         "event_type": "Measure",
@@ -239,11 +252,12 @@ class Music21Loader(ScoreLoader):
             # Process Notes/Rests/Controls
             flat_part = part.flatten()
 
-            for obj in flat_part:
+            for k, obj in enumerate(flat_part):
                 if isinstance(
                     obj, (m21.stream.Measure, m21.stream.Part, m21.stream.Score)
                 ):
                     continue
+                place = f"part:{part_idx} element:{k}"
 
                 offset = float(obj.offset)
                 duration = float(obj.duration.quarterLength)
@@ -270,8 +284,9 @@ class Music21Loader(ScoreLoader):
                                 obj, qb, dur_qb, mc, mn, mc_onset, part_id
                             )
                         )
+                        note_rows[-1][LOCATOR] = _stated_id(obj) or place
                     elif isinstance(obj, m21.chord.Chord):
-                        for note in obj.notes:
+                        for n, note in enumerate(obj.notes):
                             note_rows.append(
                                 self._make_note_row(
                                     note,
@@ -283,6 +298,9 @@ class Music21Loader(ScoreLoader):
                                     part_id,
                                     chord_id=str(id(obj)),
                                 )
+                            )
+                            note_rows[-1][LOCATOR] = (
+                                _stated_id(note) or f"{place} note:{n}"
                             )
 
                 # Controls
@@ -297,6 +315,7 @@ class Music21Loader(ScoreLoader):
                 ):
                     control_rows.append(
                         {
+                            LOCATOR: _stated_id(obj) or place,
                             "id": _stated_id(obj),
                             "name": obj.__class__.__name__,
                             "temporal_type": "instant",
@@ -324,6 +343,7 @@ class Music21Loader(ScoreLoader):
                 elif isinstance(obj, m21.expressions.TextExpression):
                     annotation_rows.append(
                         {
+                            LOCATOR: _stated_id(obj) or place,
                             "id": _stated_id(obj),
                             "name": getattr(obj, "content", str(obj)),
                             "temporal_type": "instant",
@@ -349,6 +369,8 @@ class Music21Loader(ScoreLoader):
             note_rows, measure_rows, control_rows, annotation_rows
         )
         self._anacrusis_offset = m21_offset
+        for rows in (note_rows, measure_rows, control_rows, annotation_rows):
+            self._stamp_rows(rows, source, [row[LOCATOR] for row in rows])
 
         # Build data
         notes_data = NoteEventData.from_dicts(

@@ -26,6 +26,7 @@ from timetoalign.loader._sources import (
     source_record,
 )
 from timetoalign.loader._xml import XML_ID
+from timetoalign.loader.base import EXTRACTION_ID, LOCATOR
 
 from .base import ScoreLoader
 from .events import ScoreEventType
@@ -86,8 +87,14 @@ _NOTE_EXTRA_TYPES: dict[str, pa.DataType] = {
     "dots": pa.int64(),
     "grace": pa.string(),
     "tie": pa.string(),
+    LOCATOR: pa.string(),
+    EXTRACTION_ID: pa.string(),
 }
-_TEMPO_EXTRA_TYPES: dict[str, pa.DataType] = {"notated_id": pa.string()}
+_TEMPO_EXTRA_TYPES: dict[str, pa.DataType] = {
+    "notated_id": pa.string(),
+    LOCATOR: pa.string(),
+    EXTRACTION_ID: pa.string(),
+}
 _POSITION_COLUMNS = ("start", "end")
 # In-measure offsets are quarters; only the quarters timeline carries them.
 _MEASURE_OFFSETS = ("mc_onset",)
@@ -507,6 +514,11 @@ class VerovioLoader(ScoreLoader):
     the printed score: :meth:`create_stated_flow_map` writes it onto the
     timeline that a loader of the same file with ``expandNever`` creates.
 
+    **Locators.** Every event names its file's extraction and, as its
+    ``locator``, its ``id``: the rendered element's ``xml:id`` in Verovio's
+    MEI (the file's own where it states one, Verovio's for an element it
+    states none of or for a pass of a repeat).
+
     **Ids.** Every event keeps its element's ``xml:id`` verbatim. Verovio
     generates ids only where the source has none, from a random seed unless
     told otherwise; the loader seeds them from the input's checksum
@@ -636,6 +648,10 @@ class VerovioLoader(ScoreLoader):
             options["mdivAll"] = True
         return options
 
+    def _backends(self) -> tuple[str, ...]:
+        """Verovio reads the score."""
+        return ("verovio",)
+
     def _load_source(self, source: Source) -> ScoreStore:
         """Load one file into a ScoreStore through a fresh toolkit."""
         toolkit = verovio.toolkit()
@@ -721,6 +737,8 @@ class VerovioLoader(ScoreLoader):
             if tempo.measure not in omitted_mcs
             for row in _tempo_rows(tempo, onsets, passes, toolkit, bool(notated))
         ]
+        for rows in (note_rows, tempo_rows):
+            self._stamp_rows(rows, source, [row["id"] for row in rows])
         movement = {
             row["id"]: _named_holder(
                 score.movements, score.measures[row["mc"] - 1].movement

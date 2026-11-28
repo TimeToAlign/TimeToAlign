@@ -96,6 +96,55 @@ per seed kind:
     run first in a fresh set of process minters, give disjoint flow-control
     IDs, so the two timelines can join one manifest.
 
+## Extractions and locators (`test_extractions.py`)
+
+What a loader read is recorded where the event lives: every event a loader
+reads from a file names that file's extraction (`extraction_id`) and its
+place in the file (`locator`), and a timeline the loader creates holds both
+in its registry rows and the extraction itself in its registry. What would
+prove it, on a small MIDI file the test writes with mido into `tmp_path`
+(every value read off the file with mido by the test, never by the loader):
+
+* **One extraction per file read.** `PerformanceMidiLoader` over one file
+  records one extraction: source the path as given, the SHA-256 digest of
+  the bytes (computed by the test with `hashlib`), parser
+  `PerformanceMidiLoader`, version `timetoalign <version>; mido
+  <version>` (the installed ones), parameters its configuration as the ID
+  seed reads it (`unit` `ticks`, `number_type` `int`, `interval_policy`
+  `warn`, `parse_durations`, `on0_means_off`, `include_controls`,
+  `include_program_changes` all `true`), minter `splitmix64-base36-1`,
+  length 13, no seed; with `seed=7` the seed `"7"`. Two files in one call
+  give two extractions in order, each file's events naming its own. The
+  same file loaded twice (two calls) has one extraction.
+* **The locator is the message.** Each event's locator is `track:<i>
+  message:<j>` of the message it was read from (the note-on of a note),
+  counted by the test over `mido.MidiFile(path).tracks`; locators are
+  unique within the file.
+* **The rows reach the timeline.** `create_timeline()`'s registry rows of
+  the notes carry the same locators and the extraction ID, and the
+  timeline's registry lists the extraction (equal to the loader's); the
+  events of the timeline hold neither column (they are registry columns).
+* **A CSV's locator is its data row.** `CsvLoader` over a three-row CSV in
+  `tmp_path` gives `row:0`, `row:1`, `row:2`, the parser `CsvLoader`, the
+  version naming pandas.
+* **`update` keeps what it finds and marks what is gone.** A MIDI file
+  read into a timeline, then rewritten by the test (its last note's two
+  messages removed, one note's velocity changed), then
+  `PerformanceMidiLoader.from_registry(timeline.registry).update(...)`:
+  every note found again by its locator keeps its ID and takes the new
+  extraction (the new digest), the changed velocity reaches the events,
+  the removed note's row is kept with `vanished_in` the new extraction's
+  ID, and nothing is deleted (the row count is unchanged); the registry
+  then lists both extractions. A note added in the file is added with a
+  new ID. Updating from an unchanged file changes no ID and marks nothing.
+* **`from_registry` takes the recorded parameters.** A loader set up from
+  a registry of `PerformanceMidiLoader(include_controls=False)` runs with
+  `include_controls=False` (its configuration equals the recorded
+  parameters); asking it for `include_controls=True` is refused naming
+  the parameter; a registry whose extractions are another class's and no
+  source given is refused; a loader with nothing to read again refuses
+  `update`.
+
 ## Single-source loaders
 
 A loader that reads one source sets `_single_source` on its class, and one
@@ -195,6 +244,7 @@ is `float`, so an explicit choice is stated as given.
 |---------------------|-------------------|
 | `test_loader.py` | Generic loader smoke tests and contract checks |
 | `test_loader_ids.py` | The IDs a loader mints: one seeded minter per load (see "IDs a loader mints") |
+| `test_extractions.py` | The extraction of every file a loader reads, the locator of every event, their way into a timeline's registry, `Loader.update` and `Loader.from_registry` (see "Extractions and locators") |
 | `test_base_loaders.py` | The `EventLoader` / `ManifestLoader` / `AlignmentLoader` ABCs; `AlignmentStore` holds events, C-Maps and metadata only (exact `event_count`, `cmap_count`, the whole `summary()` dict): MatchClaims live in the MatchClaim table, never in a store; `Loader.from_file` hands a keyword that `load` declares keyword-only to `load` and every other keyword to the constructor (a loader taking `option` in its constructor and `choice` in `load` holds both as given; an unknown keyword is the constructor's `TypeError`) |
 | `test_bundle.py` | `AlignmentBundle` produced by alignment loaders |
 | `test_error_handling.py` | Faulty-input behaviour across loaders |

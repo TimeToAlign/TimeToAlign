@@ -49,6 +49,7 @@ import pyarrow as pa
 from timetoalign.core import TimeUnit, resolve_id
 from timetoalign.core.ids import GROUP_PREFIX
 from timetoalign.loader._ids import give_event_ids
+from timetoalign.loader.base import LOCATOR
 from timetoalign.loader.format.json import JsonLoader, _normalise_array
 from timetoalign.storage.events import EventData
 from timetoalign.storage.store import DictStore
@@ -486,6 +487,12 @@ class TiliaJsonLoader(JsonLoader):
         loader.store.marker     # all marker tables concatenated
         loader.store.beat       # all beat tables concatenated
 
+    Every event names its file's extraction and, as its ``locator``, the ID
+    its component states (the key of a v2 file's ``components``, else its
+    ``id``), else its place in the file as a JSON Pointer
+    (``/timelines/<i>/components/<j>``, both from 0). Events of a dict
+    loaded with ``load_dict`` name their locators only.
+
     **Two-phase usage:**
 
     1. ``loader.load("Bruckner5_Scherzo.json")``
@@ -674,6 +681,7 @@ class TiliaJsonLoader(JsonLoader):
                     "ordinal": ordinal,
                     "index": idx,
                     "raw": tl_obj,
+                    "source": self._reading,
                 }
             )
 
@@ -933,8 +941,21 @@ class TiliaJsonLoader(JsonLoader):
         # Convert components to events using the appropriate converter; a
         # component the file names keeps its ID, any other is minted.
         converter = _EVENT_CONVERTERS.get(kind, _generic_to_events)
-        events = converter(components)
+        events = converter(
+            [
+                {
+                    **component,
+                    LOCATOR: _component_id(component)
+                    or f"/timelines/{spec['index']}/components/{j}",
+                }
+                for j, component in enumerate(components)
+            ]
+        )
         give_event_ids(events, self._id_minter)
+        if spec["source"] is not None:
+            self._stamp_rows(
+                events, spec["source"], [event[LOCATOR] for event in events]
+            )
 
         if events:
             tl.add_events(events)

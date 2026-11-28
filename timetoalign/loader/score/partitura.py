@@ -15,6 +15,7 @@ with suppressed_backend_warnings():
 
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.loader._sources import Source, on_disk, source_record
+from timetoalign.loader.base import LOCATOR
 
 from .base import ScoreLoader, _coordinate_struct
 from .store import ScoreStore
@@ -67,6 +68,12 @@ class PartituraLoader(ScoreLoader):
     loader's minter. Partitura's own numbering (``n0``, ``P1-s1-v1-el3``)
     is never an ID.
 
+    Every event names its file's extraction and, as its ``locator``, the ID
+    its note states (as above), else its place in Partitura's reading of
+    the file: ``part:<p> element:<k>``, the part's index and the object's
+    in the part's ``iter_all()``, from 0; a repeat's start and end
+    ``part:<p> repeat:<r> start`` / ``end``.
+
     All TTA timelines start at coordinate 0.  When partitura reports negative
     quarter-beat onsets (anacrusis notes that precede the first full measure),
     this loader shifts every event coordinate so that the earliest onset maps
@@ -106,6 +113,10 @@ class PartituraLoader(ScoreLoader):
         Conversely, ``raw_coord = tta_coord - offset``.
         """
         return self._anacrusis_offset
+
+    def _backends(self) -> tuple[str, ...]:
+        """Partitura reads the score."""
+        return ("partitura",)
 
     def _load_source(self, source: Source) -> ScoreStore:
         """Load score and return ScoreStore."""
@@ -283,7 +294,10 @@ class PartituraLoader(ScoreLoader):
             control_objects: list = []
             annotation_objects: list = []
 
-            for obj in part.iter_all(include_subclasses=True):
+            # Each object's place in Partitura's reading of the part.
+            places: dict[int, str] = {}
+            for k, obj in enumerate(part.iter_all(include_subclasses=True)):
+                places[id(obj)] = f"part:{part_idx} element:{k}"
                 if isinstance(obj, pts.Measure):
                     measures_list.append(obj)
                 elif isinstance(obj, (pts.Note, pts.Rest, pts.GraceNote)):
@@ -339,13 +353,14 @@ class PartituraLoader(ScoreLoader):
             repeat_end_mcs: set[int] = set()  # last MC inside each repeat
 
             if hasattr(part, "repeats") and part.repeats:
-                for rep in part.repeats:
+                for r, rep in enumerate(part.repeats):
                     start_mc = get_mc(rep.start.t)
                     repeat_start_mcs.add(start_mc)
 
                     qb_start = cached_beat_coordinate(rep.start.t)
                     control_rows.append(
                         {
+                            LOCATOR: f"part:{part_idx} repeat:{r} start",
                             "name": "RepeatStart",
                             "temporal_type": "instant",
                             "event_type": "RepeatStart",
@@ -378,6 +393,7 @@ class PartituraLoader(ScoreLoader):
                         qb_end = cached_beat_coordinate(rep.end.t)
                         control_rows.append(
                             {
+                                LOCATOR: f"part:{part_idx} repeat:{r} end",
                                 "name": "RepeatEnd",
                                 "temporal_type": "instant",
                                 "event_type": "RepeatEnd",
@@ -461,6 +477,7 @@ class PartituraLoader(ScoreLoader):
 
                 control_rows.append(
                     {
+                        LOCATOR: places[id(obj)],
                         "name": type(obj).__name__,
                         "temporal_type": "instant",
                         "event_type": type(obj).__name__,
@@ -519,6 +536,7 @@ class PartituraLoader(ScoreLoader):
 
                 measure_rows.append(
                     {
+                        LOCATOR: places[id(m)],
                         "name": str(m.number),
                         "temporal_type": "interval",
                         "event_type": "Measure",
@@ -611,10 +629,12 @@ class PartituraLoader(ScoreLoader):
                 elif midi is not None:
                     note_name = f"MIDI {midi}"
 
+                stated = getattr(obj, "id", None) if stated_ids else None
                 note_rows.append(
                     {
+                        LOCATOR: stated or places[id(obj)],
                         # Minted by NoteEventData.from_dicts when None.
-                        "id": getattr(obj, "id", None) if stated_ids else None,
+                        "id": stated,
                         "name": note_name,
                         "temporal_type": "interval" if dur_qb > 0 else "instant",
                         "event_type": "Rest" if is_rest else "Note",
@@ -649,6 +669,7 @@ class PartituraLoader(ScoreLoader):
                 obj_mc = get_mc(obj.start.t)
                 control_rows.append(
                     {
+                        LOCATOR: places[id(obj)],
                         # ID auto-generated from event_type (class name)
                         "name": obj.__class__.__name__,
                         # Control objects are stored as point events here;
@@ -677,6 +698,7 @@ class PartituraLoader(ScoreLoader):
                 obj_mc = get_mc(obj.start.t)
                 annotation_rows.append(
                     {
+                        LOCATOR: places[id(obj)],
                         # ID auto-generated from event_type
                         "name": getattr(obj, "text", str(obj)),
                         "temporal_type": "instant",
@@ -698,6 +720,8 @@ class PartituraLoader(ScoreLoader):
             note_rows, measure_rows, control_rows, annotation_rows
         )
         self._anacrusis_offset = offset
+        for rows in (note_rows, measure_rows, control_rows, annotation_rows):
+            self._stamp_rows(rows, source, [row[LOCATOR] for row in rows])
 
         # Build data
         notes_data = NoteEventData.from_dicts(

@@ -39,11 +39,15 @@ makes, for the movements or themes selected::
   it (MTD does not state it), with statements of what MTD says of the
   recording;
 * per theme, one timeline per file but META and the alignment, each naming
-  its file: the excerpt, a child of its track at ``StartTime``; a quarters
+  its file: the excerpt, a child of its track at ``StartTime``; per MIDI
+  file the ticks timeline
+  :class:`~timetoalign.loader.midi.ScoreMidiLoader` builds of it
+  (:class:`~timetoalign.timelines.types.DiscreteLogicalTimeline`,
+  ``dlt_…``, number type int), holding its notes, its quarters a
+  ticks → quarters C-Map away; a quarters
   :class:`~timetoalign.timelines.types.ContinuousLogicalTimeline`
-  (``clt_…``, number type fraction) per MIDI file, holding its notes, per
-  MusicXML file and for the Sibelius file; a seconds timeline per CSV note
-  list; a points
+  (``clt_…``, number type fraction) per MusicXML file and for the Sibelius
+  file; a seconds timeline per CSV note list; a points
   :class:`~timetoalign.timelines.types.ContinuousGraphicalTimeline`
   (``cgt_…``, number type float) per PDF;
 * per theme, four :class:`~timetoalign.timelines.TimelineGroup` s, one per
@@ -51,7 +55,8 @@ makes, for the movements or themes selected::
 * per alignment row but the last, a synchronous
   :class:`~timetoalign.alignment.claims.MatchClaim` from each note at that
   onset of the EDM-corr MIDI timeline to :data:`~timetoalign.core.ids.CHUNK`
-  on the excerpt, anchored at the onset in quarters and the row's seconds.
+  on the excerpt, anchored at the onset in ticks and the row's seconds: the
+  row's quarters reach the MIDI file's ticks through its C-Map.
 
 Each timeline is as long as its file states: a MIDI file its end of track,
 the MusicXML file the end of its last measure, the excerpt
@@ -103,12 +108,13 @@ import io
 import json
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 from typing_extensions import Self
@@ -116,10 +122,9 @@ from typing_extensions import Self
 from timetoalign.alignment.claims import MatchClaim, MatchClaimField
 from timetoalign.core import CHUNK, NumberType, Provenance, TimeUnit
 from timetoalign.core.fields import SemanticField
-from timetoalign.core.ids import GROUP_PREFIX
+from timetoalign.core.ids import CMAP_PREFIX, GROUP_PREFIX, seed_from
 from timetoalign.core.time import express_as
 from timetoalign.display.html import code
-from timetoalign.loader._ids import give_event_ids
 from timetoalign.loader._sources import (
     Source,
     SourceLike,
@@ -130,17 +135,20 @@ from timetoalign.loader._sources import (
     join_source,
     source_record,
 )
-from timetoalign.loader.base import AlignmentLoader
+from timetoalign.loader.base import AlignmentLoader, _source_text
+from timetoalign.maps.convenience import QuartersToTicks, TicksToQuarters
 from timetoalign.timelines.factory import mint_timeline_id
 from timetoalign.timelines.groups import TimelineGroup
 from timetoalign.timelines.types import (
     ContinuousGraphicalTimeline,
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
+    DiscreteLogicalTimeline,
 )
 
 if TYPE_CHECKING:
     from timetoalign.alignment.bundle import AlignmentBundle
+    from timetoalign.loader.midi import ScoreMidiLoader
     from timetoalign.timelines.base import Timeline
 
 
@@ -242,7 +250,7 @@ ENCODINGS: tuple[str, ...] = ("EDM-orig", "EDM-corr", "SCORE", "EDM-alig")
 
 #: The axis of each kind of file: timeline class, unit, number type.
 _AXES: dict[str, tuple[type[Timeline], TimeUnit, NumberType]] = {
-    "MIDI": (ContinuousLogicalTimeline, TimeUnit.quarters, NumberType.fraction),
+    "MIDI": (DiscreteLogicalTimeline, TimeUnit.ticks, NumberType.int),
     "MusicXML": (ContinuousLogicalTimeline, TimeUnit.quarters, NumberType.fraction),
     "Sibelius": (ContinuousLogicalTimeline, TimeUnit.quarters, NumberType.fraction),
     "CSV": (ContinuousPhysicalTimeline, TimeUnit.seconds, NumberType.float),
@@ -296,29 +304,41 @@ _COMPARED: tuple[tuple[str, str], ...] = (
 
 
 @dataclass(frozen=True)
-class _Note:
-    """A note of a MIDI file, in ticks."""
-
-    id: str
-    start: int
-    end: int
-    pitch: int
-    velocity: int | None
-
-
-@dataclass(frozen=True)
 class _File:
     """One file of a theme as the loader holds it after ``load``.
 
     ``length`` is the file's extent on its axis (``None`` when the file
-    states none); ``ppq`` and ``notes`` are those of a MIDI file.
+    states none). A MIDI file's ``midi`` is the
+    :class:`~timetoalign.loader.midi.ScoreMidiLoader` that read it, which
+    builds its timeline on ticks; ``ppq`` its ticks per quarter and
+    ``cmap_id`` the ID of its ticks → quarters C-Map.
     """
 
     file: MtdFile
     id: str
-    length: Fraction | float | None
+    length: Fraction | float | int | None
     ppq: int | None = None
-    notes: tuple[_Note, ...] = ()
+    midi: ScoreMidiLoader | None = None
+    cmap_id: str | None = None
+
+    @property
+    def cmap(self) -> TicksToQuarters:
+        """A MIDI file's ticks → quarters C-Map, under its ID."""
+        assert self.ppq is not None and self.cmap_id is not None
+        return TicksToQuarters(ppq=self.ppq, uid=self.cmap_id)
+
+    @property
+    def to_ticks(self) -> QuartersToTicks:
+        """The inverse of :attr:`cmap`: quarters → the MIDI file's ticks."""
+        assert self.ppq is not None and self.cmap_id is not None
+        return QuartersToTicks(ppq=self.ppq, uid=f"{self.cmap_id}_inverse")
+
+    @property
+    def quarters(self) -> Fraction | None:
+        """A MIDI file's extent in quarters, through its C-Map."""
+        if self.ppq is None or self.length is None:
+            return None
+        return Fraction(self.cmap(self.length))
 
 
 @dataclass(frozen=True)
@@ -347,7 +367,7 @@ class _Theme:
     parts: tuple[_Part, ...]
     group_ids: dict[str, str]
     claimed: str
-    rows: tuple[tuple[Fraction, float], ...]
+    rows: tuple[tuple[int, float], ...]
 
     @property
     def movement(self) -> str:
@@ -695,11 +715,16 @@ class MtdLoader(AlignmentLoader):
     def _read_theme(self, root: Source, stem: str, meta: dict[str, str]) -> _Theme:
         """Read one theme's files and alignment; mint its IDs.
 
-        The IDs are minted in this order: the notes of the MIDI files (in
-        the order of :data:`THEME_FILES`), the excerpt, the timelines of
-        :data:`THEME_FILES`, the children through which a longer member
-        takes part (in the order of :data:`_COMPARED`), the groups (in the
-        order of :data:`ENCODINGS`).
+        The MIDI files are read by their own loaders (:meth:`_read_midi`),
+        which mint their notes' IDs. This loader mints, in this order: the
+        excerpt, the timelines of :data:`THEME_FILES`, the ticks → quarters
+        C-Maps of the MIDI files (in that order), the children through
+        which a longer member takes part (in the order of
+        :data:`_COMPARED`), the groups (in the order of :data:`ENCODINGS`).
+
+        Raises:
+            ValueError: If the span a MIDI file's child would cover does not
+                end on a tick of the file.
         """
         start = _seconds(meta["StartTime"], "StartTime", stem)
         end = _seconds(meta["EndTime"], "EndTime", stem)
@@ -727,22 +752,31 @@ class MtdLoader(AlignmentLoader):
         }
         for file in THEME_FILES:
             if file.kind == "MIDI":
-                ppq, end_of_track, notes = midis[file.label]
+                midi = midis[file.label]
                 files[file.label] = _File(
-                    file, minted(file), Fraction(end_of_track, ppq), ppq, notes
+                    file, minted(file), midi.end_of_track, midi.ticks_per_beat, midi
                 )
             elif file.kind == "MusicXML":
                 files[file.label] = _File(file, minted(file), score_length)
             else:
                 files[file.label] = _File(file, minted(file), None)
+        for label, held in files.items():
+            if held.midi is not None:
+                files[label] = replace(held, cmap_id=self._id_minter.mint(CMAP_PREFIX))
 
-        # Exact extents: the excerpt's as META writes its decimals, never its
-        # float. They decide which member is longer, and the child of the
-        # longer takes the shorter's exact extent, written in the child's
-        # number type: on a fraction axis the decimal itself (2.8 seconds is
-        # 14/5 quarters, never the float's dyadic), on a float axis its float.
+        # Exact extents, in quarters or seconds (EDM-alig's quarters are the
+        # excerpt's seconds): the excerpt's as META writes its decimals,
+        # never its float; a MIDI file's through its C-Map. They decide
+        # which member is longer, and the child of the longer takes the
+        # shorter's exact extent on the longer's axis: a MIDI file's in
+        # ticks through the C-Map, the excerpt's in its float (2.8 seconds
+        # is 1344 ticks at 480 per quarter, never the float's dyadic).
         extents: dict[str, Fraction | None] = {
-            label: None if held.length is None else Fraction(held.length)
+            label: (
+                held.quarters
+                if held.midi is not None
+                else None if held.length is None else Fraction(held.length)
+            )
             for label, held in files.items()
         }
         extents[EXCERPT_FILE.label] = Fraction(end - start)
@@ -752,13 +786,13 @@ class MtdLoader(AlignmentLoader):
             if one is None or other is None or one == other:
                 continue
             longer, shorter = (first, second) if one > other else (second, first)
-            whole = files[longer].file
+            whole = files[longer]
             parts.append(
                 _Part(
                     whole=longer,
                     covers=shorter,
-                    id=mint_timeline_id(_AXES[whole.kind][1], self._id_minter),
-                    length=express_as(min(one, other), _AXES[whole.kind][2]),
+                    id=mint_timeline_id(_AXES[whole.file.kind][1], self._id_minter),
+                    length=_span(whole, min(one, other), stem),
                 )
             )
         group_ids = {
@@ -788,12 +822,14 @@ class MtdLoader(AlignmentLoader):
             rows=rows,
         )
 
-    def _read_midi(self, midi: Source) -> tuple[int, int, tuple[_Note, ...]]:
-        """The ticks per quarter, end of track and notes of a MIDI file, IDs minted.
+    def _read_midi(self, midi: Source) -> ScoreMidiLoader:
+        """The :class:`~timetoalign.loader.midi.ScoreMidiLoader` that read a MIDI file.
 
-        The file is read by :class:`~timetoalign.loader.midi.ScoreMidiLoader`
-        (``parser="mido"``), which pairs note-ons with note-offs and states
-        the file's end of track; the notes are ordered by onset, then pitch.
+        The file is read with ``parser="mido"``, which pairs note-ons with
+        note-offs on the file's own axis, ticks, and states its end of
+        track; the loader mints the notes' IDs from the file, or, where
+        this loader was given a ``seed``, from a seed of it and the file.
+        The MIDI loader's extraction of the file is this loader's too.
 
         Raises:
             ValueError: If the file states no ticks per quarter, or holds a
@@ -801,37 +837,17 @@ class MtdLoader(AlignmentLoader):
         """
         from timetoalign.loader.midi import ScoreMidiLoader
 
-        midi_loader = ScoreMidiLoader(parser="mido").load(midi)
-        ppq = midi_loader.ticks_per_beat
-        end_of_track = midi_loader.end_of_track
-        if not ppq or end_of_track is None:
+        seed = None if self._seed is None else seed_from(self._seed, _source_text(midi))
+        midi_loader = ScoreMidiLoader(parser="mido", seed=seed).load(midi)
+        if not midi_loader.ticks_per_beat or midi_loader.end_of_track is None:
             raise ValueError(f"{describe_source(midi)} states no ticks per quarter")
-        found: list[tuple[int, int, int, int | None]] = []
-        if len(midi_loader):
-            table = midi_loader.events.table
-            kinds = table.column("event_type").to_pylist()
-            starts = pc.struct_field(table.column("start"), "numerator").to_pylist()
-            ends = pc.struct_field(table.column("end"), "numerator").to_pylist()
-            pitches = table.column("pitch").to_pylist()
-            velocities = table.column("velocity").to_pylist()
-            for kind, start, end, pitch, velocity in zip(
-                kinds, starts, ends, pitches, velocities, strict=True
-            ):
-                if kind != "Note":
-                    continue
-                if start is None or end is None or pitch is None:
-                    raise ValueError(
-                        f"{describe_source(midi)} holds a note without onset, end or pitch"
-                    )
-                found.append((int(start), int(end), int(pitch), velocity))
-        found.sort(key=lambda note: (note[0], note[2]))
-        rows: list[dict[str, Any]] = [{"event_type": "Note"} for _ in found]
-        give_event_ids(rows, self._id_minter)
-        notes = tuple(
-            _Note(row["id"], start, end, pitch, velocity)
-            for row, (start, end, pitch, velocity) in zip(rows, found, strict=True)
-        )
-        return ppq, end_of_track, notes
+        table = _notes(midi_loader)
+        if any(table.column(name).null_count for name in ("start", "end", "pitch")):
+            raise ValueError(
+                f"{describe_source(midi)} holds a note without onset, end or pitch"
+            )
+        self._adopt_extractions(midi_loader)
+        return midi_loader
 
     @staticmethod
     def _read_score_length(musicxml: Source) -> Fraction | None:
@@ -870,12 +886,13 @@ class MtdLoader(AlignmentLoader):
         alignment: Source,
         midi: Source,
         theme_midi: str,
-    ) -> tuple[tuple[Fraction, float], ...]:
-        """Each row but the last as ``(exact onset in quarters, seconds)``.
+    ) -> tuple[tuple[int, float], ...]:
+        """Each row but the last as ``(onset in ticks, seconds)``.
 
-        A row's quarters, read as the exact decimal it writes, meet the onset
-        within half a tick (``|tick - quarters * ppq| <= 1/2``). The last row
-        is the end of the last note within half a tick.
+        A row's quarters, read as the exact decimal it writes, reach the
+        MIDI file's ticks through its C-Map (quarters → ticks) and meet the
+        onset within half a tick (``|tick - quarters * ppq| <= 1/2``). The
+        last row is the end of the last note within half a tick.
 
         Raises:
             ValueError: If a row meets no onset or two, or the last row is
@@ -887,29 +904,35 @@ class MtdLoader(AlignmentLoader):
             f"encoding was read from {theme_midi}."
         )
         ppq = midi_file.ppq
-        notes = midi_file.notes
-        assert ppq is not None
+        assert ppq is not None and midi_file.midi is not None
+        to_ticks = midi_file.to_ticks
         if len(rows) < 2:
             raise ValueError(f"{describe_source(alignment)} holds fewer than two rows")
-        if not notes:
+        notes = _notes(midi_file.midi)
+        if not notes.num_rows:
             raise ValueError(f"{describe_source(midi)} holds no note." + reading)
-        onsets = sorted({note.start for note in notes})
-        matched: list[tuple[Fraction, float]] = []
+        onsets = np.unique(
+            pc.struct_field(notes.column("start"), "numerator").to_numpy()
+        )
+        matched: list[tuple[int, float]] = []
         for mid, wav in rows[:-1]:
-            ticks = _decimal(mid, alignment) * ppq
-            hits = [tick for tick in onsets if abs(tick - ticks) <= Fraction(1, 2)]
+            ticks = Fraction(to_ticks(_decimal(mid, alignment)))
+            # |onset - n/d| <= 1/2, in integers.
+            near = 2 * np.abs(onsets * ticks.denominator - ticks.numerator)
+            hits = onsets[near <= ticks.denominator]
             if len(hits) != 1:
                 raise ValueError(
                     f"The alignment row {mid};{wav} of {describe_source(alignment)} meets "
                     f"{len(hits)} onsets of {describe_source(midi)} within half a tick "
-                    f"({ppq} ticks per quarter): {[str(Fraction(t, ppq)) for t in hits]}."
-                    + reading
+                    f"({ppq} ticks per quarter): "
+                    f"{[str(Fraction(int(t), ppq)) for t in hits]}." + reading
                 )
             _decimal(wav, alignment)
-            matched.append((Fraction(hits[0], ppq), float(wav)))
+            matched.append((int(hits[0]), float(wav)))
         last_mid = rows[-1][0]
-        last_end = max(note.end for note in notes)
-        if abs(last_end - _decimal(last_mid, alignment) * ppq) > Fraction(1, 2):
+        last_end = pc.max(pc.struct_field(notes.column("end"), "numerator")).as_py()
+        last = Fraction(to_ticks(_decimal(last_mid, alignment)))
+        if abs(last_end - last) > Fraction(1, 2):
             raise ValueError(
                 f"The last alignment row {last_mid} of {describe_source(alignment)} is not "
                 f"the end of the last note of {describe_source(midi)}, "
@@ -932,34 +955,59 @@ class MtdLoader(AlignmentLoader):
                 )
 
     def _build_claim_field(self) -> MatchClaimField:
-        """One synchronous claim per note at an aligned onset, columnar."""
+        """One synchronous claim per note at an aligned onset, columnar.
+
+        Per theme the notes of the MIDI file matched against, in the order
+        its loader holds them, are joined to the alignment rows by onset
+        tick, row by row; each claim names the note at its onset in ticks
+        and the row's second on the excerpt.
+        """
         encoding_ids: list[str] = []
         excerpt_ids: list[str] = []
-        note_ids: list[str] = []
-        quarters: list[Fraction] = []
-        seconds: list[float] = []
+        note_ids: list[pa.Array] = []
+        ticks: list[pa.Array] = []
+        seconds: list[pa.Array] = []
         axes: dict[str, tuple[TimeUnit, NumberType]] = {}
         for theme in self._themes:
             encoding = theme.files[theme.claimed]
             excerpt = theme.excerpt
-            assert encoding.ppq is not None
-            axes[encoding.id] = (TimeUnit.quarters, NumberType.fraction)
+            assert encoding.midi is not None
+            axes[encoding.id] = (TimeUnit.ticks, NumberType.int)
             axes[excerpt.id] = (TimeUnit.seconds, NumberType.float)
-            for onset, wav in theme.rows:
-                for note in encoding.notes:
-                    if Fraction(note.start, encoding.ppq) == onset:
-                        encoding_ids.append(encoding.id)
-                        excerpt_ids.append(excerpt.id)
-                        note_ids.append(note.id)
-                        quarters.append(onset)
-                        seconds.append(wav)
+            notes = _notes(encoding.midi)
+            held = pa.Table.from_arrays(
+                [
+                    notes.column("id").combine_chunks(),
+                    pc.struct_field(
+                        notes.column("start"), "numerator"
+                    ).combine_chunks(),
+                    pa.array(np.arange(notes.num_rows), pa.int64()),
+                ],
+                names=["id", "tick", "note"],
+            )
+            aligned = pa.Table.from_arrays(
+                [
+                    pa.array([tick for tick, _ in theme.rows], pa.int64()),
+                    pa.array([second for _, second in theme.rows], pa.float64()),
+                    pa.array(np.arange(len(theme.rows)), pa.int64()),
+                ],
+                names=["tick", "second", "row"],
+            )
+            joined = held.join(aligned, "tick", join_type="inner").sort_by(
+                [("row", "ascending"), ("note", "ascending")]
+            )
+            encoding_ids += [encoding.id] * joined.num_rows
+            excerpt_ids += [excerpt.id] * joined.num_rows
+            note_ids.append(joined.column("id").combine_chunks())
+            ticks.append(joined.column("tick").combine_chunks())
+            seconds.append(joined.column("second").combine_chunks())
         return MatchClaimField.from_columns(
             encoding_ids,
             excerpt_ids,
-            note_ids,
-            pa.repeat(pa.scalar(CHUNK), len(note_ids)),
-            quarters,
-            seconds,
+            pa.concat_arrays(note_ids) if note_ids else pa.array([], pa.string()),
+            pa.repeat(pa.scalar(CHUNK), len(encoding_ids)),
+            pa.concat_arrays(ticks) if ticks else pa.array([], pa.int64()),
+            pa.concat_arrays(seconds) if seconds else pa.array([], pa.float64()),
             timelines=axes,
             provenance=Provenance(
                 method="imported",
@@ -1305,33 +1353,27 @@ class MtdLoader(AlignmentLoader):
         """
         held = theme.files[file.label]
         cls, unit, number_type = _AXES[file.kind]
-        timeline = cls(
-            length=held.length,
-            unit=unit,
-            number_type=number_type,
-            uid=held.id,
-            name=(
-                f"Theme {theme.name}"
-                if file is EXCERPT_FILE
-                else f"{theme.name}, {file.label}"
-            ),
+        name = (
+            f"Theme {theme.name}"
+            if file is EXCERPT_FILE
+            else f"{theme.name}, {file.label}"
         )
-        if held.notes:
-            ppq = held.ppq
-            assert ppq is not None
-            timeline.add_events(
-                [
-                    {
-                        "id": note.id,
-                        "start": Fraction(note.start, ppq),
-                        "end": Fraction(note.end, ppq),
-                        "event_type": "Note",
-                        "pitch": {"midi_number": note.pitch},
-                        "velocity": note.velocity,
-                    }
-                    for note in held.notes
-                ]
+        if held.midi is None:
+            timeline = cls(
+                length=held.length,
+                unit=unit,
+                number_type=number_type,
+                uid=held.id,
+                name=name,
             )
+        else:
+            # The MIDI loader builds the file's timeline on its ticks; its
+            # quarters are a C-Map away.
+            assert held.ppq is not None
+            timeline = held.midi.create_timeline(uid=held.id)
+            timeline.name = name
+            timeline.length = held.length
+            timeline.add_conversion_map(held.cmap)
         member = file.member(theme.stem)
         timeline.add_statement(
             "lrmoo:R7i_is_exemplified_by",
@@ -1421,6 +1463,34 @@ class MtdLoader(AlignmentLoader):
         )
 
     # endregion
+
+
+def _notes(midi: ScoreMidiLoader) -> pa.Table:
+    """The Note rows of the events a MIDI loader read, in its order."""
+    table = midi.events.table
+    return table.filter(pc.equal(table.column("event_type"), pa.scalar("Note")))
+
+
+def _span(whole: _File, extent: Fraction, stem: str) -> Fraction | float | int:
+    """*extent* (quarters or seconds) as a length on *whole*'s axis.
+
+    On a MIDI file's ticks through its C-Map (quarters → ticks), which
+    must give a whole tick; on the excerpt its float; on MusicXML the
+    exact quarters.
+
+    Raises:
+        ValueError: If the extent ends between two ticks of the MIDI file.
+    """
+    if whole.ppq is None:
+        return express_as(extent, _AXES[whole.file.kind][2])
+    ticks = Fraction(whole.to_ticks(extent))
+    if ticks.denominator != 1:
+        raise ValueError(
+            f"MTD theme {stem}: the {whole.file.label} file's span of {extent} quarters "
+            f"ends between two of its ticks ({ticks} at {whole.ppq} per quarter); its "
+            "axis is the file's ticks"
+        )
+    return int(ticks)
 
 
 def _decimal(text: str, source: Source) -> Fraction:

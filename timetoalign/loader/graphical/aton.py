@@ -118,6 +118,10 @@ class ATONLoader(Loader[list[ATONHole]]):
         >>> loader.last_hole
         Coordinate(293119, pixels)
 
+    Every hole event names its file's extraction and, as its ``locator``,
+    the ID its HOLE block states where no other hole of the file states it,
+    else its place: ``hole:<k>``, the k-th HOLE block of the file, from 0.
+
     Attributes:
         rollinfo: Dictionary of ROLLINFO metadata.
         holes: List of parsed ATONHole objects.
@@ -132,6 +136,8 @@ class ATONLoader(Loader[list[ATONHole]]):
         super().__init__(seed=seed)
         self._rollinfo: dict[str, Any] = {}
         self._holes: list[ATONHole] = []
+        # Per hole, the file stating it and its place there (``hole:<k>``).
+        self._hole_places: list[tuple[Source, str]] = []
         self._source_path: Source | None = None
         self._logger = module_logger.getChild("ATONLoader")
 
@@ -153,7 +159,11 @@ class ATONLoader(Loader[list[ATONHole]]):
         if not source.exists():
             raise FileNotFoundError(f"ATON file not found: {describe_source(source)}")
 
+        held = len(self._holes)
         self._parse_content(source.read_text(encoding="utf-8"))
+        self._hole_places += [
+            (source, f"hole:{k}") for k in range(len(self._holes) - held)
+        ]
 
         self._logger.debug(
             f"Loaded ATON file from {describe_source(source)}: "
@@ -167,6 +177,14 @@ class ATONLoader(Loader[list[ATONHole]]):
         """Record the ATON file read."""
         super()._accept_source(path, source_meta, payload)
         self._source_path = path
+
+    def clear(self) -> None:
+        """Forget the files read: their metadata and holes."""
+        super().clear()
+        self._rollinfo = {}
+        self._holes = []
+        self._hole_places = []
+        self._source_path = None
 
     def _parse_content(self, content: str) -> None:
         """Parse ATON file content.
@@ -542,6 +560,10 @@ class ATONLoader(Loader[list[ATONHole]]):
                 f"{tracker_hole}: the file names one hole twice, or two holes alike."
             )
         id_counts = Counter(hole.id for hole in self._holes)
+        in_file = Counter(
+            (describe_source(source), hole.id)
+            for hole, (source, _) in zip(self._holes, self._hole_places, strict=True)
+        )
         hole_events = [
             {
                 "id": hole.id if id_counts[hole.id] == 1 else None,
@@ -549,8 +571,18 @@ class ATONLoader(Loader[list[ATONHole]]):
                 "temporal_type": "instant",
                 "event_type": "Hole",
                 "instant": hole.origin_row,  # Absolute coordinate
+                **self._stamp(
+                    source,
+                    (
+                        hole.id
+                        if in_file[(describe_source(source), hole.id)] == 1
+                        else place
+                    ),
+                ),
             }
-            for hole in self._holes
+            for hole, (source, place) in zip(
+                self._holes, self._hole_places, strict=True
+            )
         ]
         give_event_ids(hole_events, self._id_minter)
         timeline.add_events(hole_events)

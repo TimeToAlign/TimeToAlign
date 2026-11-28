@@ -21,9 +21,12 @@ from __future__ import annotations
 
 import functools
 import html
+import importlib
+import importlib.metadata
 import inspect
 import logging
 import re
+import zipfile
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -40,9 +43,12 @@ from typing import (
     ParamSpec,
     TypeVar,
 )
+from urllib.parse import unquote, urlparse
+from urllib.request import url2pathname
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 from typing_extensions import Self
 
 from timetoalign.core import (
@@ -54,16 +60,32 @@ from timetoalign.core.fields import TIMETOALIGN_METADATA_KEY, field_metadata
 from timetoalign.core.ids import CMAP_PREFIX, IdMinter, minting_from, seed_from
 from timetoalign.core.time import struct_to_coordinate
 from timetoalign.display.html import affordance_html, code
-from timetoalign.storage import EventData
+from timetoalign.storage import EventData, EventRegistry, Extraction
+from timetoalign.storage.registry import (
+    ID_MINTER,
+    SEGMENT_KIND,
+    _canonical_json,
+    _extraction_id,
+)
 
 from ._sources import (
     Source,
     SourceLike,
     as_source,
     describe_source,
+    member_uri,
     source_digest,
     source_record,
 )
+
+#: The column of a loader's events that says where in its source file each
+#: event was read (the loader's rule, in its docstring); a timeline holds it
+#: in the event's registry row.
+LOCATOR = "locator"
+
+#: The column naming the extraction (one per source file read) each event
+#: of a loader comes from (:attr:`Loader.extractions`).
+EXTRACTION_ID = "extraction_id"
 
 # Event loaders return source metadata and a vectorized field dictionary. Other
 # payload families return their payload directly and use ``_accept_source``.
@@ -112,6 +134,202 @@ def _canonical(value: object) -> object:
     return value
 
 
+def row_locators(count: int, start: int = 0) -> pa.Array:
+    """The locators ``row:<i>`` of *count* data rows of a table, from row *start* on.
+
+    A data row is counted from 0, the header line not counted.
+    """
+    numbers = np.arange(start, start + count).astype(str)
+    return pa.array(np.char.add("row:", numbers).astype(object), pa.string())
+
+
+@functools.cache
+def _distribution_version(name: str) -> str:
+    """The installed version of the package *name*, as its metadata or module states it."""
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        version = getattr(importlib.import_module(name), "__version__", None)
+        return "(version unknown)" if version is None else str(version)
+
+
+def _source_text(source: Source) -> str:
+    """A source file as an extraction names it: its path, a member's ``jar:`` URI."""
+    if isinstance(source, Path):
+        return source.as_posix()
+    return member_uri(source)
+
+
+def _source_of_text(text: str, root: Path | None) -> Source:
+    """The source an extraction names (:func:`_source_text`), relative ones under *root*."""
+    if text.startswith("jar:"):
+        archive, _, member = text.removeprefix("jar:").partition("!/")
+        return zipfile.Path(url2pathname(urlparse(archive).path), at=unquote(member))
+    path = Path(text)
+    return path if root is None or path.is_absolute() else root / path
+
+
+def _member_extraction(source: zipfile.Path, text: str, **fields: Any) -> Extraction:
+    """The extraction of a run over a member of a ZIP archive, read in place.
+
+    Its fields and ID as :meth:`Extraction.of_source
+    <timetoalign.storage.Extraction.of_source>` gives them for a file on
+    disk, the member named by its ``jar:`` URI.
+    """
+    digest = source_digest(source).hex()
+    parameters = fields["parameters"]
+    seed = None if fields["seed"] is None else str(fields["seed"])
+    return Extraction(
+        id=_extraction_id(
+            text,
+            digest,
+            fields["parser"],
+            fields["parser_version"],
+            None if parameters is None else _canonical_json(parameters),
+            fields["minter"],
+            fields["id_length"],
+            seed,
+        ),
+        source=text,
+        source_integrity={"algorithm": "SHA-256", "digest": digest},
+        parser=fields["parser"],
+        parser_version=fields["parser_version"],
+        parameters=parameters,
+        minter=fields["minter"],
+        id_length=fields["id_length"],
+        seed=seed,
+    )
+
+
+def _families_of(result: object) -> list[Any]:
+    """The families of timelines *result* reaches (a timeline, group, bundle, or a collection)."""
+    found: dict[int, Any] = {}
+
+    def visit(item: object) -> None:
+        if isinstance(item, Mapping):
+            for member in item.values():
+                visit(member)
+        elif isinstance(item, (list, tuple)):
+            for member in item:
+                visit(member)
+        else:
+            registry = getattr(item, "registry", None)
+            if isinstance(registry, EventRegistry):
+                for family, _ in registry._families():
+                    found.setdefault(id(family), family)
+
+    visit(result)
+    return list(found.values())
+
+
+def _walk(result: object) -> list[Any]:
+    """The timelines *result* holds (a timeline, or a collection of them), descendants after each."""
+    from timetoalign.timelines.base import Timeline
+
+    found: list[Timeline] = []
+
+    def visit(item: object) -> None:
+        if isinstance(item, Mapping):
+            for member in item.values():
+                visit(member)
+        elif isinstance(item, (list, tuple)):
+            for member in item:
+                visit(member)
+        elif isinstance(item, Timeline):
+            found.append(item)
+            for uid in item.list_children():
+                visit(item.get_child(uid))
+
+    visit(result)
+    return found
+
+
+def _update_plans(
+    built: object, registry: EventRegistry
+) -> list[tuple[Any, str, EventData, Extraction]]:
+    """What :meth:`Loader.update` updates: per timeline built and extraction, the target.
+
+    Each entry is the family of *registry* holding the target timeline, its
+    ID, the rows (local to it, with their locators) and the extraction. The
+    target holds most of the rows the rows' locators name among the rows of
+    extractions of the same source file; where none is named, the timeline
+    of the built one's ID.
+
+    Raises:
+        ValueError: If rows match no timeline of *registry*.
+    """
+    families = [family for family, _ in registry._families()]
+    held = registry.table
+    plans: list[tuple[Any, str, EventData, Extraction]] = []
+    unmatched: list[str] = []
+    for timeline in _walk(built):
+        own = timeline.registry.filter(timelines=timeline.id)
+        rows = own.table
+        keep = pc.and_(
+            rows.column(LOCATOR).is_valid(),
+            pc.not_equal(rows.column("kind"), pa.scalar(SEGMENT_KIND)),
+        )
+        rows = rows.filter(keep)
+        if not rows.num_rows:
+            continue
+        extractions = {extraction.id: extraction for extraction in own.extractions}
+        events = timeline.events
+        table = events.table
+        for extraction_id in pc.unique(rows.column(EXTRACTION_ID)).to_pylist():
+            extraction = extractions[extraction_id]
+            mine = rows.filter(pc.equal(rows.column(EXTRACTION_ID), extraction_id))
+            same_source = pa.array(
+                [
+                    held_id
+                    for family in families
+                    for held_id, held_extraction in family.extractions.items()
+                    if held_extraction.source == extraction.source
+                ],
+                pa.string(),
+            )
+            candidates = held.filter(
+                pc.and_(
+                    pc.is_in(held.column(EXTRACTION_ID), value_set=same_source),
+                    pc.is_in(held.column(LOCATOR), value_set=mine.column(LOCATOR)),
+                )
+            )
+            target: str | None = None
+            if candidates.num_rows:
+                counted = (
+                    candidates.select(["timeline_id"])
+                    .group_by("timeline_id", use_threads=False)
+                    .aggregate([("timeline_id", "count")])
+                    .sort_by([("timeline_id_count", "descending")])
+                )
+                target = counted.column("timeline_id")[0].as_py()
+            elif any(timeline.id in family.parts for family in families):
+                target = timeline.id
+            if target is None:
+                unmatched.append(f"{timeline.id} ({extraction.source})")
+                continue
+            family = next(family for family in families if target in family.parts)
+            ids = mine.column("id")
+            picked = table.filter(pc.is_in(table.column("id"), value_set=ids))
+            at = pc.index_in(picked.column("id"), value_set=ids)
+            picked = picked.append_column(
+                LOCATOR, mine.column(LOCATOR).combine_chunks().take(at)
+            )
+            plans.append(
+                (
+                    family,
+                    target,
+                    type(events)(picked, events.unit, events.number_type),
+                    extraction,
+                )
+            )
+    if unmatched:
+        raise ValueError(
+            "rows read again match no timeline of the registry, by locator or by "
+            f"ID: those of {unmatched}; nothing is updated"
+        )
+    return plans
+
+
 _LoaderT = TypeVar("_LoaderT", bound="Loader[Any]")
 _Params = ParamSpec("_Params")
 _Result = TypeVar("_Result")
@@ -130,10 +348,25 @@ def _minting_from_the_loader(
     sources does not depend on anything built before it in the process.
     """
 
+    creates = method.__name__.startswith("create_")
+    loads = method.__name__ == "load"
+
     @functools.wraps(method)
     def door(self: _LoaderT, *args: _Params.args, **kwargs: _Params.kwargs) -> _Result:
-        with minting_from(lambda: self._id_minter):
-            return method(self, *args, **kwargs)
+        outermost_load = loads and not getattr(self, "_loading", False)
+        if outermost_load:
+            self._loading = True
+        try:
+            with minting_from(lambda: self._id_minter):
+                result = method(self, *args, **kwargs)
+        finally:
+            if outermost_load:
+                self._loading = False
+        if outermost_load:
+            self._load_calls.append((args, dict(kwargs)))
+        if creates:
+            self._file_extractions(result)
+        return result
 
     return door
 
@@ -141,7 +374,10 @@ def _minting_from_the_loader(
 def _mint_doors_from_the_loader(cls: type) -> None:
     """Wrap every door *cls* defines: ``load``, ``load_*`` and ``create_*`` methods.
 
-    See :func:`_minting_from_the_loader`.
+    See :func:`_minting_from_the_loader`. The outermost ``load`` call is
+    recorded (its arguments, for :meth:`Loader.update`); what a ``create_*``
+    method returns holds the loader's extractions afterwards
+    (:meth:`Loader._file_extractions`).
     """
     for name, member in list(vars(cls).items()):
         door = name == "load" or name.startswith(("load_", "create_"))
@@ -166,6 +402,10 @@ class Loader(ABC, Generic[PayloadT]):
     #: source, in the same call or a later one, until ``clear()``.
     _single_source: ClassVar[bool] = False
 
+    #: The constructor arguments that are enums, by name: an extraction
+    #: records their members' names (:meth:`from_registry`).
+    _enum_parameters: ClassVar[dict[str, type[Enum]]] = {}
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
         _mint_doors_from_the_loader(cls)
@@ -180,6 +420,7 @@ class Loader(ABC, Generic[PayloadT]):
         self._sources: list[Source] = []
         self._source_metadata: list[dict[str, Any]] = []
         self._reset_minter(seed)
+        self._reset_extractions()
 
     @abstractmethod
     def _load_source(self, source: Source) -> PayloadT:
@@ -413,12 +654,300 @@ class Loader(ABC, Generic[PayloadT]):
         if seed is None:
             seed = seed_from(type(self).__name__, _source_part(Path(path)))
         self._reset_minter(seed)
+        self._reset_extractions()
 
     def clear(self) -> None:
         """Clear shared source state; the next ``load`` seeds as the first did."""
         self._sources.clear()
         self._source_metadata.clear()
         self._reset_minter(self._seed)
+        self._reset_extractions()
+
+    # region Extractions
+
+    def _reset_extractions(self) -> None:
+        """Forget the extractions and the ``load`` calls recorded."""
+        self._extractions: dict[str, Extraction] = {}
+        self._load_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+        self._loading = False
+
+    @property
+    def extractions(self) -> list[Extraction]:
+        """One :class:`~timetoalign.storage.Extraction` per source file read, in order.
+
+        Each records the file and its SHA-256 digest, the parser (the
+        loader's class name) and its version (this library's and the
+        backend's, ``timetoalign 1.2.0; mido 1.3.2``), the parameters it
+        ran with (the configuration that shapes its events, as the seed of
+        its IDs reads it), the ID minter's algorithm and length, and the
+        loader's ``seed`` where one was given. Every event the loader
+        reads from a file names its extraction (``extraction_id``) and its
+        place in the file (``locator``); a timeline the loader creates
+        holds both in its registry rows.
+        """
+        return list(self._extractions.values())
+
+    def _backends(self) -> tuple[str, ...]:
+        """The packages, by distribution name, that parse the loader's sources.
+
+        Their versions follow this library's in an extraction's
+        ``parser_version``. A loader parsing with a package extends this.
+        """
+        return ()
+
+    def _parser_version(self) -> str:
+        """``timetoalign <version>`` and each backend's ``<name> <version>``, ``; ``-joined."""
+        from timetoalign import __version__
+
+        return "; ".join(
+            [f"timetoalign {__version__}"]
+            + [f"{name} {_distribution_version(name)}" for name in self._backends()]
+        )
+
+    def _extraction_of(self, source: Source) -> Extraction:
+        """The extraction of this loader's run over the file *source*, made once.
+
+        A file read twice (two ``load`` calls) has one extraction: its ID
+        is seeded from the file, its digest, the parser and its version,
+        the parameters, the minter and the seed, never from the date.
+        """
+        text = _source_text(source)
+        held = self._extractions.get(text)
+        if held is not None:
+            return held
+        fields: dict[str, Any] = {
+            "parser": type(self).__name__,
+            "parser_version": self._parser_version(),
+            "parameters": _canonical(self._seed_config()),
+            "minter": ID_MINTER,
+            "id_length": self._id_minter.length,
+            "seed": self._seed,
+        }
+        if isinstance(source, Path):
+            extraction = Extraction.of_source(source, **fields)
+        else:
+            extraction = _member_extraction(source, text, **fields)
+        self._extractions[text] = extraction
+        return extraction
+
+    def _stamps(
+        self, source: Source, locators: pa.Array | list[str | None]
+    ) -> dict[str, pa.Array]:
+        """The registry columns of rows read from *source*: ``locator``, ``extraction_id``.
+
+        Args:
+            source: The file the rows were read from.
+            locators: Each row's place in the file, by the loader's rule.
+        """
+        locator = (
+            locators
+            if isinstance(locators, pa.Array)
+            else pa.array(locators, pa.string())
+        )
+        extraction = self._extraction_of(source)
+        return {
+            LOCATOR: locator,
+            EXTRACTION_ID: pa.array(
+                np.full(len(locator), extraction.id, dtype=object), pa.string()
+            ),
+        }
+
+    def _adopt_extractions(self, loader: Loader[Any]) -> None:
+        """Hold the extractions of *loader*, one this loader composes for a file.
+
+        Events this loader takes from it keep their ``extraction_id`` and
+        ``locator``; what this loader creates holds those extractions too.
+        """
+        for text, extraction in loader._extractions.items():
+            self._extractions.setdefault(text, extraction)
+
+    def _stamp(self, source: Source, locator: str | None) -> dict[str, str | None]:
+        """The registry keys of one event read from *source* at *locator*."""
+        return {LOCATOR: locator, EXTRACTION_ID: self._extraction_of(source).id}
+
+    def _stamp_rows(
+        self, rows: list[dict[str, Any]], source: Source, locators: list[str | None]
+    ) -> list[dict[str, Any]]:
+        """*rows* (event dictionaries read from *source*) with their registry keys.
+
+        Each row takes its locator and the extraction of *source*, in place.
+        """
+        extraction_id = self._extraction_of(source).id
+        for row, locator in zip(rows, locators, strict=True):
+            row[LOCATOR] = locator
+            row[EXTRACTION_ID] = extraction_id
+        return rows
+
+    def _file_extractions(self, result: object) -> None:
+        """Hold the loader's extractions in the registries of what it created.
+
+        *result* is what a ``create_*`` method returned: a timeline, a group,
+        a bundle, or a sequence or mapping of them. Each family of timelines
+        it reaches holds every extraction of this loader that its rows name.
+        """
+        if not self._extractions:
+            return
+        by_id = {extraction.id: extraction for extraction in self._extractions.values()}
+        for family in _families_of(result):
+            named = pc.unique(family.table().column(EXTRACTION_ID)).to_pylist()
+            for extraction_id in named:
+                extraction = by_id.get(extraction_id)
+                if extraction is not None:
+                    family._record(extraction)
+
+    @classmethod
+    def _config_of(cls, parameters: Mapping[str, Any]) -> dict[str, Any]:
+        """The constructor arguments an extraction's *parameters* record.
+
+        Each parameter the constructor takes (by name, or through its
+        ``**kwargs``), an enum by its member's name (:attr:`_enum_parameters`).
+        """
+        signature = inspect.signature(cls.__init__).parameters
+        takes_any = any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in signature.values()
+        )
+        config: dict[str, Any] = {}
+        for name, value in parameters.items():
+            if name not in signature and not takes_any:
+                continue
+            enum = cls._enum_parameters.get(name)
+            config[name] = (
+                enum[value] if enum is not None and value is not None else value
+            )
+        return config
+
+    @classmethod
+    def from_registry(
+        cls,
+        registry: EventRegistry,
+        *sources: SourceLike,
+        root: Path | str | None = None,
+        **kwargs: Any,
+    ) -> Self:
+        """A loader set up from *registry*'s extractions, to refresh it with :meth:`update`.
+
+        The loader runs with the parameters (and the seed) the registry's
+        extractions of this loader's class recorded, and reads their source
+        files, unless *sources* names what to read (a loader reading a
+        folder, an archive or a project is given that). Nothing is read
+        until :meth:`update`.
+
+        Args:
+            registry: The registry to refresh, a timeline's, a group's or a
+                bundle's.
+            *sources: What the loader reads, as :meth:`load` takes it; by
+                default the source files of the extractions, in order.
+            root: The folder a relative source file of an extraction lies
+                in; by default the current one.
+            **kwargs: The keyword-only arguments of :meth:`load`, and
+                constructor arguments, which must leave the parameters as
+                the extractions recorded them.
+
+        Returns:
+            The loader, its ``load`` call recorded but not run.
+
+        Raises:
+            ValueError: If the extractions of this class record two sets of
+                parameters or seeds, the loader set up runs with other
+                parameters than they record, or neither *sources* nor an
+                extraction names a source file.
+        """
+        own = [e for e in registry.extractions if e.parser == cls.__name__]
+        recorded = {
+            None if e.parameters is None else _canonical_json(e.parameters) for e in own
+        }
+        if len(recorded) > 1:
+            raise ValueError(
+                f"the registry's extractions of {cls.__name__} ran with "
+                f"{len(recorded)} sets of parameters; set up one loader per set"
+            )
+        seeds = {e.seed for e in own}
+        if len(seeds) > 1:
+            raise ValueError(
+                f"the registry's extractions of {cls.__name__} name {len(seeds)} seeds: "
+                f"{sorted(map(str, seeds))}"
+            )
+        load_keywords = {
+            name: kwargs.pop(name) for name in cls._load_keywords() if name in kwargs
+        }
+        parameters = own[0].parameters if own else None
+        config = {**cls._config_of(parameters or {}), **kwargs}
+        seed = own[0].seed if own else None
+        if seed is not None and "seed" not in config:
+            config["seed"] = int(seed)
+        loader = cls(**config)
+        if parameters is not None:
+            ran = _canonical(loader._seed_config())
+            assert isinstance(ran, dict)
+            differing = sorted(
+                name
+                for name in {*ran, *parameters}
+                if ran.get(name) != parameters.get(name)
+            )
+            if differing:
+                raise ValueError(
+                    f"{cls.__name__} as set up runs with other parameters than the "
+                    f"registry's extractions record: {differing}"
+                )
+        if not sources:
+            named = list(dict.fromkeys(e.source for e in own if e.source is not None))
+            if not named:
+                raise ValueError(
+                    f"the registry names no source file {cls.__name__} read; "
+                    "name what to read"
+                )
+            folder = None if root is None else Path(root)
+            sources = tuple(_source_of_text(text, folder) for text in named)
+        loader._load_calls = [(tuple(sources), load_keywords)]
+        return loader
+
+    def update(self, registry: EventRegistry) -> list[str]:
+        """Re-read the loader's sources and update *registry* with what they hold now.
+
+        The loader is cleared and its ``load`` calls are run again (those
+        :meth:`from_registry` set up, or the loader's own); each timeline
+        :meth:`create_timelines` builds from them (and each descendant) then
+        updates the registry's timeline that holds the rows its locators
+        name (else the one of its ID), one extraction at a time
+        (:meth:`EventRegistry.update <timetoalign.storage.EventRegistry.update>`):
+        a row found again by its locator keeps its ID and takes the new
+        content, position and extraction; a new row is added with the ID
+        it was given (minted from the content, as at every ``load``); a
+        row of the source no longer found is kept and marked vanished in
+        the new extraction. Nothing is deleted. Rows that name no locator
+        (a child's place, events made in code) are left as they are.
+
+        Args:
+            registry: The registry to update: a timeline's, a group's or a
+                bundle's (:attr:`Timeline.registry
+                <timetoalign.timelines.Timeline.registry>`).
+
+        Returns:
+            The IDs of the registry's timelines updated, in order.
+
+        Raises:
+            RuntimeError: If the loader has no ``load`` call to run again
+                (it read nothing, or in-memory content only).
+            ValueError: If a timeline built holds rows that match no
+                timeline of *registry*, by locator or by ID; nothing is
+                updated then.
+        """
+        calls = list(self._load_calls)
+        if not calls:
+            raise RuntimeError(
+                f"{type(self).__name__} has no load() call to run again: it read no "
+                "source file (set it up with from_registry, or load first)"
+            )
+        self.clear()
+        for args, keywords in calls:
+            self.load(*args, **keywords)
+        plans = _update_plans(self.create_timelines(), registry)
+        for family, timeline_id, data, extraction in plans:
+            family.update(timeline_id, data, extraction)
+        return list(dict.fromkeys(timeline_id for _, timeline_id, _, _ in plans))
+
+    # endregion
 
     def create_timeline(self, uid: str | None = None, **kwargs: Any) -> "Timeline":
         """Create a timeline from the loaded payload.
@@ -492,6 +1021,12 @@ class EventLoader(Loader[LoadSourceResult]):
     # Fields matching these names appear first (in this order), followed by
     # non-canonical RawFields (in field_specs order), then property fields.
     _CANONICAL_FIELD_ORDER: ClassVar[list[str]] = ["start", "end", "duration"]
+
+    _enum_parameters: ClassVar[dict[str, type[Enum]]] = {
+        "unit": TimeUnit,
+        "number_type": NumberType,
+        "interval_policy": IntervalPolicy,
+    }
 
     def __init__(
         self,
@@ -825,6 +1360,18 @@ class EventLoader(Loader[LoadSourceResult]):
         self._source_metadata.append(source_meta)
         if not payload:
             return
+
+        # Every row names the extraction of its file and, by the loader's
+        # rule, its place in it (a ``locator`` column of the payload).
+        rows = len(next(iter(payload.values())))
+        locators = payload.pop(LOCATOR, None)
+        if locators is None:
+            locators = pa.nulls(rows, pa.string())
+        elif isinstance(locators, pa.ChunkedArray):
+            locators = locators.combine_chunks()
+        elif not isinstance(locators, pa.Array):
+            locators = pa.array(locators, pa.string())
+        payload = {**payload, **self._stamps(path, locators)}
 
         extra_fields = getattr(self, "_extra_schema_fields", None)
         new_data = self._event_data_class.from_arrays(

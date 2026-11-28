@@ -376,6 +376,8 @@ class JsonLoader(NormalisedTablesLoader):
         self._store: DictStore = DictStore()
         self._file_metadata: dict[str, Any] = {}
         self._raw_data: dict[str, Any] | None = None
+        # The file being read, while it is (None for an in-memory dict).
+        self._reading: Source | None = None
         self._logger = module_logger.getChild(self.__class__.__name__)
 
     def _seed_config(self) -> dict[str, object]:
@@ -440,7 +442,11 @@ class JsonLoader(NormalisedTablesLoader):
         with source.open(encoding="utf-8") as f:
             data = json.load(f)
         self._raw_data = data
-        self._process_json(data)
+        self._reading = source
+        try:
+            self._process_json(data)
+        finally:
+            self._reading = None
         self._logger.debug("Loaded %s: %s", source.name, list(self._store.keys()))
         return {}, {}
 

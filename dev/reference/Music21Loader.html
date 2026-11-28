@@ -77,7 +77,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -302,6 +302,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/CHUNK.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CHUNK</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ClaimFilter</span></a>
   </div>
@@ -482,6 +488,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/EventRegistry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventRegistry</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventStore</span></a>
   </div>
@@ -490,6 +502,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Extraction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Extraction</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -848,6 +866,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/NOMATCH.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NOMATCH</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/Note.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Note</span></a>
   </div>
@@ -880,6 +904,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/OutputNumberTypeError.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">OutputNumberTypeError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Package.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Package</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1040,6 +1070,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/resolve.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">resolve</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/resolve_coordinate_spec.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">resolve_coordinate_spec</span></a>
   </div>
@@ -1066,12 +1102,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ScalarMap</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">ScopedId</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1304,6 +1334,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>Returns ScoreStore with category-specific data. Uses recursive element parsing to extract: - Notes/Rests (with chord expansion) - Measures (structure) - Controls (dynamics, tempo, etc.) - Annotations (text)</p>
 <p>All TTA timelines start at coordinate 0. When music21 reports negative quarter-beat offsets (anacrusis notes preceding the first full measure), this loader shifts every event coordinate so the earliest onset maps to 0.0. The magnitude of that shift is exposed via :attr:<code>anacrusis_offset</code> and stored in <code>ScoreStore.metadata["anacrusis_offset"]</code>.</p>
 <p>See <code>PartituraLoader</code> for the full rationale; both loaders apply the same convention so that score timelines built from either source are directly comparable and compatible with <code>MatchfileLoader</code>.</p>
+<p>Known issue: music21 gives a measure without timed content no length (the empty measures of an MEI skeleton, which leaves out the measures it repeats unchanged), and its MEI reader leaves out <code>&lt;ending&gt;</code> measures holding nothing but measure rests. A source with such a measure states no measure positions through music21, and the load raises <code>ValueError</code> naming them.</p>
 <section id="attributes" class="level2">
 <h2 class="anchored" data-anchor-id="attributes">Attributes</h2>
 <table class="caption-top table">

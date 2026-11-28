@@ -1,0 +1,1645 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="MtdLoader, the MTD archive read in place: a CD track with an excerpt per theme, one timeline per file naming its file and what it was made from, four groups by encoding with children where two lengths differ, the transposition comment, MTD’s alignment as MatchClaims, the manifest">
+
+<title>How to Load Musical Themes Aligned to Recordings (MTD) – TimeToAlign!</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/quarto-contrib/glossary/glossary.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="../reference/_styles-quartodoc.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">TimeToAlign!</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../tutorials.html"> 
+<span class="menu-text">Tutorials</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link active" href="../howto.html" aria-current="page"> 
+<span class="menu-text">How-To Guides</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../concepts.html"> 
+<span class="menu-text">Explanation</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../reference.html"> 
+<span class="menu-text">API Reference</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../howto/how03_create_note_alignment.html">AlignmentBundles</a></li><li class="breadcrumb-item"><a href="../howto/how03_mtd_themes.html">How to Load Musical Themes Aligned to Recordings (MTD)</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How-To Guides</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Timelines, Events &amp; Maps</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_coordinate_math.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Do Coordinate Math</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_advanced_cmaps.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Use Advanced Conversion Maps</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_advanced_timestamps.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Query Timestamps</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_manual_timeline_construction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Construct Timelines Manually</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_loading_data.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load Data</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_tabular_loaders.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load Tabular Data</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_graphical_timelines.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Work with Graphical Timelines</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_thoresen_annotation_transfer.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Transfer Annotations Between Graphical Analyses</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_graphical_boxes.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Represent Areas of Page Images as Boxes</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_beat_grids.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Build Beat Grids</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_flow_control.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Encode and Play Flow Control</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">TimelineGroups</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how02_supra_piano_roll.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Align a Piano Roll (SUPRA)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how02_group_and_bundle_files.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Save and Load Timelines, Groups and Bundles</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true">
+ <span class="menu-text">AlignmentBundles</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_create_note_alignment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Create a Note Alignment</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_beethoven_multimodal.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Align Multimodal Data (Beethoven)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_loading_vienna_corpus.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load the Vienna 4x22 Corpus</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_performance_precision.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an Audio-to-Score Alignment Corpus and Compare Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_parangonada.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load a parangonada Note Alignment Across Several Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_mpm_toolbox.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an MPM-Toolbox Project (Score, Modelled Performance, Observed Alignment)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_listen_here.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an Audio-to-Audio Alignment (Listen Here!)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_mtd_themes.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">How to Load Musical Themes Aligned to Recordings (MTD)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_ieee1599.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an IEEE 1599 Document</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_engraved_score_alignment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Align an Engraved Score with a Recording and a Drawn Time Axis</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_describe_the_work.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Describe What a Bundle and Its Timelines Stand For</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_match_claims_package.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Keep MatchClaims, Projections and Beliefs in a Package</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_registry_and_packages.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Write the Registry and Share Tables in a Package</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="true">
+ <span class="menu-text">In-depth Topics</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how04_hendrix_song_genesis.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Encode Song Genesis (Hendrix)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how04_loading_csv.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load CSV/TSV with column_specs and field_specs</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how04_load_anything.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load Anything</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#how-to-load-musical-themes-aligned-to-recordings-mtd" id="toc-how-to-load-musical-themes-aligned-to-recordings-mtd" class="nav-link active" data-scroll-target="#how-to-load-musical-themes-aligned-to-recordings-mtd">How to Load Musical Themes Aligned to Recordings (MTD)</a>
+  <ul>
+  <li><a href="#setup" id="toc-setup" class="nav-link" data-scroll-target="#setup">Setup</a></li>
+  <li><a href="#load-one-movement" id="toc-load-one-movement" class="nav-link" data-scroll-target="#load-one-movement">Load one movement</a></li>
+  <li><a href="#the-cd-track-and-its-excerpts" id="toc-the-cd-track-and-its-excerpts" class="nav-link" data-scroll-target="#the-cd-track-and-its-excerpts">The CD track and its excerpts</a></li>
+  <li><a href="#the-files-of-one-theme" id="toc-the-files-of-one-theme" class="nav-link" data-scroll-target="#the-files-of-one-theme">The files of one theme</a></li>
+  <li><a href="#four-groups-one-per-encoding" id="toc-four-groups-one-per-encoding" class="nav-link" data-scroll-target="#four-groups-one-per-encoding">Four groups, one per encoding</a></li>
+  <li><a href="#the-recordings-transposition" id="toc-the-recordings-transposition" class="nav-link" data-scroll-target="#the-recordings-transposition">The recording’s transposition</a></li>
+  <li><a href="#mtds-alignment-as-matchclaims" id="toc-mtds-alignment-as-matchclaims" class="nav-link" data-scroll-target="#mtds-alignment-as-matchclaims">MTD’s alignment as MatchClaims</a></li>
+  <li><a href="#track-lengths-from-elsewhere" id="toc-track-lengths-from-elsewhere" class="nav-link" data-scroll-target="#track-lengths-from-elsewhere">Track lengths from elsewhere</a></li>
+  <li><a href="#write-the-manifest" id="toc-write-the-manifest" class="nav-link" data-scroll-target="#write-the-manifest">Write the manifest</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../howto/how03_create_note_alignment.html">AlignmentBundles</a></li><li class="breadcrumb-item"><a href="../howto/how03_mtd_themes.html">How to Load Musical Themes Aligned to Recordings (MTD)</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">How to Load Musical Themes Aligned to Recordings (MTD)</h1>
+</div>
+
+<div>
+  <div class="description">
+    MtdLoader, the MTD archive read in place: a CD track with an excerpt per theme, one timeline per file naming its file and what it was made from, four groups by encoding with children where two lengths differ, the transposition comment, MTD’s alignment as MatchClaims, the manifest
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="how-to-load-musical-themes-aligned-to-recordings-mtd" class="level1">
+<h1>How to Load Musical Themes Aligned to Recordings (MTD)</h1>
+<p>The Musical Theme Dataset (MTD; Zalkow, Balke, Arifi-Müller and Müller, TISMIR 2020, <a href="https://doi.org/10.5334/tismir.68">doi:10.5334/tismir.68</a>) takes 2,067 themes from Barlow and Morgenstern’s <em>A Dictionary of Musical Themes</em>. Each theme is sixteen files: its metadata, an excerpt of a commercial recording of its movement, an alignment of the excerpt with an encoding of the theme, and four encodings of the theme as MIDI files, note lists, PDFs, a Sibelius file and a MusicXML file. This guide reads one movement with <code>MtdLoader</code>:</p>
+<ol type="1">
+<li>the CD track, a seconds timeline holding each theme’s excerpt as a child;</li>
+<li>per theme, one timeline per file, each naming its file and what it was made from;</li>
+<li>per theme, four <button class="glossary" title="An array of member timelines that share the same graphical start and end: every member’s 0 coincides with every other member’s 0, and every member’s length with every other member’s length. Placing timelines in a group asserts commensurability regardless of their units. A position in between converts linearly and exactly (p on member A is p · len_B / len_A on member B) and is written in the target member’s number type. When only part of a timeline takes part, the member is a child of that timeline at its exact offset; a member is never placed partially. No member is an ancestor or a descendant of another member of the same group, since a child sits at its offset inside its parent. A group answers with the same TimeStamp class as a Timeline; to_dict() and from_dict() write and read it with every timeline it needs.">TimelineGroup</button>s, one per encoding;</li>
+<li>MTD’s alignment as <button class="glossary" title="">MatchClaim</button>s;</li>
+</ol>
+<p>and writes the <button class="glossary" title="A collection of TimelineGroups with inter-group MatchClaim connections; provides coordinate transfer via offset arithmetic, interpolation, and WarpMaps.">AlignmentBundle</button> as a TimeToShare manifest.</p>
+<section id="setup" class="level2">
+<h2 class="anchored" data-anchor-id="setup">Setup</h2>
+<p>Install the library with <code>pip install timetoalign</code>. The example data is a sample of four themes in the layout of the MTD archive, <code>MTD_sample.zip</code>, fetched by the test-data helper; the full <code>MTD_1.0.0.zip</code> is read the same way, in place, without extracting it. The files that MTD’s licence does not cover (the excerpts, the EDM encodings, the MusicXML files) are stand-ins shaped like MTD’s own; an excerpt is silence as long as MTD’s.</p>
+<p>Three helpers show what the loader made: <code>files</code> one row per timeline of a theme, <code>members</code> one row per member of a theme’s groups, and <code>claims</code> one row per MatchClaim from a timeline.</p>
+<div id="bc8fa2a9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T04:42:21.544509Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T04:42:21.543852Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T04:42:23.873193Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T04:42:23.872438Z&quot;}}" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoshare <span class="im">import</span> loads, validate</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> AlignmentBundle, MatchClaim, MtdLoader</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.testdata <span class="im">import</span> ensure_data</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>ARCHIVE <span class="op">=</span> ensure_data(<span class="st">"mtd"</span>) <span class="op">/</span> <span class="st">"MTD_sample.zip"</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> label(timeline, theme):</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""A timeline's name without its theme: ``SCORE MIDI``, the excerpt ``excerpt``."""</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> timeline.name <span class="op">==</span> <span class="ss">f"Theme </span><span class="sc">{</span>theme<span class="sc">}</span><span class="ss">"</span>:</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">"excerpt"</span></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> timeline.name.removeprefix(<span class="ss">f"</span><span class="sc">{</span>theme<span class="sc">}</span><span class="ss">, "</span>)</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> theme_timelines(bundle, theme):</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""The excerpt and the file timelines of *theme*, as the bundle holds them."""</span></span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>    timelines <span class="op">=</span> [bundle.get_timeline(uid) <span class="cf">for</span> uid <span class="kw">in</span> bundle.timeline_ids]</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a>    children <span class="op">=</span> {uid <span class="cf">for</span> timeline <span class="kw">in</span> timelines <span class="cf">for</span> uid <span class="kw">in</span> timeline.list_children()}</span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>    excerpt <span class="op">=</span> <span class="bu">next</span>(t <span class="cf">for</span> t <span class="kw">in</span> timelines <span class="cf">if</span> t.name <span class="op">==</span> <span class="ss">f"Theme </span><span class="sc">{</span>theme<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    roots <span class="op">=</span> [</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>        t <span class="cf">for</span> t <span class="kw">in</span> timelines <span class="cf">if</span> t.<span class="bu">id</span> <span class="kw">not</span> <span class="kw">in</span> children <span class="kw">and</span> t.name.startswith(<span class="ss">f"</span><span class="sc">{</span>theme<span class="sc">}</span><span class="ss">, "</span>)</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> [excerpt, <span class="op">*</span>roots]</span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> files(bundle, theme):</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""One row per timeline of *theme*: its axis, length, file and source."""</span></span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>    timelines <span class="op">=</span> theme_timelines(bundle, theme)</span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>    labels <span class="op">=</span> {<span class="ss">f"#</span><span class="sc">{</span>t<span class="sc">.</span><span class="bu">id</span><span class="sc">}</span><span class="ss">"</span>: label(t, theme) <span class="cf">for</span> t <span class="kw">in</span> timelines}</span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>    rows <span class="op">=</span> []</span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> timeline <span class="kw">in</span> timelines:</span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>        statements <span class="op">=</span> timeline.statements</span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>        (item,) <span class="op">=</span> statements[<span class="st">"lrmoo:R7i_is_exemplified_by"</span>]</span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>        sources <span class="op">=</span> statements.get(<span class="st">"dcterms:source"</span>, [])</span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>        rows.append(</span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>            {</span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a>                <span class="st">"timeline"</span>: label(timeline, theme),</span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>                <span class="st">"unit"</span>: timeline.unit.value,</span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a>                <span class="st">"length"</span>: (</span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"unknown"</span> <span class="cf">if</span> timeline.length <span class="kw">is</span> <span class="va">None</span> <span class="cf">else</span> <span class="bu">str</span>(timeline.length)</span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a>                ),</span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a>                <span class="st">"notes"</span>: <span class="bu">len</span>(timeline.get_events()),</span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a>                <span class="st">"file"</span>: item[<span class="st">"label"</span>],</span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a>                <span class="st">"derived from"</span>: <span class="st">", "</span>.join(labels[s[<span class="st">"id"</span>]] <span class="cf">for</span> s <span class="kw">in</span> sources),</span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a>                <span class="st">"children"</span>: <span class="st">", "</span>.join(</span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a>                    label(timeline.get_child(uid), theme)</span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a>                    <span class="cf">for</span> uid <span class="kw">in</span> timeline.list_children()</span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a>                ),</span>
+<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a>            }</span>
+<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> pd.DataFrame(rows)</span>
+<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> members(bundle, theme):</span>
+<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""One row per member of *theme*'s groups: the group, the member, its length."""</span></span>
+<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a>    rows <span class="op">=</span> []</span>
+<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> group_id <span class="kw">in</span> bundle.group_ids:</span>
+<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a>        group <span class="op">=</span> bundle.get_group(group_id)</span>
+<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="kw">not</span> group.name.startswith(<span class="ss">f"</span><span class="sc">{</span>theme<span class="sc">}</span><span class="ss">, "</span>):</span>
+<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a>            <span class="cf">continue</span></span>
+<span id="cb1-66"><a href="#cb1-66" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> uid <span class="kw">in</span> group.timeline_ids:</span>
+<span id="cb1-67"><a href="#cb1-67" aria-hidden="true" tabindex="-1"></a>            member <span class="op">=</span> group.get_timeline(uid)</span>
+<span id="cb1-68"><a href="#cb1-68" aria-hidden="true" tabindex="-1"></a>            rows.append(</span>
+<span id="cb1-69"><a href="#cb1-69" aria-hidden="true" tabindex="-1"></a>                {</span>
+<span id="cb1-70"><a href="#cb1-70" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"group"</span>: group.name.removeprefix(<span class="ss">f"</span><span class="sc">{</span>theme<span class="sc">}</span><span class="ss">, "</span>),</span>
+<span id="cb1-71"><a href="#cb1-71" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"member"</span>: label(member, theme),</span>
+<span id="cb1-72"><a href="#cb1-72" aria-hidden="true" tabindex="-1"></a>                    <span class="st">"length"</span>: (</span>
+<span id="cb1-73"><a href="#cb1-73" aria-hidden="true" tabindex="-1"></a>                        <span class="st">"unknown"</span> <span class="cf">if</span> member.length <span class="kw">is</span> <span class="va">None</span> <span class="cf">else</span> <span class="bu">str</span>(member.length)</span>
+<span id="cb1-74"><a href="#cb1-74" aria-hidden="true" tabindex="-1"></a>                    ),</span>
+<span id="cb1-75"><a href="#cb1-75" aria-hidden="true" tabindex="-1"></a>                }</span>
+<span id="cb1-76"><a href="#cb1-76" aria-hidden="true" tabindex="-1"></a>            )</span>
+<span id="cb1-77"><a href="#cb1-77" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> pd.DataFrame(rows)</span>
+<span id="cb1-78"><a href="#cb1-78" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-79"><a href="#cb1-79" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-80"><a href="#cb1-80" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> claims(field, timeline):</span>
+<span id="cb1-81"><a href="#cb1-81" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""One row per MatchClaim from *timeline*: the note, the excerpt's side."""</span></span>
+<span id="cb1-82"><a href="#cb1-82" aria-hidden="true" tabindex="-1"></a>    events <span class="op">=</span> timeline.get_events().table</span>
+<span id="cb1-83"><a href="#cb1-83" aria-hidden="true" tabindex="-1"></a>    pitches <span class="op">=</span> <span class="bu">dict</span>(</span>
+<span id="cb1-84"><a href="#cb1-84" aria-hidden="true" tabindex="-1"></a>        <span class="bu">zip</span>(events.column(<span class="st">"id"</span>).to_pylist(), events.column(<span class="st">"pitch"</span>).to_pylist())</span>
+<span id="cb1-85"><a href="#cb1-85" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-86"><a href="#cb1-86" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> pd.DataFrame(</span>
+<span id="cb1-87"><a href="#cb1-87" aria-hidden="true" tabindex="-1"></a>        [</span>
+<span id="cb1-88"><a href="#cb1-88" aria-hidden="true" tabindex="-1"></a>            {</span>
+<span id="cb1-89"><a href="#cb1-89" aria-hidden="true" tabindex="-1"></a>                <span class="st">"onset (ticks)"</span>: claim.start_anchor.coordinate_a.value,</span>
+<span id="cb1-90"><a href="#cb1-90" aria-hidden="true" tabindex="-1"></a>                <span class="st">"MIDI pitch"</span>: pitches[claim.event_a_id],</span>
+<span id="cb1-91"><a href="#cb1-91" aria-hidden="true" tabindex="-1"></a>                <span class="st">"excerpt side"</span>: claim.event_b_id,</span>
+<span id="cb1-92"><a href="#cb1-92" aria-hidden="true" tabindex="-1"></a>                <span class="st">"excerpt (seconds)"</span>: claim.start_anchor.coordinate_b.value,</span>
+<span id="cb1-93"><a href="#cb1-93" aria-hidden="true" tabindex="-1"></a>                <span class="st">"claim type"</span>: claim.claim_type.value,</span>
+<span id="cb1-94"><a href="#cb1-94" aria-hidden="true" tabindex="-1"></a>            }</span>
+<span id="cb1-95"><a href="#cb1-95" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> claim <span class="kw">in</span> field</span>
+<span id="cb1-96"><a href="#cb1-96" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> claim.timeline_a_id <span class="op">==</span> timeline.<span class="bu">id</span></span>
+<span id="cb1-97"><a href="#cb1-97" aria-hidden="true" tabindex="-1"></a>        ]</span>
+<span id="cb1-98"><a href="#cb1-98" aria-hidden="true" tabindex="-1"></a>    )</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="load-one-movement" class="level2">
+<h2 class="anchored" data-anchor-id="load-one-movement">Load one movement</h2>
+<p>A movement is named as MTD names it, <code>&lt;ComposerID&gt;_&lt;WorkID&gt;</code>; the first movement of Beethoven’s Piano Sonata Op. 2 No.&nbsp;1 is <code>Beethoven_Op002No1-01</code>. The loader reads every theme’s metadata to find the movement’s themes, then only their files. Themes can also be named by their MTD IDs, <code>themes=["MTD0807"]</code>; without either, every theme is read.</p>
+<div id="663c5963" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T04:42:23.874929Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T04:42:23.874652Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T04:42:24.148759Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T04:42:24.148157Z&quot;}}" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>loader <span class="op">=</span> MtdLoader.from_file(ARCHIVE, movements<span class="op">=</span>[<span class="st">"Beethoven_Op002No1-01"</span>])</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>loader</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<h4 class="anchored">MtdLoader</h4>
+
+<table class="caption-top table table-sm table-striped small">
+<tbody>
+<tr class="odd">
+<td><strong>Sources</strong></td>
+<td>1 file(s): <code>MTD_sample.zip</code></td>
+</tr>
+<tr class="even">
+<td><strong>Claims</strong></td>
+<td>26</td>
+</tr>
+<tr class="odd">
+<td><strong>Movements</strong></td>
+<td><code>Beethoven_Op002No1-01</code></td>
+</tr>
+<tr class="even">
+<td><strong>Themes</strong></td>
+<td>2</td>
+</tr>
+<tr class="odd">
+<td><strong>CD tracks</strong></td>
+<td>1</td>
+</tr>
+<tr class="even">
+<td><strong>Claims matched against</strong></td>
+<td><code>data_EDM-corr_MID</code></td>
+</tr>
+<tr class="odd">
+<td><strong>Try</strong></td>
+<td><code>create_timeline()</code>, <code>create_timelines()</code>, <code>create_bundle()</code></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<p>Two themes of the movement lie in one CD track of Alfred Brendel’s recording. A track is named as MTD names it: the MusicBrainz release, the disc and the track.</p>
+<div id="8fb72a8e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T04:42:24.150755Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T04:42:24.150572Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T04:42:24.154109Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T04:42:24.153480Z&quot;}}" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>loader.themes, loader.tracks</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<pre><code>(['MTD0807', 'MTD0808'],
+ [('814c53fd-0732-4819-9753-4578f5ab992c', '049', 'Track01')])</code></pre>
+</div>
+</div>
+</section>
+<section id="the-cd-track-and-its-excerpts" class="level2">
+<h2 class="anchored" data-anchor-id="the-cd-track-and-its-excerpts">The CD track and its excerpts</h2>
+<p><code>create_bundle()</code> assembles the bundle. Its first timeline is the CD track, named after its movement, its performer, the disc and the track. MTD does not state how long the track is, so its length is unknown, <code>None</code>.</p>
+<div id="5584b03c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T04:42:24.155667Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T04:42:24.155523Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T04:42:24.328716Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T04:42:24.328204Z&quot;}}" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>bundle <span class="op">=</span> loader.create_bundle()</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>track <span class="op">=</span> bundle.get_timeline(bundle.timeline_ids[<span class="dv">0</span>])</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>track.name, track.length</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="4">
+<pre><code>('Beethoven Op002No1-01, Brendel (CD 49, track 1)', None)</code></pre>
+</div>
+</div>
+<p>Each theme’s excerpt is a child of the track, placed at the theme’s <code>StartTime</code> and as long as <code>EndTime − StartTime</code>, both read as the decimals MTD writes.</p>
+<div id="5e357639" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T04:42:24.330494Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T04:42:24.330346Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T04:42:24.339484Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T04:42:24.338897Z&quot;}}" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>excerpts <span class="op">=</span> [track.get_child(uid) <span class="cf">for</span> uid <span class="kw">in</span> track.list_children()]</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>pd.DataFrame(</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    {</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>        <span class="st">"excerpt"</span>: [excerpt.name <span class="cf">for</span> excerpt <span class="kw">in</span> excerpts],</span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>        <span class="st">"offset (seconds)"</span>: [track.get_child_offset(e.<span class="bu">id</span>).value <span class="cf">for</span> e <span class="kw">in</span> excerpts],</span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>        <span class="st">"length (seconds)"</span>: [excerpt.length.value <span class="cf">for</span> excerpt <span class="kw">in</span> excerpts],</span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">excerpt</th>
+<th data-quarto-table-cell-role="th">offset (seconds)</th>
+<th data-quarto-table-cell-role="th">length (seconds)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>Theme B689 (MTD 0807)</td>
+<td>0.2</td>
+<td>2.8</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>Theme B690 (MTD 0808)</td>
+<td>84.7</td>
+<td>4.5</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>The track states what MTD says of the recording: that it records the movement, its release on MusicBrainz, the collection, disc and track as MTD names them, the performer, and that the recording is in copyright and identified here, not shared.</p>
+<div id="c2b4d5b1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T04:42:24.341029Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T04:42:24.340886Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T04:42:24.344423Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T04:42:24.343751Z&quot;}}" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>track.statements</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<pre><code>{'dcterms:accessRights': [{'id': 'http://purl.org/coar/access_right/c_14cb'}],
+ 'dcterms:rights': [{'id': 'http://rightsstatements.org/vocab/InC/1.0/'}],
+ 'melod:hasIdentifier': [{'type': ['melod:Identifier'],
+   'rdfs:label': ['MTD CollectionID'],
+   'owl:hasValue': ['Composer/Beethoven_CompleteEdition_BC']},
+  {'type': ['melod:Identifier'],
+   'rdfs:label': ['MTD NameCD'],
+   'owl:hasValue': ['049']},
+  {'type': ['melod:Identifier'],
+   'rdfs:label': ['MTD NameTrack'],
+   'owl:hasValue': ['Track01']}],
+ 'rel:prf': [{'label': 'Brendel'}],
+ 'schema:inAlbum': [{'id': 'http://musicbrainz.org/release/814c53fd-0732-4819-9753-4578f5ab992c'}],
+ 'schema:recordingOf': [{'label': 'Beethoven Op002No1-01'}],
+ 'type': ['schema:MusicRecording']}</code></pre>
+</div>
+</div>
+</section>
+<section id="the-files-of-one-theme" class="level2">
+<h2 class="anchored" data-anchor-id="the-files-of-one-theme">The files of one theme</h2>
+<p>The first theme, B689 in Barlow and Morgenstern, is fourteen timelines: the excerpt and one per file of its four encodings. A MIDI file is the ticks timeline the MIDI loader builds of it, on the file’s own axis, with what the file states of that axis: a C-Map to quarters (480 ticks per quarter here), a C-Map to seconds from its tempo map, and a measure map of its bars; the MusicXML file and the Sibelius file are quarters timelines, a note list (CSV) and the excerpt seconds timelines, a PDF a points timeline. Each names its file in the archive (<code>lrmoo:R7i_is_exemplified_by</code>) and, where MTD’s paper states that the file was made from another, that file’s timeline (<code>dcterms:source</code>): the SCORE exports derive from the Sibelius file, EDM-corr’s MIDI file from EDM-orig’s, each EDM encoding’s note list and PDF from its MIDI file, and EDM-alig’s files from EDM-corr’s MIDI file.</p>
+<p>A timeline is as long as its file states: a MIDI file its end of track (its timeline is locked at that length), the MusicXML file the end of its last bar, the excerpt its seconds. A note list, a PDF and the Sibelius file state no end: their length is unknown (<code>length</code> is <code>None</code>). Only the MIDI files’ timelines hold notes.</p>
+<div id="d9106862" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T04:42:24.345922Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T04:42:24.345756Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T04:42:24.357269Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T04:42:24.356688Z&quot;}}" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>theme <span class="op">=</span> excerpts[<span class="dv">0</span>].name.removeprefix(<span class="st">"Theme "</span>)</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>files(bundle, theme)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">timeline</th>
+<th data-quarto-table-cell-role="th">unit</th>
+<th data-quarto-table-cell-role="th">length</th>
+<th data-quarto-table-cell-role="th">notes</th>
+<th data-quarto-table-cell-role="th">file</th>
+<th data-quarto-table-cell-role="th">derived from</th>
+<th data-quarto-table-cell-role="th">children</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>excerpt</td>
+<td>seconds</td>
+<td>2.8 seconds</td>
+<td>0</td>
+<td>MTD/data_AUDIO/MTD0807_Beethoven_Op002No1-01.wav</td>
+<td></td>
+<td></td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>EDM-orig MIDI</td>
+<td>ticks</td>
+<td>3839 ticks</td>
+<td>10</td>
+<td>MTD/data_EDM-orig_MID/MTD0807_Beethoven_Op002N...</td>
+<td></td>
+<td></td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>EDM-orig CSV</td>
+<td>seconds</td>
+<td>unknown</td>
+<td>0</td>
+<td>MTD/data_EDM-orig_CSV/MTD0807_Beethoven_Op002N...</td>
+<td>EDM-orig MIDI</td>
+<td></td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">3</th>
+<td>EDM-orig PDF</td>
+<td>points</td>
+<td>unknown</td>
+<td>0</td>
+<td>MTD/data_EDM-orig_IMG/MTD0807_Beethoven_Op002N...</td>
+<td>EDM-orig MIDI</td>
+<td></td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">4</th>
+<td>EDM-corr MIDI</td>
+<td>ticks</td>
+<td>3840 ticks</td>
+<td>10</td>
+<td>MTD/data_EDM-corr_MID/MTD0807_Beethoven_Op002N...</td>
+<td>EDM-orig MIDI</td>
+<td></td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">5</th>
+<td>EDM-corr CSV</td>
+<td>seconds</td>
+<td>unknown</td>
+<td>0</td>
+<td>MTD/data_EDM-corr_CSV/MTD0807_Beethoven_Op002N...</td>
+<td>EDM-corr MIDI</td>
+<td></td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">6</th>
+<td>EDM-corr PDF</td>
+<td>points</td>
+<td>unknown</td>
+<td>0</td>
+<td>MTD/data_EDM-corr_IMG/MTD0807_Beethoven_Op002N...</td>
+<td>EDM-corr MIDI</td>
+<td></td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">7</th>
+<td>SCORE Sibelius</td>
+<td>quarters</td>
+<td>unknown</td>
+<td>0</td>
+<td>MTD/data_SCORE_SIB/MTD0807_Beethoven_Op002No1-...</td>
+<td></td>
+<td></td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">8</th>
+<td>SCORE MusicXML</td>
+<td>quarters</td>
+<td>9 quarters</td>
+<td>0</td>
+<td>MTD/data_SCORE_XML/MTD0807_Beethoven_Op002No1-...</td>
+<td>SCORE Sibelius</td>
+<td>SCORE MusicXML, span of the SCORE MIDI</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">9</th>
+<td>SCORE MIDI</td>
+<td>ticks</td>
+<td>3840 ticks</td>
+<td>10</td>
+<td>MTD/data_SCORE_MID/MTD0807_Beethoven_Op002No1-...</td>
+<td>SCORE Sibelius</td>
+<td></td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">10</th>
+<td>SCORE CSV</td>
+<td>seconds</td>
+<td>unknown</td>
+<td>0</td>
+<td>MTD/data_SCORE_CSV/MTD0807_Beethoven_Op002No1-...</td>
+<td>SCORE Sibelius</td>
+<td></td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">11</th>
+<td>SCORE PDF</td>
+<td>points</td>
+<td>unknown</td>
+<td>0</td>
+<td>MTD/data_SCORE_IMG/MTD0807_Beethoven_Op002No1-...</td>
+<td>SCORE Sibelius</td>
+<td></td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">12</th>
+<td>EDM-alig MIDI</td>
+<td>ticks</td>
+<td>1369 ticks</td>
+<td>10</td>
+<td>MTD/data_EDM-alig_MID/MTD0807_Beethoven_Op002N...</td>
+<td>EDM-corr MIDI</td>
+<td>EDM-alig MIDI, span of the excerpt</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">13</th>
+<td>EDM-alig CSV</td>
+<td>seconds</td>
+<td>unknown</td>
+<td>0</td>
+<td>MTD/data_EDM-alig_CSV/MTD0807_Beethoven_Op002N...</td>
+<td>EDM-corr MIDI</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>The theme’s identifiers and its movement are stated on the two timelines nothing is derived from, EDM-orig’s MIDI file and the Sibelius file.</p>
+<div id="6a78f0cd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T04:42:24.358604Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T04:42:24.358462Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T04:42:24.362208Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T04:42:24.361557Z&quot;}}" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>edm_orig <span class="op">=</span> <span class="bu">next</span>(</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    t <span class="cf">for</span> t <span class="kw">in</span> theme_timelines(bundle, theme) <span class="cf">if</span> label(t, theme) <span class="op">==</span> <span class="st">"EDM-orig MIDI"</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>edm_orig.statements</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<pre><code>{'lrmoo:R7i_is_exemplified_by': [{'type': ['melod:Item'],
+   'label': 'MTD/data_EDM-orig_MID/MTD0807_Beethoven_Op002No1-01.mid',
+   'schema:isPartOf': [{'id': 'https://www.audiolabs-erlangen.de/resources/MIR/MTD/MTD_1.0.0.zip'}]}],
+ 'melod:hasIdentifier': [{'type': ['melod:Identifier'],
+   'rdfs:label': ['MTD'],
+   'owl:hasValue': ['0807']},
+  {'type': ['melod:Identifier'],
+   'rdfs:label': ['Barlow and Morgenstern'],
+   'owl:hasValue': ['B689']}],
+ 'schema:isPartOf': [{'label': 'Beethoven Op002No1-01'}]}</code></pre>
+</div>
+</div>
+</section>
+<section id="four-groups-one-per-encoding" class="level2">
+<h2 class="anchored" data-anchor-id="four-groups-one-per-encoding">Four groups, one per encoding</h2>
+<p>Each encoding of the theme is a group: EDM-orig, EDM-corr and SCORE of their files, EDM-alig of its two files and the excerpt, to which EDM-alig is aligned (its quarter notes are the excerpt’s seconds). The members of a group share its start and end. Two pairs of members state different lengths: EDM-alig’s MIDI file ends at tick 1369, 25 ticks past the 1344 ticks (2.8 quarters) of the excerpt’s 2.8 seconds, since the aligned notes run past the excerpt’s cut; the MusicXML file’s last bar ends at 9 quarters, past the SCORE MIDI file’s end of track at tick 3840, 8 quarters. Nothing is stretched to fit: the longer member takes part through a child of it, starting at 0 and as long as the shorter one, named after the span it covers (the children of the table above).</p>
+<div id="20922e65" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T04:42:24.363592Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T04:42:24.363451Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T04:42:24.370724Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T04:42:24.370111Z&quot;}}" data-execution_count="9">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>members(bundle, theme)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="9">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">group</th>
+<th data-quarto-table-cell-role="th">member</th>
+<th data-quarto-table-cell-role="th">length</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>EDM-orig</td>
+<td>EDM-orig MIDI</td>
+<td>3839 ticks</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>EDM-orig</td>
+<td>EDM-orig CSV</td>
+<td>unknown</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>EDM-orig</td>
+<td>EDM-orig PDF</td>
+<td>unknown</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">3</th>
+<td>EDM-corr</td>
+<td>EDM-corr MIDI</td>
+<td>3840 ticks</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">4</th>
+<td>EDM-corr</td>
+<td>EDM-corr CSV</td>
+<td>unknown</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">5</th>
+<td>EDM-corr</td>
+<td>EDM-corr PDF</td>
+<td>unknown</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">6</th>
+<td>SCORE</td>
+<td>SCORE Sibelius</td>
+<td>unknown</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">7</th>
+<td>SCORE</td>
+<td>SCORE MusicXML, span of the SCORE MIDI</td>
+<td>8 quarters</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">8</th>
+<td>SCORE</td>
+<td>SCORE MIDI</td>
+<td>3840 ticks</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">9</th>
+<td>SCORE</td>
+<td>SCORE CSV</td>
+<td>unknown</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">10</th>
+<td>SCORE</td>
+<td>SCORE PDF</td>
+<td>unknown</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">11</th>
+<td>EDM-alig</td>
+<td>excerpt</td>
+<td>2.8 seconds</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">12</th>
+<td>EDM-alig</td>
+<td>EDM-alig MIDI, span of the excerpt</td>
+<td>1344 ticks</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">13</th>
+<td>EDM-alig</td>
+<td>EDM-alig CSV</td>
+<td>unknown</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>Every group holds a member of unknown length (a note list, a PDF or the Sibelius file), so a group converts no position until those lengths are known.</p>
+</section>
+<section id="the-recordings-transposition" class="level2">
+<h2 class="anchored" data-anchor-id="the-recordings-transposition">The recording’s transposition</h2>
+<p>The notes keep their encoding’s pitches. META’s <code>MidiTransposition</code>, the semitones by which the recording sounds transposed against the encodings, is a comment on the excerpt: 0 for this theme. The finale of the Fifth Symphony, read by its MTD ID, states 5.</p>
+<div id="66e95e08" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T04:42:24.372210Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T04:42:24.372067Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T04:42:24.375206Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T04:42:24.374665Z&quot;}}" data-execution_count="10">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>excerpts[<span class="dv">0</span>].statements[<span class="st">"rdfs:comment"</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="10">
+<pre><code>["MTD's MidiTransposition: 0 semitones, the recording against the symbolic encodings"]</code></pre>
+</div>
+</div>
+<div id="76398d09" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T04:42:24.376543Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T04:42:24.376407Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T04:42:24.536079Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T04:42:24.535386Z&quot;}}" data-execution_count="11">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>fifth <span class="op">=</span> MtdLoader.from_file(ARCHIVE, themes<span class="op">=</span>[<span class="st">"MTD1080"</span>]).create_bundle()</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>fifth_track <span class="op">=</span> fifth.get_timeline(fifth.timeline_ids[<span class="dv">0</span>])</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>fifth_track.get_child(fifth_track.list_children()[<span class="dv">0</span>]).statements[<span class="st">"rdfs:comment"</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<pre><code>["MTD's MidiTransposition: 5 semitones, the recording against the symbolic encodings"]</code></pre>
+</div>
+</div>
+</section>
+<section id="mtds-alignment-as-matchclaims" class="level2">
+<h2 class="anchored" data-anchor-id="mtds-alignment-as-matchclaims">MTD’s alignment as MatchClaims</h2>
+<p>The alignment file has rows of quarters in EDM-corr’s MIDI file and seconds in the excerpt. The loader reads each row but the last as synchronous MatchClaims from each note at that onset of the EDM-corr MIDI timeline to the sentinel <code>CHUNK</code> on the excerpt (written <code>CHUNK_SENTINEL</code> in the MatchClaim table): the excerpt holds no event, the claim states a position on it. The file writes the onset with five decimals (<code>6.66667</code>); the claim holds the onset of the note it meets on the MIDI file’s own axis, tick 3200. The last row, the end of the last note, is checked and not kept. The loader hands the claims over as one field.</p>
+<div id="d8d4bdd9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T04:42:24.538183Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T04:42:24.538003Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T04:42:24.550597Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T04:42:24.549771Z&quot;}}" data-execution_count="12">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>field <span class="op">=</span> loader.get_field(MatchClaim)</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>edm_corr <span class="op">=</span> <span class="bu">next</span>(</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    t <span class="cf">for</span> t <span class="kw">in</span> theme_timelines(bundle, theme) <span class="cf">if</span> label(t, theme) <span class="op">==</span> <span class="st">"EDM-corr MIDI"</span></span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>claims(field, edm_corr)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="12">
+<div>
+
+
+<table class="dataframe caption-top table table-sm table-striped small" data-border="1">
+<thead>
+<tr class="header">
+<th data-quarto-table-cell-role="th"></th>
+<th data-quarto-table-cell-role="th">onset (ticks)</th>
+<th data-quarto-table-cell-role="th">MIDI pitch</th>
+<th data-quarto-table-cell-role="th">excerpt side</th>
+<th data-quarto-table-cell-role="th">excerpt (seconds)</th>
+<th data-quarto-table-cell-role="th">claim type</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">0</th>
+<td>0</td>
+<td>60</td>
+<td>CHUNK_SENTINEL</td>
+<td>0.12855</td>
+<td>event_match</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">1</th>
+<td>480</td>
+<td>65</td>
+<td>CHUNK_SENTINEL</td>
+<td>0.45519</td>
+<td>event_match</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">2</th>
+<td>960</td>
+<td>68</td>
+<td>CHUNK_SENTINEL</td>
+<td>0.75268</td>
+<td>event_match</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">3</th>
+<td>1440</td>
+<td>72</td>
+<td>CHUNK_SENTINEL</td>
+<td>1.06608</td>
+<td>event_match</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">4</th>
+<td>1920</td>
+<td>77</td>
+<td>CHUNK_SENTINEL</td>
+<td>1.38863</td>
+<td>event_match</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">5</th>
+<td>2400</td>
+<td>80</td>
+<td>CHUNK_SENTINEL</td>
+<td>1.71300</td>
+<td>event_match</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">6</th>
+<td>3120</td>
+<td>79</td>
+<td>CHUNK_SENTINEL</td>
+<td>2.13951</td>
+<td>event_match</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">7</th>
+<td>3200</td>
+<td>77</td>
+<td>CHUNK_SENTINEL</td>
+<td>2.20401</td>
+<td>event_match</td>
+</tr>
+<tr class="odd">
+<th data-quarto-table-cell-role="th">8</th>
+<td>3280</td>
+<td>76</td>
+<td>CHUNK_SENTINEL</td>
+<td>2.28850</td>
+<td>event_match</td>
+</tr>
+<tr class="even">
+<th data-quarto-table-cell-role="th">9</th>
+<td>3360</td>
+<td>77</td>
+<td>CHUNK_SENTINEL</td>
+<td>2.35321</td>
+<td>event_match</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>The timeline’s C-Map reads tick 3200 as exactly <code>20/3</code> quarters, the onset the alignment file writes as <code>6.66667</code>. Its tempo map, a second per quarter in this file, reads it as <code>20/3</code> seconds, shown as the float the seconds axis holds.</p>
+<div id="f92a2e32" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T04:42:24.552364Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T04:42:24.552190Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T04:42:24.555997Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T04:42:24.555175Z&quot;}}" data-execution_count="13">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>edm_corr.get_timestamp_at(<span class="dv">3200</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<div style="font-family: monospace;"><strong>TimeStamp</strong>
+<table class="caption-top table table-sm table-striped small">
+<thead>
+<tr class="header" style="border-bottom: 1px solid #ccc;">
+<th data-quarto-table-cell-role="th" style="text-align: left; padding: 2px 8px;">ID</th>
+<th data-quarto-table-cell-role="th" style="text-align: right; padding: 2px 8px;">Coordinate</th>
+<th data-quarto-table-cell-role="th" style="text-align: left; padding: 2px 8px;">Type</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>dlt_0bfv362erabkd</strong></td>
+<td style="text-align: right;">3200 ticks</td>
+<td><em>axis</em></td>
+</tr>
+<tr class="even">
+<td style="color: #666">quarters</td>
+<td style="text-align: right;">20/3 quarters</td>
+<td style="color: #666"><em>cmap</em></td>
+</tr>
+<tr class="odd">
+<td style="color: #666">seconds</td>
+<td style="text-align: right;">6.666666666666667 seconds</td>
+<td style="color: #666"><em>cmap</em></td>
+</tr>
+</tbody>
+</table>
+<div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>ts.get_coordinate_for(&lt;tl_id&gt;)</code>, <code>ts.get_unit(&lt;unit&gt;)</code>, <code>ts.get_conversion_for(&lt;key&gt;)</code></div></div>
+</div>
+</div>
+<p>The bundle holds the same claims (<code>bundle.match_claim_table</code>) beside its groups, whose members of unknown length leave its matchstamps without an answer. A bundle of the timelines and the claims without the groups answers one: from the triplet’s onset, the excerpt’s second and, through the excerpt’s offset, the track’s.</p>
+<div id="7fe2d666" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T04:42:24.557726Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T04:42:24.557545Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T04:42:24.685586Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T04:42:24.684880Z&quot;}}" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>plain <span class="op">=</span> AlignmentBundle(name<span class="op">=</span><span class="st">"timelines and claims"</span>)</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> timeline <span class="kw">in</span> loader.create_timelines():</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    plain.add_timeline(timeline)</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>plain.add_match_claim_field(field)</span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>plain.get_matchstamp_at(<span class="dv">3200</span>, edm_corr.<span class="bu">id</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<div style="font-family: monospace;"><strong>MatchStamp</strong> <span style="background: #e3f2fd; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">3 timelines, 2 edges</span>
+<table class="caption-top table table-sm table-striped small">
+<thead>
+<tr class="header" style="border-bottom: 1px solid #ccc;">
+<th data-quarto-table-cell-role="th" style="text-align: left; padding: 2px 8px;">ID</th>
+<th data-quarto-table-cell-role="th" style="text-align: right; padding: 2px 8px;">Coordinate</th>
+<th data-quarto-table-cell-role="th" style="text-align: left; padding: 2px 8px;">Type</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>dlt_0bfv362erabkd</strong></td>
+<td style="text-align: right;">3200 ticks</td>
+<td><em>stated</em></td>
+</tr>
+<tr class="even">
+<td style="color: #666">cpt_3qrd2j4ye20me</td>
+<td style="text-align: right;">2.40401 seconds</td>
+<td><em>inferred</em></td>
+</tr>
+<tr class="odd">
+<td><strong>cpt_3g6ye3gp86n8k</strong></td>
+<td style="text-align: right;">2.20401 seconds</td>
+<td><em>stated</em></td>
+</tr>
+</tbody>
+</table>
+<div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>stamp.get_coordinate_for(&lt;tl_id&gt;)</code>, <code>stamp.get_coordinates_for(&lt;tl_ids&gt;)</code>, <code>stamp.get_unit(&lt;unit&gt;)</code>, <code>stamp.get_conversion_for(&lt;key&gt;)</code></div></div>
+</div>
+</div>
+</section>
+<section id="track-lengths-from-elsewhere" class="level2">
+<h2 class="anchored" data-anchor-id="track-lengths-from-elsewhere">Track lengths from elsewhere</h2>
+<p>A track length known from elsewhere, MusicBrainz for instance, is given to <code>create_bundle</code> by the track’s key (431 seconds here, for illustration).</p>
+<div id="06190035" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T04:42:24.687191Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T04:42:24.687039Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T04:42:24.823389Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T04:42:24.822292Z&quot;}}" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>(key,) <span class="op">=</span> loader.tracks</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>loader.create_bundle(track_lengths<span class="op">=</span>{key: <span class="fl">431.0</span>}).get_timeline(track.<span class="bu">id</span>).length</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<pre><code>Coordinate(431.0, seconds)</code></pre>
+</div>
+</div>
+</section>
+<section id="write-the-manifest" class="level2">
+<h2 class="anchored" data-anchor-id="write-the-manifest">Write the manifest</h2>
+<p><code>to_file()</code> writes the manifest and, beside it, the MatchClaim table (<code>match_claims.parquet</code>), which the manifest names among its resources. With <code>events=False</code> the notes are not written; the claims keep their IDs.</p>
+<div id="bb03ccbf" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T04:42:24.827716Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T04:42:24.827394Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T04:42:25.217626Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T04:42:25.214022Z&quot;}}" data-execution_count="16">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>package <span class="op">=</span> Path(tempfile.mkdtemp()) <span class="op">/</span> <span class="st">"beethoven_op002no1-01"</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>package.mkdir()</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>manifest <span class="op">=</span> bundle.to_file(package <span class="op">/</span> <span class="st">"manifest.yaml"</span>, events<span class="op">=</span><span class="va">False</span>)</span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a><span class="bu">sorted</span>(path.name <span class="cf">for</span> path <span class="kw">in</span> package.iterdir())</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="16">
+<pre><code>['manifest.yaml', 'match_claims.parquet']</code></pre>
+</div>
+</div>
+<p><code>to_file()</code> validates the manifest before writing it; TimeToShare’s <code>validate</code> repeats the check on the file and raises at the first violation. <code>from_file()</code> reads the manifest and its table back: the timelines (children included), the groups and the claims.</p>
+<div id="26c459f9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T04:42:25.220981Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T04:42:25.220813Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T04:42:25.755188Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T04:42:25.754664Z&quot;}}" data-execution_count="17">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>validate(loads(manifest.read_text(encoding<span class="op">=</span><span class="st">"utf-8"</span>)))</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>read <span class="op">=</span> AlignmentBundle.from_file(manifest)</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a><span class="bu">len</span>(read.timeline_ids), <span class="bu">len</span>(read.group_ids), <span class="bu">len</span>(read.match_claim_table)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="17">
+<pre><code>(33, 8, 26)</code></pre>
+</div>
+</div>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<script src="/TimeToAlign/versions.js" defer></script>
+</body></html>

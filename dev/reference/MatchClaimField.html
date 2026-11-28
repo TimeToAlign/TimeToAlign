@@ -77,7 +77,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -302,6 +302,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/CHUNK.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CHUNK</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ClaimFilter</span></a>
   </div>
@@ -482,6 +488,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/EventRegistry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventRegistry</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventStore</span></a>
   </div>
@@ -490,6 +502,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Extraction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Extraction</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -848,6 +866,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/NOMATCH.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NOMATCH</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/Note.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Note</span></a>
   </div>
@@ -880,6 +904,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/OutputNumberTypeError.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">OutputNumberTypeError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Package.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Package</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1040,6 +1070,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/resolve.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">resolve</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/resolve_coordinate_spec.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">resolve_coordinate_spec</span></a>
   </div>
@@ -1066,12 +1102,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ScalarMap</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">ScopedId</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1395,9 +1425,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    provenance<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>The MatchClaim table: a <code>SemanticField[MatchClaim]</code> columnar store.</p>
-<p><code>MatchClaimField</code> is the Field paired with the :class:<code>MatchClaim</code> scalar. It holds a large set of MatchClaims (millions of rows) as Arrow columns instead of one frozen :class:<code>MatchClaim</code> per claim; individual claims are materialised lazily, only when a row is indexed or iterated. Every kind of MatchClaim is a row like any other: synchronous claims with their anchors, NOMATCH and conceptual claims without.</p>
+<p><code>MatchClaimField</code> is the Field paired with the :class:<code>MatchClaim</code> scalar. It holds a large set of MatchClaims (millions of rows) as Arrow columns instead of one frozen :class:<code>MatchClaim</code> per claim; individual claims are materialised lazily, only when a row is indexed or iterated. Every kind of MatchClaim is a row like any other: synchronous claims with their anchors, NOMATCH and conceptual claims without. The event ID columns are never null: a side without an event holds its sentinel, :data:<code>NOMATCH</code> or :data:<code>CHUNK</code>; a NOMATCH side’s name is null, a CHUNK side’s names the stated position where one is given.</p>
 <p>Like every paired Field, its struct schema is derived from the scalar by :func:<code>~timetoalign.core.fields.derive_arrow_struct</code> — so a row’s type is exactly <code>MatchClaimField.pa_schema</code>. Its :attr:<code>table</code> (and the Parquet file :meth:<code>to_parquet</code> writes, <code>match_claims.parquet</code>) has one column per top-level property of :class:<code>MatchClaim</code>, each nested as the property is. A provenance shared by every row is held once at field level (or <code>None</code>) and <strong>injected on read</strong>: the <code>provenance</code> column is left null, and :meth:<code>__getitem__</code> gives each materialised claim the field’s provenance. Claims whose provenance differs, given to :meth:<code>from_claims</code>, carry it per row.</p>
-<p>A MatchClaim is addressed by its id alone: an id held twice is refused, and an id never changes. A field mints no id: a row without one keeps it missing until the :class:<code>~timetoalign.alignment.bundle.AlignmentBundle</code> it joins mints it.</p>
+<p>A MatchClaim is addressed by its id alone: an id held twice is refused, and an id never changes. A field never holds a row without an id: every constructor mints the missing ones (<code>claim_…</code>), from <code>IdMinter(seed)</code> when given <code>seed=</code>, from the minter given as <code>minter=</code> (a loader’s), else from the content minter of the rows (every column but <code>id</code>). Joining a :class:<code>~timetoalign.alignment.bundle.AlignmentBundle</code> mints nothing.</p>
 <section id="attributes" class="level2 doc-section doc-section-attributes">
 <h2 class="doc-section doc-section-attributes anchored" data-anchor-id="attributes">Attributes</h2>
 <table class="caption-top table">
@@ -1849,7 +1879,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>nomatch_only</td>
 <td><code>bool</code></td>
-<td>Keep the NOMATCH rows (not synchronous, one event named).</td>
+<td>Keep the NOMATCH rows (not synchronous, :data:<code>NOMATCH</code> on one side).</td>
 <td><code>False</code></td>
 </tr>
 <tr class="even">
@@ -1931,7 +1961,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.from_claims">from_claims</h3>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.from_claims(claims, <span class="op">*</span>, provenance<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Build a field from existing :class:<code>MatchClaim</code> objects.</p>
-<p>Every kind of claim is a row: synchronous claims with their anchors (interval claims with both), NOMATCH and conceptual claims without. Each row keeps every property of its claim, so every claim materialises equal to the one stored. A MatchClaim is addressed by its id alone: two claims under one id are refused (an id is never renamed), and a claim without an id keeps it missing (the bundle the field joins mints it).</p>
+<p>Every kind of claim is a row: synchronous claims with their anchors (interval claims with both), NOMATCH and conceptual claims without. Each row keeps every property of its claim, so every claim materialises equal to the one stored. A MatchClaim is addressed by its id alone: two claims under one id are refused (an id is never renamed); every claim holds its id from construction.</p>
 <p>If <code>provenance</code> is <code>None</code> and all claims share one equal :class:<code>~timetoalign.core.provenance.Provenance</code>, it is adopted as the field-level provenance and the rows carry none. If the claims’ provenance differs (<code>None</code> included), the field’s stays <code>None</code> and each row carries its own claim’s.</p>
 <section id="parameters-5" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-5">Parameters</h4>
@@ -2019,10 +2049,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a>    end_coordinate_b<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a>    certainty<span class="op">=</span><span class="fl">1.0</span>,</span>
 <span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a>    provenance<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>    minter<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Build a field of event matches from parallel columns (the vectorized path).</p>
 <p>This is the constructor a bulk producer (e.g.&nbsp;an alignment loader) uses. It assembles the derived <code>MatchClaim</code> struct array straight from the parallel inputs and <strong>never</strong> materialises a single :class:<code>MatchClaim</code> Python object, so it scales to millions of rows.</p>
-<p>Each row is a synchronous claim between two events: the timeline and event ids are filled from the inputs, and every coordinate is a position on its row’s timeline, written in that timeline’s unit and declared number type. With the two end columns, every row with an end on both sides is an interval claim. The ids are left null: the bundle the field joins mints them (:meth:<code>~timetoalign.alignment.bundle.AlignmentBundle.add_match_claim_field</code>), so fields of several sources join one bundle. Names are left null, and so is the <code>provenance</code> column (the shared provenance is injected on read). The field is checked against the timelines (:meth:<code>check_on_timelines</code>).</p>
+<p>Each row is a synchronous claim between two sides: the timeline and event ids are filled from the inputs, a side an event ID or :data:<code>CHUNK</code> (a position on a timeline holding no event for it), and every coordinate is a position on its row’s timeline, written in that timeline’s unit and declared number type. With the two end columns, every row with an end on both sides is an interval claim. The ids are minted, in row order (:class:<code>MatchClaimField</code>). Names are left null, and so is the <code>provenance</code> column (the shared provenance is injected on read). The field is checked against the timelines (:meth:<code>check_on_timelines</code>).</p>
 <section id="parameters-6" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-6">Parameters</h4>
 <table class="caption-top table">
@@ -2050,25 +2082,25 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>event_a_ids</td>
 <td><code>Sequence</code>[<code>str</code>] | <code>pa</code>.<code>Array</code> | <code>pa</code>.<code>ChunkedArray</code></td>
-<td>The event on timeline A, one per claim.</td>
+<td>The event on timeline A, or :data:<code>CHUNK</code>, one per claim.</td>
 <td><em>required</em></td>
 </tr>
 <tr class="even">
 <td>event_b_ids</td>
 <td><code>Sequence</code>[<code>str</code>] | <code>pa</code>.<code>Array</code> | <code>pa</code>.<code>ChunkedArray</code></td>
-<td>The event on timeline B, one per claim.</td>
+<td>The event on timeline B, or :data:<code>CHUNK</code>, one per claim.</td>
 <td><em>required</em></td>
 </tr>
 <tr class="odd">
 <td>coordinate_a</td>
 <td><code>Sequence</code>[<code>int</code> | <code>float</code> | <code>Fraction</code>] | <code>pa</code>.<code>Array</code> | <code>pa</code>.<code>ChunkedArray</code></td>
-<td>The position of the event on timeline A.</td>
+<td>The position of side A on timeline A.</td>
 <td><em>required</em></td>
 </tr>
 <tr class="even">
 <td>coordinate_b</td>
 <td><code>Sequence</code>[<code>int</code> | <code>float</code> | <code>Fraction</code>] | <code>pa</code>.<code>Array</code> | <code>pa</code>.<code>ChunkedArray</code></td>
-<td>The position of the event on timeline B.</td>
+<td>The position of side B on timeline B.</td>
 <td><em>required</em></td>
 </tr>
 <tr class="odd">
@@ -2101,6 +2133,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>Shared provenance for every claim in the field.</td>
 <td><code>None</code></td>
 </tr>
+<tr class="even">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of the minter of the ids.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
+<td>minter</td>
+<td><code>IdMinter</code> | None</td>
+<td>The minter of the ids (a loader’s).</td>
+<td><code>None</code></td>
+</tr>
 </tbody>
 </table>
 </section>
@@ -2128,8 +2172,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <table class="caption-top table">
 <colgroup>
 <col style="width: 2%">
-<col style="width: 9%">
-<col style="width: 87%">
+<col style="width: 7%">
+<col style="width: 91%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -2141,8 +2185,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td></td>
+<td><code>TypeError</code></td>
+<td>If both <em>seed</em> and <em>minter</em> are given.</td>
+</tr>
+<tr class="even">
+<td></td>
 <td><code>ValueError</code></td>
-<td>If the inputs do not all have the same length, a row names no event, a row names a timeline not among <em>timelines</em>, the end columns are given one without the other, a row gives an end on one side only, or a coordinate is a number no cell holds (a NaN).</td>
+<td>If the inputs do not all have the same length, a row names no event ID or sentinel on a side (a null), names :data:<code>NOMATCH</code> (a synchronous claim names an event or :data:<code>CHUNK</code>), a row names a timeline not among <em>timelines</em>, the end columns are given one without the other, a row gives an end on one side only, or a coordinate is a number no cell holds (a NaN).</td>
 </tr>
 </tbody>
 </table>
@@ -2150,16 +2199,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="timetoalign.alignment.MatchClaimField.from_dict" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.from_dict">from_dict</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.from_dict(data)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.from_dict(data, <span class="op">*</span>, seed<span class="op">=</span><span class="va">None</span>, minter<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Deserialize a field from a plain dictionary (inverse of :meth:<code>to_dict</code>).</p>
-<p>The mapping holds <code>provenance</code> (the field’s :meth:<code>~timetoalign.core.provenance.Provenance.to_dict</code>, or <code>None</code>) and <code>rows</code>: one mapping per claim whose keys are the :attr:<code>table</code>’s columns. Each coordinate is a coordinate dict (<code>{unit, number_type, value}</code>), read by :func:<code>~timetoalign.core.retrieval.coordinate_from_dict</code> and written into its storage cell as :meth:<code>from_claims</code> writes a claim’s; every other cell is read as stored. A field built from claims therefore comes back with an equal table and equal claims.</p>
+<p>The mapping holds <code>provenance</code> (the field’s :meth:<code>~timetoalign.core.provenance.Provenance.to_dict</code>, or <code>None</code>) and <code>rows</code>: one mapping per claim whose keys are the :attr:<code>table</code>’s columns. Each coordinate is a coordinate dict (<code>{unit, number_type, value}</code>), read by :func:<code>~timetoalign.core.retrieval.coordinate_from_dict</code> and written into its storage cell as :meth:<code>from_claims</code> writes a claim’s; every other cell is read as stored. A field built from claims therefore comes back with an equal table and equal claims. A row without an id is minted one (:class:<code>MatchClaimField</code>).</p>
 <section id="parameters-7" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-7">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 7%">
-<col style="width: 46%">
-<col style="width: 35%">
+<col style="width: 6%">
+<col style="width: 44%">
+<col style="width: 38%">
 <col style="width: 10%">
 </colgroup>
 <thead>
@@ -2176,6 +2225,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><code>dict</code>[<code>str</code>, <code>Any</code>]</td>
 <td>A mapping as :meth:<code>to_dict</code> writes it.</td>
 <td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of the minter of the missing ids.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
+<td>minter</td>
+<td><code>IdMinter</code> | None</td>
+<td>The minter of the missing ids (a loader’s).</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -2217,6 +2278,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td></td>
+<td><code>TypeError</code></td>
+<td>If both <em>seed</em> and <em>minter</em> are given.</td>
+</tr>
+<tr class="even">
+<td></td>
 <td><code>ValueError</code></td>
 <td>If a mapping, at any depth, lacks a key it must hold or holds an unknown one (the mapping itself, row, anchor, provenance, belief, coordinate), or a coordinate dict is invalid; if a row is not a MatchClaim (:meth:<code>_read</code>); if the mapping carries provenance both under its key <code>provenance</code> and in its rows; or if two rows hold the same id.</td>
 </tr>
@@ -2226,16 +2292,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="timetoalign.alignment.MatchClaimField.from_package_table" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.from_package_table">from_package_table</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.from_package_table(table)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.from_package_table(table, <span class="op">*</span>, seed<span class="op">=</span><span class="va">None</span>, minter<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Read a field from a MatchClaim table in the package form.</p>
 <p>The inverse of :attr:<code>package_table</code>: every anchor coordinate cell is read back from the package form, then the table is read as :meth:<code>from_table</code> reads one. A cell whose numbers do not stand as its <code>number_type</code> says (an int <code>(n, null, null)</code>, a fraction <code>(n, d &gt;= 1, null)</code>, a float <code>(null, null, x)</code>) is refused.</p>
 <section id="parameters-8" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-8">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 5%">
-<col style="width: 26%">
-<col style="width: 61%">
+<col style="width: 4%">
+<col style="width: 30%">
+<col style="width: 57%">
 <col style="width: 7%">
 </colgroup>
 <thead>
@@ -2252,6 +2318,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><code>pa</code>.<code>Table</code></td>
 <td>A table as :attr:<code>package_table</code> gives it, or as read from a package’s <code>match_claims.parquet</code>.</td>
 <td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of the minter of the missing ids.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
+<td>minter</td>
+<td><code>IdMinter</code> | None</td>
+<td>The minter of the missing ids (a loader’s).</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -2293,6 +2371,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td></td>
+<td><code>TypeError</code></td>
+<td>If both <em>seed</em> and <em>minter</em> are given.</td>
+</tr>
+<tr class="even">
+<td></td>
 <td><code>ValueError</code></td>
 <td>As :meth:<code>from_table</code>, or naming the column and row of a cell not in the package form.</td>
 </tr>
@@ -2302,7 +2385,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="timetoalign.alignment.MatchClaimField.from_parquet" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.from_parquet">from_parquet</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.from_parquet(path, <span class="op">*</span>, timelines<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.from_parquet(</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    path,</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    timelines<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>    minter<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Read the MatchClaim table from its Parquet file.</p>
 <section id="parameters-9" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-9">Parameters</h4>
@@ -2332,6 +2421,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>timelines</td>
 <td><code>Iterable</code>[<code>Any</code>] | <code>Mapping</code>[<code>str</code>, <code>Any</code>] | None</td>
 <td>Where given, the timelines the rows name (as :meth:<code>check_on_timelines</code> takes them); the field is checked against them.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of the minter of the missing ids.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>minter</td>
+<td><code>IdMinter</code> | None</td>
+<td>The minter of the missing ids (a loader’s).</td>
 <td><code>None</code></td>
 </tr>
 </tbody>
@@ -2379,6 +2480,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td></td>
+<td><code>TypeError</code></td>
+<td>If both <em>seed</em> and <em>minter</em> are given.</td>
+</tr>
+<tr class="even">
+<td></td>
 <td><code>ValueError</code></td>
 <td>As :meth:<code>from_table</code>, or as :meth:<code>check_on_timelines</code>.</td>
 </tr>
@@ -2388,17 +2494,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="timetoalign.alignment.MatchClaimField.from_table" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.alignment.MatchClaimField.from_table">from_table</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.from_table(table)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.from_table(table, <span class="op">*</span>, seed<span class="op">=</span><span class="va">None</span>, minter<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Read a field back from its Arrow table (inverse of :attr:<code>table</code>).</p>
-<p>The table must hold one column per top-level property of :class:<code>MatchClaim</code>, named and typed as the fields of :attr:<code>pa_schema</code>; the columns are read by name, in any order, and may be chunked, as they are when the table was read from Parquet. Further columns (any other name, such as a <code>scope</code> column a package written by an earlier tool holds) are kept as they stand, after the properties, and never read: :attr:<code>table</code> and the file :meth:<code>to_parquet</code> writes hold them again, and the field’s own queries carry them row for row. The field-level provenance travels in the table’s schema metadata under TimeToShare’s key <code>timetoshare:provenance</code> (the JSON of :meth:<code>~timetoalign.core.provenance.Provenance.to_dict</code>); a table without that key gives a field whose provenance is <code>None</code>. Every row is kept as stored; a row without an id keeps none (the bundle it joins mints it).</p>
+<p>The table must hold one column per top-level property of :class:<code>MatchClaim</code>, named and typed as the fields of :attr:<code>pa_schema</code>; the columns are read by name, in any order, and may be chunked, as they are when the table was read from Parquet. Further columns (any other name, such as a <code>scope</code> column a package written by an earlier tool holds) are kept as they stand, after the properties, and never read: :attr:<code>table</code> and the file :meth:<code>to_parquet</code> writes hold them again, and the field’s own queries carry them row for row. The field-level provenance travels in the table’s schema metadata under TimeToShare’s key <code>timetoshare:provenance</code> (the JSON of :meth:<code>~timetoalign.core.provenance.Provenance.to_dict</code>); a table without that key gives a field whose provenance is <code>None</code>. Every row is kept as stored; a row without an id is minted one (:class:<code>MatchClaimField</code>).</p>
 <section id="parameters-10" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-10">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 8%">
-<col style="width: 42%">
+<col style="width: 6%">
+<col style="width: 44%">
 <col style="width: 38%">
-<col style="width: 12%">
+<col style="width: 10%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -2414,6 +2520,18 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><code>pa</code>.<code>Table</code></td>
 <td>A table as written by :attr:<code>table</code>.</td>
 <td><em>required</em></td>
+</tr>
+<tr class="even">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of the minter of the missing ids.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
+<td>minter</td>
+<td><code>IdMinter</code> | None</td>
+<td>The minter of the missing ids (a loader’s).</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -2454,6 +2572,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </thead>
 <tbody>
 <tr class="odd">
+<td></td>
+<td><code>TypeError</code></td>
+<td>If both <em>seed</em> and <em>minter</em> are given.</td>
+</tr>
+<tr class="even">
 <td></td>
 <td><code>ValueError</code></td>
 <td>If the table lacks a column of a <code>MatchClaim</code> property, or a column’s type is not the property’s; if a row is not a MatchClaim (:meth:<code>_read</code>); if the table carries provenance both in its schema metadata and in its rows; or if two rows hold the same id (a MatchClaim is addressed by its id alone).</td>
@@ -2524,14 +2647,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>...         <span class="st">"score"</span>: (<span class="st">"quarters"</span>, <span class="st">"fraction"</span>),</span>
 <span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>...         <span class="st">"audio"</span>: (<span class="st">"seconds"</span>, <span class="st">"float"</span>),</span>
 <span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>...     },</span>
-<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>... )</span>
-<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> row <span class="op">=</span> field.to_dict()[<span class="st">"rows"</span>][<span class="dv">0</span>]</span>
-<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> row[<span class="st">"start_anchor"</span>][<span class="st">"coordinate_a"</span>]</span>
-<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a>{<span class="st">'unit'</span>: <span class="st">'quarters'</span>, <span class="st">'number_type'</span>: <span class="st">'fraction'</span>, <span class="st">'value'</span>: [<span class="dv">1</span>, <span class="dv">3</span>]}</span>
-<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> row[<span class="st">"start_anchor"</span>][<span class="st">"coordinate_b"</span>]</span>
-<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a>{<span class="st">'unit'</span>: <span class="st">'seconds'</span>, <span class="st">'number_type'</span>: <span class="st">'float'</span>, <span class="st">'value'</span>: <span class="fl">0.5</span>}</span>
-<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> row[<span class="st">"id"</span>], row[<span class="st">"end_anchor"</span>]</span>
-<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a>(<span class="va">None</span>, <span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>...     seed<span class="op">=</span><span class="dv">0</span>,</span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>... )</span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> row <span class="op">=</span> field.to_dict()[<span class="st">"rows"</span>][<span class="dv">0</span>]</span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> row[<span class="st">"start_anchor"</span>][<span class="st">"coordinate_a"</span>]</span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a>{<span class="st">'unit'</span>: <span class="st">'quarters'</span>, <span class="st">'number_type'</span>: <span class="st">'fraction'</span>, <span class="st">'value'</span>: [<span class="dv">1</span>, <span class="dv">3</span>]}</span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> row[<span class="st">"start_anchor"</span>][<span class="st">"coordinate_b"</span>]</span>
+<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a>{<span class="st">'unit'</span>: <span class="st">'seconds'</span>, <span class="st">'number_type'</span>: <span class="st">'float'</span>, <span class="st">'value'</span>: <span class="fl">0.5</span>}</span>
+<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> row[<span class="st">"id"</span>], row[<span class="st">"end_anchor"</span>]</span>
+<span id="cb16-15"><a href="#cb16-15" aria-hidden="true" tabindex="-1"></a>(<span class="st">'claim_1be6k8ij6dzad'</span>, <span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 </section>
 <section id="timetoalign.alignment.MatchClaimField.to_parquet" class="level3">
@@ -2539,7 +2663,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>alignment.MatchClaimField.to_parquet(path)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Write the MatchClaim table to its Parquet file.</p>
 <p>The file holds :attr:<code>package_table</code> (each anchor coordinate’s number written once, by its number type), the field-level provenance in its schema metadata, so :meth:<code>from_parquet</code> reads back every value exactly; further columns of a table read follow the properties (:meth:<code>from_table</code>). Where the file exists, the new table must succeed it: every MatchClaim of the existing table, by its id, is in this one, with the same timelines, events, anchors and every other value; only its provenance may differ (a MatchClaim is never removed and never changed, only believed or disbelieved). The file is replaced whole, never in part: a write that fails leaves the file as it was and no temporary file.</p>
-<p>Every MatchClaim written holds an id, which a named MatchStamp may record: a field whose rows hold none (built from columns or from claims without ids) is written from the bundle it joined, which minted them (:attr:<code>AlignmentBundle.match_claim_table &lt;timetoalign.alignment.bundle.AlignmentBundle.match_claim_table&gt;</code>).</p>
+<p>Every MatchClaim written holds an id, which a named MatchStamp may record: a field holds an id in every row from its construction.</p>
 <section id="parameters-11" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-11">Parameters</h4>
 <table class="caption-top table">

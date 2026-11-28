@@ -77,7 +77,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -302,6 +302,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/CHUNK.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CHUNK</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ClaimFilter</span></a>
   </div>
@@ -482,6 +488,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/EventRegistry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventRegistry</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventStore</span></a>
   </div>
@@ -490,6 +502,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Extraction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Extraction</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -848,6 +866,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/NOMATCH.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NOMATCH</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/Note.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Note</span></a>
   </div>
@@ -880,6 +904,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/OutputNumberTypeError.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">OutputNumberTypeError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Package.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Package</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1040,6 +1070,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/resolve.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">resolve</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/resolve_coordinate_spec.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">resolve_coordinate_spec</span></a>
   </div>
@@ -1066,12 +1102,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ScalarMap</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">ScopedId</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1424,11 +1454,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="im">from</span> timetoalign.core <span class="im">import</span> Coordinate</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> view <span class="op">=</span> FlowControlView(</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>...     [Jump(Coordinate(<span class="dv">8</span>, <span class="st">"quarters"</span>), [JumpDestination(repeat_count<span class="op">=</span><span class="dv">1</span>)])],</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>...     [Jump(Coordinate(<span class="dv">8</span>, <span class="st">"quarters"</span>), [JumpDestination(repeat_count<span class="op">=</span><span class="dv">1</span>)], <span class="bu">id</span><span class="op">=</span><span class="st">"j"</span>)],</span>
 <span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>...     unit<span class="op">=</span><span class="st">"quarters"</span>,</span>
 <span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>... )</span>
 <span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> view.jumps</span>
-<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>(Jump(<span class="st">'jump_1'</span> <span class="op">@</span> <span class="dv">8</span> quarters, <span class="dv">1</span> destination),)</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>(Jump(<span class="st">'j'</span> <span class="op">@</span> <span class="dv">8</span> quarters, <span class="dv">1</span> destination),)</span>
 <span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> view.place_of(view.jumps[<span class="dv">0</span>].targets[<span class="dv">0</span>], view.jumps[<span class="dv">0</span>])</span>
 <span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>Coordinate(Fraction(<span class="dv">0</span>, <span class="dv">1</span>), quarters)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
@@ -1544,12 +1574,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-1">Examples</h4>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="im">from</span> timetoalign.core <span class="im">import</span> Coordinate</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> registry <span class="op">=</span> FlowControlRegistry(unit<span class="op">=</span><span class="st">"quarters"</span>)</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> barline <span class="op">=</span> registry.add(Barline(Coordinate(<span class="dv">8</span>, <span class="st">"quarters"</span>)))</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> barline <span class="op">=</span> registry.add(Barline(Coordinate(<span class="dv">8</span>, <span class="st">"quarters"</span>), <span class="bu">id</span><span class="op">=</span><span class="st">"bar 2"</span>))</span>
 <span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> _ <span class="op">=</span> registry.with_belief(barline.<span class="bu">id</span>, <span class="st">"ana"</span>, <span class="st">"false"</span>, date<span class="op">=</span><span class="st">"2026-11-25"</span>)</span>
 <span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> registry.elements, registry.active_elements()</span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>((Barline(<span class="st">'barline_1'</span> <span class="op">@</span> <span class="dv">8</span> quarters),), [])</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>((Barline(<span class="st">'bar 2'</span> <span class="op">@</span> <span class="dv">8</span> quarters),), [])</span>
 <span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> registry.active_elements(believer<span class="op">=</span><span class="st">"bea"</span>)</span>
-<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>[Barline(<span class="st">'barline_1'</span> <span class="op">@</span> <span class="dv">8</span> quarters)]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>[Barline(<span class="st">'bar 2'</span> <span class="op">@</span> <span class="dv">8</span> quarters)]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 </section>
 <section id="timetoalign.timelines.FlowControlView.destination_of" class="level3">

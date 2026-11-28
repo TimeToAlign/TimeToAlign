@@ -77,7 +77,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -302,6 +302,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/CHUNK.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CHUNK</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ClaimFilter</span></a>
   </div>
@@ -482,6 +488,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/EventRegistry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventRegistry</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventStore</span></a>
   </div>
@@ -490,6 +502,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Extraction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Extraction</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -848,6 +866,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/NOMATCH.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NOMATCH</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/Note.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Note</span></a>
   </div>
@@ -880,6 +904,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/OutputNumberTypeError.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">OutputNumberTypeError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Package.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Package</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1040,6 +1070,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/resolve.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">resolve</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/resolve_coordinate_spec.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">resolve_coordinate_spec</span></a>
   </div>
@@ -1066,12 +1102,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ScalarMap</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">ScopedId</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1308,21 +1338,21 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <section id="timetoalign.timelines.flow.FlowControlDraft" class="level1">
 <h1>FlowControlDraft</h1>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>timelines.flow.FlowControlDraft()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>timelines.flow.FlowControlDraft(minter<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Flow control being written from a score, before it joins a registry.</p>
-<p>The signs at one coordinate are collected as the destinations of the one Jump there, and every element gets an ID of its own, minted in the order written, so that the elements can name one another before a registry admits them together. Coordinates are quarters, exact. :func:<code>flow_control_from_measures</code> and the score loaders write through it.</p>
+<p>The signs at one coordinate are collected as the destinations of the one Jump there, and every element gets an ID of its own, minted in the order written by the draft’s minter (a loader’s; without one, the content minter of <code>"flow_control"</code>), so that the elements can name one another before a registry admits them together. Coordinates are quarters, exact. :func:<code>flow_control_from_measures</code> and the score loaders write through it.</p>
 <section id="examples" class="level2 doc-section doc-section-examples">
 <h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="im">from</span> fractions <span class="im">import</span> Fraction</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="im">from</span> timetoalign.timelines.flowcontrol <span class="im">import</span> JumpDestination, JumpTarget</span>
-<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> draft <span class="op">=</span> FlowControlDraft()</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> draft <span class="op">=</span> FlowControlDraft(IdMinter(<span class="dv">7</span>))</span>
 <span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> segno <span class="op">=</span> draft.add(JumpTarget, Fraction(<span class="dv">4</span>), manifestation<span class="op">=</span><span class="st">"segno"</span>)</span>
 <span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> draft.add_destination(Fraction(<span class="dv">16</span>), JumpDestination(to<span class="op">=</span>segno.<span class="bu">id</span>, repeat_count<span class="op">=</span><span class="dv">1</span>))</span>
-<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="co">'jump_1'</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="co">'jump_0g2wfq87pa7jx'</span></span>
 <span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> draft.add_destination(Fraction(<span class="dv">16</span>), JumpDestination(repeat_count<span class="op">=</span><span class="dv">1</span>))</span>
-<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="co">'jump_1'</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="co">'jump_0g2wfq87pa7jx'</span></span>
 <span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> draft.elements()</span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>[JumpTarget(<span class="st">'jump_target_1'</span>, segno <span class="op">@</span> <span class="dv">4</span> quarters), Jump(<span class="st">'jump_1'</span> <span class="op">@</span> <span class="dv">16</span> quarters, <span class="dv">2</span> destinations)]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>[JumpTarget(<span class="st">'jump_target_1hvif5xc2r1fv'</span>, segno <span class="op">@</span> <span class="dv">4</span> quarters), Jump(<span class="st">'jump_0g2wfq87pa7jx'</span> <span class="op">@</span> <span class="dv">16</span> quarters, <span class="dv">2</span> destinations)]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="methods" class="level2">
 <h2 class="anchored" data-anchor-id="methods">Methods</h2>

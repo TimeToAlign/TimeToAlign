@@ -78,7 +78,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <link href="../site_libs/quarto-contrib/glossary/glossary.css" rel="stylesheet">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
@@ -338,7 +338,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h1>Timelines and Coordinates</h1>
 <section id="what-you-will-build" class="level2">
 <h2 class="anchored" data-anchor-id="what-you-will-build">What you will build</h2>
-<p>You will build two <button class="glossary" title="">Timeline</button> objects for the same 30 seconds of audio. One is a continuous axis measured in seconds; the other is a <button class="glossary" title="A timeline is discrete when coordinates exist only at discrete points (e.g., pixels, samples, ticks). Contrast with Continuous timelines where coordinates can take any real value (e.g., seconds, quarters).">Discrete</button> axis that counts whole samples. You will then attach a <button class="glossary" title="">ConversionMap</button> that supplies a sample reading for the seconds axis without linking the two timeline objects.</p>
+<p>You will build two <button class="glossary" title="A positive coordinate axis defined by an origin and a measuring unit; continuous (real) or discrete (integer). Accommodates events and potentially Child timelines.">Timeline</button> objects for the same 30 seconds of audio. One is a continuous axis measured in seconds; the other is a <button class="glossary" title="A timeline is discrete when coordinates exist only at discrete points (e.g., pixels, samples, ticks). Contrast with Continuous timelines where coordinates can take any real value (e.g., seconds, quarters).">Discrete</button> axis that counts whole samples. You will then attach a <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button> that supplies a sample reading for the seconds axis without linking the two timeline objects.</p>
 </section>
 <section id="before-you-start" class="level2">
 <h2 class="anchored" data-anchor-id="before-you-start">Before you start</h2>
@@ -423,7 +423,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="three-domains-two-modalities" class="level2">
 <h2 class="anchored" data-anchor-id="three-domains-two-modalities">Three domains, two modalities</h2>
-<p><button class="glossary" title="">Domain</button> and <code>TimeUnit</code> encode what an axis measures; <code>NumberType</code> records the Python numeric representation used for its values.</p>
+<p><button class="glossary" title="One of three temporal categories: Graphical (visual/spatial), Logical (symbolic/musical), or Physical (audio/sound). Each domain has both discrete and continuous timeline variants.">Domain</button> and <code>TimeUnit</code> encode what an axis measures; <code>NumberType</code> records the Python numeric representation used for its values.</p>
 <table class="caption-top table">
 <thead>
 <tr class="header">
@@ -601,7 +601,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <pre><code>{'attached to audio': True, 'attached to samples': None}</code></pre>
 </div>
 </div>
-<p>The map is present on <code>audio</code>; the <code>None</code> beside <code>samples</code> shows that the discrete timeline has no attached map of its own. Relating separate timelines is the job of a <button class="glossary" title="">TimelineGroup</button>, introduced in the Timeline Groups tutorial.</p>
+<p>The map is present on <code>audio</code>; the <code>None</code> beside <code>samples</code> shows that the discrete timeline has no attached map of its own. Relating separate timelines is the job of a <button class="glossary" title="An array of member timelines that share the same graphical start and end: every member’s 0 coincides with every other member’s 0, and every member’s length with every other member’s length. Placing timelines in a group asserts commensurability regardless of their units. A position in between converts linearly and exactly (p on member A is p · len_B / len_A on member B) and is written in the target member’s number type. When only part of a timeline takes part, the member is a child of that timeline at its exact offset; a member is never placed partially. No member is an ancestor or a descendant of another member of the same group, since a child sits at its offset inside its parent. A group answers with the same TimeStamp class as a Timeline; to_dict() and from_dict() write and read it with every timeline it needs.">TimelineGroup</button>, introduced in the Timeline Groups tutorial.</p>
 </section>
 <section id="exact-logical-coordinates" class="level2">
 <h2 class="anchored" data-anchor-id="exact-logical-coordinates">Exact logical coordinates</h2>

@@ -77,7 +77,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -302,6 +302,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/CHUNK.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CHUNK</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ClaimFilter</span></a>
   </div>
@@ -482,6 +488,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/EventRegistry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventRegistry</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventStore</span></a>
   </div>
@@ -490,6 +502,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Extraction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Extraction</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -848,6 +866,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/NOMATCH.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NOMATCH</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/Note.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Note</span></a>
   </div>
@@ -880,6 +904,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/OutputNumberTypeError.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">OutputNumberTypeError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Package.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Package</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1040,6 +1070,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/resolve.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">resolve</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/resolve_coordinate_spec.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">resolve_coordinate_spec</span></a>
   </div>
@@ -1066,12 +1102,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ScalarMap</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">ScopedId</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1310,7 +1340,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <section id="timetoalign.loader.graphical.ScoreWarpLoader" class="level1">
 <h1>ScoreWarpLoader</h1>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>loader.graphical.ScoreWarpLoader()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>loader.graphical.ScoreWarpLoader(seed<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Load the time axis drawn into a ScoreWarp SVG.</p>
 <p>The drawing becomes a :class:<code>ContinuousGraphicalTimeline</code> in <code>css_pixels</code>, the unit of the SVG’s outer viewport, and its time axis a child over the drawn segment, carrying the C-Map from <code>css_pixels</code> to the unit of the axis title, built through the labelled ticks (see :meth:<code>~timetoalign.timelines.Timeline.create_calibrated_child</code>).</p>
 <p>The drawing’s length is its content extent, because a child lies within its parent: the viewport width, or the end of the axis’s farthest line where the axis runs past the viewport (ScoreWarp sets <code>overflow="visible"</code>).</p>
@@ -1381,15 +1411,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>loader.graphical.ScoreWarpLoader.create_timeline(uid<span class="op">=</span><span class="va">None</span>, name<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Create the drawing’s timeline, its time axis as a calibrated child.</p>
 <p>The timeline is in <code>css_pixels</code>, its length the content extent, its <code>meta</code> the root’s size strings (<code>svg_width</code>, <code>svg_height</code>). Its one child is the axis: offset at the segment’s start, length the segment’s, named by the title label, with the C-Map from <code>css_pixels</code> to the title’s unit through the labelled ticks.</p>
-<p>Both ids are minted <code>cgt_N</code> by this loader, the root first: its number is drawn even when <em>uid</em> names it, and a given <em>uid</em> is recorded among the loader’s minted ids, so the child is never minted the root’s id and successive timelines share none.</p>
+<p>Both ids are minted <code>cgt_…</code> from the loader’s minter, the root first (unless <em>uid</em> names it), so successive timelines share none.</p>
 <section id="parameters" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 5%">
-<col style="width: 14%">
-<col style="width: 72%">
 <col style="width: 7%">
+<col style="width: 21%">
+<col style="width: 60%">
+<col style="width: 10%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -1403,7 +1433,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>uid</td>
 <td><code>str</code> | None</td>
-<td>Unique identifier for the timeline. <code>None</code> mints <code>cgt_N</code>, a number this loader has not minted before.</td>
+<td>Unique identifier for the timeline. <code>None</code> mints <code>cgt_…</code>.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="even">

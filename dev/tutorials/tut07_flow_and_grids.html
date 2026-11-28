@@ -78,7 +78,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <link href="../site_libs/quarto-contrib/glossary/glossary.css" rel="stylesheet">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
@@ -347,29 +347,30 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="before-you-start" class="level2">
 <h2 class="anchored" data-anchor-id="before-you-start">Before you start</h2>
 <p>Complete <a href="../tutorials/tut02_nesting_and_timestamps.html">Nesting and Timestamps</a>, <a href="../tutorials/tut04_loading_data.html">Loading Real Data</a>, and <a href="../tutorials/tut05_timeline_groups.html">Timeline Groups</a> first. This notebook follows <a href="../tutorials/tut06_alignment_bundles.html">Alignment Bundles</a> in reading order but does not depend on its bundles or claims.</p>
-<div id="12bec1ee" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:32.779545Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:32.779367Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:35.883448Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:35.882401Z&quot;}}" data-execution_count="1">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fractions <span class="im">import</span> Fraction</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> tempfile <span class="im">import</span> TemporaryDirectory</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> (</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    BeatGrid,</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    BeatGridSegment,</span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    BeatPolicy,</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    ContinuousLogicalTimeline,</span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    Ms3Loader,</span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.testdata <span class="im">import</span> ensure_data</span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.timelines <span class="im">import</span> FlowMap</span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.timelines.flow <span class="im">import</span> measure_ranges</span>
-<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>score_data <span class="op">=</span> ensure_data(<span class="st">"score"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="630e9fa2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:16.777732Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:16.777126Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:19.125634Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:19.124974Z&quot;}}" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> warnings</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fractions <span class="im">import</span> Fraction</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> tempfile <span class="im">import</span> TemporaryDirectory</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> (</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    BeatGrid,</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    BeatGridSegment,</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    BeatPolicy,</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    ContinuousLogicalTimeline,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    Ms3Loader,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.testdata <span class="im">import</span> ensure_data</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.timelines <span class="im">import</span> FlowMap</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.timelines.flow <span class="im">import</span> measure_ranges</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>score_data <span class="op">=</span> ensure_data(<span class="st">"score"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 </section>
 <section id="a-page-is-not-a-performance" class="level2">
 <h2 class="anchored" data-anchor-id="a-page-is-not-a-performance">A page is not a performance</h2>
 <p>A repeat sign or <em>Da Capo</em> changes traversal order without changing the page. The written timeline is <strong>folded</strong>; the route actually played is <strong>unfolded</strong>.</p>
-<div id="31768e00" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:35.885830Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:35.885451Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:35.896328Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:35.895357Z&quot;}}" data-execution_count="2">
+<div id="c510072a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:19.128564Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:19.128216Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:19.139928Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:19.139270Z&quot;}}" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>written_score <span class="op">=</span> ContinuousLogicalTimeline.from_events(</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    [</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>        {</span>
@@ -405,8 +406,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="naming-the-played-spans" class="level2">
 <h2 class="anchored" data-anchor-id="naming-the-played-spans">Naming the played spans</h2>
-<p>A <button class="glossary" title="A part of a timeline defined by a TimeInterval, identified by its element id and displayed by its name (e.g., “Chorus”, “Verse”). Regions are not timelines and cannot hold events or maps directly.">Region</button> gives a stable id to a span of the written score. We reuse <code>create_region</code> from the nesting tutorial, giving each span its letter as its id.</p>
-<div id="6482ec3d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:35.898457Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:35.898170Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:35.905238Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:35.904295Z&quot;}}" data-execution_count="3">
+<p>A <button class="glossary" title="">Region</button> gives a stable id to a span of the written score. We reuse <code>create_region</code> from the nesting tutorial, giving each span its letter as its id.</p>
+<div id="89a39617" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:19.141739Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:19.141548Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:19.146955Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:19.146203Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>created_regions <span class="op">=</span> [</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    written_score.create_region(start, end, <span class="bu">id</span><span class="op">=</span>span_id)</span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> span_id, (start, end) <span class="kw">in</span> span_bounds.items()</span>
@@ -428,7 +429,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="building-the-map" class="level2">
 <h2 class="anchored" data-anchor-id="building-the-map">Building the map</h2>
 <p>A <button class="glossary" title="One order in which stretches of one root timeline are played: an ordered list of chunks, each the ID of a Region, a child timeline or a virtual timeline of that timeline’s tree, or a Gap in which nothing of the timeline is played. A FlowMap holds no interval; resolved against its timeline it places each stretch where the one before it ends and converts positions both ways (unfold: a position of the timeline to every position it is played at; fold: a position of the flow to the position it plays, or None in a gap). Timeline.create_flow_map(chunks) creates and attaches one; Timeline.create_flow_maps_from_flow_control() writes the flows of the flow control (default, single, printed) as FlowMaps over the atomic sections.">FlowMap</button> lists the spans of one timeline in the order they are played. <code>create_flow_map(chunks)</code> takes them as region ids or Region objects, builds the map, attaches it to the timeline, and returns it. A FlowMap you build yourself joins a timeline with <code>add_flow_map</code>.</p>
-<div id="45231dd6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:35.907207Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:35.907000Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:35.913886Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:35.912942Z&quot;}}" data-execution_count="4">
+<div id="7abde345" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:19.148598Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:19.148408Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:19.154130Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:19.153494Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>flow_chunks <span class="op">=</span> [played_order[<span class="dv">0</span>], opening_region, closing_region]</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>performance_map <span class="op">=</span> written_score.create_flow_map(flow_chunks, <span class="bu">id</span><span class="op">=</span><span class="st">"performance"</span>)</span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>written_score.add_flow_map(FlowMap(<span class="st">"written_score"</span>, written_order, <span class="bu">id</span><span class="op">=</span><span class="st">"as_written"</span>))</span>
@@ -451,7 +452,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="unfolding-one-position" class="level2">
 <h2 class="anchored" data-anchor-id="unfolding-one-position">Unfolding one position</h2>
 <p><code>resolve()</code> reads a FlowMap against its timeline: each span becomes a stretch of the page, placed where the one before it ends in the performance. Its <code>unfold(coord)</code> takes one folded position and returns a list, because repeated material can occur at several positions in performance.</p>
-<div id="c24ed3c3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:35.916473Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:35.916206Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:35.923139Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:35.922262Z&quot;}}" data-execution_count="5">
+<div id="fc5c7109" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:19.155712Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:19.155528Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:19.160948Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:19.159887Z&quot;}}" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>performance <span class="op">=</span> performance_map.resolve(written_score)</span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>repeated_folded <span class="op">=</span> written_score.get_coordinate(Fraction(<span class="dv">1</span>))</span>
 <span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>skipped_folded <span class="op">=</span> written_score.get_coordinate(Fraction(<span class="dv">5</span>))</span>
@@ -477,7 +478,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="folding-back" class="level2">
 <h2 class="anchored" data-anchor-id="folding-back">Folding back</h2>
 <p><code>fold(coord)</code> goes in the other direction: many possible performance positions collapse to one position on the written page.</p>
-<div id="7fdf7475" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:35.925060Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:35.924865Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:35.930001Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:35.929032Z&quot;}}" data-execution_count="6">
+<div id="10c55e89" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:19.162762Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:19.162585Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:19.166741Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:19.166019Z&quot;}}" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>later_unfolded <span class="op">=</span> repeated_unfolded[<span class="dv">1</span>]</span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>folded_position <span class="op">=</span> performance.fold(later_unfolded)</span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>fold_report <span class="op">=</span> {</span>
@@ -497,7 +498,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="the-performance-as-a-timeline-of-its-own" class="level2">
 <h2 class="anchored" data-anchor-id="the-performance-as-a-timeline-of-its-own">The performance as a timeline of its own</h2>
 <p>A virtual timeline states that a FlowMap was applied to its timeline. It has an id, the written timeline’s unit, and the performance’s length, and holds nothing else: no events and no children. Positions convert through it in both directions, given the timeline it comes from.</p>
-<div id="d9c5e2be" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:35.931995Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:35.931788Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:35.938662Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:35.937921Z&quot;}}" data-execution_count="7">
+<div id="6f3585f5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:19.168237Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:19.168096Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:19.172997Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:19.172391Z&quot;}}" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>performed <span class="op">=</span> written_score.create_virtual_timeline(performance_map, <span class="bu">id</span><span class="op">=</span><span class="st">"performed"</span>)</span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>performed_overview <span class="op">=</span> {</span>
 <span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"virtual timeline"</span>: performed,</span>
@@ -517,7 +518,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="inspecting-repeat-signs" class="level2">
 <h2 class="anchored" data-anchor-id="inspecting-repeat-signs">Inspecting repeat signs</h2>
 <p>A score’s measure table records its repeat signs. Inspecting those rows first makes the flow control a loader writes from them easier to read.</p>
-<div id="0e2e097c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:35.941357Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:35.941158Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:39.036084Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:39.035060Z&quot;}}" data-execution_count="8">
+<div id="1d2d54ad" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:19.174464Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:19.174317Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:21.453475Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:21.452721Z&quot;}}" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>score_dir <span class="op">=</span> score_data <span class="op">/</span> <span class="st">"beethoven_woo71"</span></span>
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>score_loader <span class="op">=</span> Ms3Loader.from_file(</span>
 <span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    score_dir <span class="op">/</span> <span class="st">"WoO71.notes.tsv"</span>,</span>
@@ -608,69 +609,85 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="ids-and-names-of-flow-control-elements" class="level2">
 <h2 class="anchored" data-anchor-id="ids-and-names-of-flow-control-elements">Ids and names of flow-control elements</h2>
 <p>A loader writes these signs as the timeline’s <strong>flow control</strong>: a list of elements of five kinds. A jump is where the flow may leave the axis, with one destination for every place it may go on at; a jump target is a place a destination names (a repeat start, a segno, a coda, a bracket); a break is a place the flow does not go on across (a <em>Fine</em>, the end of a first bracket); a section break ends a section; a barline is a barline the source prints.</p>
-<p>Every element of a timeline (a region, a jump, a jump target, a break) has an <code>id</code> that identifies it, unique across everything you save together in one manifest, and may have a name for display. A loader gives ids where the source has none, with one prefix per kind: <code>jump_1</code>, <code>jump_target_1</code>, <code>break_1</code>, <code>section_break_1</code>, <code>barline_1</code>. A short score with a <em>Fine</em>, a segno and a coda shows them.</p>
-<div id="bc548530" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:39.038443Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:39.038117Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:39.067502Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:39.066649Z&quot;}}" data-execution_count="9">
+<p>Every element of a timeline (a region, a jump, a jump target, a break) has an <code>id</code> that identifies it, unique across everything you save together in one manifest, and may have a name for display. A loader gives ids where the source has none: one prefix per kind followed by a random suffix, <code>jump_…</code>, <code>jump_target_…</code>, <code>break_…</code>, <code>section_break_…</code>, <code>barline_…</code>. A short score with a <em>Fine</em>, a segno and a coda shows them.</p>
+<div id="d5d38867" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:21.455053Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:21.454905Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:21.492599Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:21.491630Z&quot;}}" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>flow_dir <span class="op">=</span> score_data <span class="op">/</span> <span class="st">"flow_control"</span> <span class="op">/</span> <span class="st">"flow_only"</span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>flow_score <span class="op">=</span> Ms3Loader.from_file(</span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    flow_dir <span class="op">/</span> <span class="st">"out_of_the_flow_experience-flow_only.measures.tsv"</span>,</span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>).create_timeline(uid<span class="op">=</span><span class="st">"flow_only"</span>)</span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>flow_elements <span class="op">=</span> flow_score.flow_control</span>
-<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>element_ids <span class="op">=</span> {</span>
-<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"regions"</span>: {region.<span class="bu">id</span>: region.name <span class="cf">for</span> region <span class="kw">in</span> written_score.iter_regions()},</span>
-<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"breaks"</span>: {brk.<span class="bu">id</span>: brk.name <span class="cf">for</span> brk <span class="kw">in</span> flow_elements.breaks},</span>
-<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"jump targets"</span>: {target.<span class="bu">id</span>: target.name <span class="cf">for</span> target <span class="kw">in</span> flow_elements.jump_targets},</span>
-<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"jump destinations"</span>: {</span>
-<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>        jump.<span class="bu">id</span>: [destination.to <span class="cf">for</span> destination <span class="kw">in</span> jump.targets]</span>
-<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> jump <span class="kw">in</span> flow_elements.jumps</span>
-<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>    },</span>
-<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a>element_ids</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> warnings.catch_warnings(record<span class="op">=</span><span class="va">True</span>) <span class="im">as</span> flow_only_warnings:</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    warnings.simplefilter(<span class="st">"always"</span>)</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>    flow_score <span class="op">=</span> Ms3Loader.from_file(</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>        flow_dir <span class="op">/</span> <span class="st">"out_of_the_flow_experience-flow_only.measures.tsv"</span>,</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>    ).create_timeline(uid<span class="op">=</span><span class="st">"flow_only"</span>)</span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>flow_elements <span class="op">=</span> flow_score.flow_control</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>element_ids <span class="op">=</span> {</span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"regions"</span>: {region.<span class="bu">id</span>: region.name <span class="cf">for</span> region <span class="kw">in</span> written_score.iter_regions()},</span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"breaks"</span>: {brk.<span class="bu">id</span>: brk.name <span class="cf">for</span> brk <span class="kw">in</span> flow_elements.breaks},</span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"jump targets"</span>: {target.<span class="bu">id</span>: target.name <span class="cf">for</span> target <span class="kw">in</span> flow_elements.jump_targets},</span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"jump destinations"</span>: {</span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>        jump.<span class="bu">id</span>: [destination.to <span class="cf">for</span> destination <span class="kw">in</span> jump.targets]</span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> jump <span class="kw">in</span> flow_elements.jumps</span>
+<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a>element_ids</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="9">
 <pre><code>{'regions': {'A': None, 'B': None, 'C': None},
- 'breaks': {'break_1': None,
-  'break_2': None,
-  'break_4': 'fine',
-  'break_3': None},
- 'jump targets': {'jump_target_1': None,
-  'jump_target_2': None,
-  'jump_target_3': None,
-  'jump_target_4': None,
-  'jump_target_7': 'segno',
-  'jump_target_5': None,
-  'jump_target_8': 'codab',
-  'jump_target_6': None},
- 'jump destinations': {'jump_1': [None],
-  'jump_2': [None, 'jump_target_2', 'jump_target_3'],
-  'jump_3': ['jump_target_1'],
-  'jump_4': [None],
-  'jump_11': ['jump_target_8'],
-  'jump_5': ['jump_target_5'],
-  'jump_6': ['jump_target_4'],
-  'jump_9': ['jump_target_7'],
-  'jump_7': [None, 'jump_target_6'],
-  'jump_8': [None],
-  'jump_10': [None]}}</code></pre>
+ 'breaks': {'break_1r2atzexpoczi': None,
+  'break_33vutn8uttd0e': None,
+  'break_364zz5zo2kom6': 'fine',
+  'break_1n8dksx4wjliv': None},
+ 'jump targets': {'jump_target_2qtqsrqposh4o': None,
+  'jump_target_3kajzabnk37ik': None,
+  'jump_target_0mkxttxn9vnfk': None,
+  'jump_target_0izxt9nz29uy7': None,
+  'jump_target_2f939489wxt1i': 'segno',
+  'jump_target_2mwicbtuj64op': None,
+  'jump_target_1jiz9ha8f5wx0': 'codab',
+  'jump_target_0deg2knggru4t': None},
+ 'jump destinations': {'jump_37934feiyv3sf': [None],
+  'jump_1q1yxi30ieu2v': [None,
+   'jump_target_0mkxttxn9vnfk',
+   'jump_target_3kajzabnk37ik'],
+  'jump_34jkroql6o0n3': ['jump_target_2qtqsrqposh4o'],
+  'jump_1ol3zobob7vrh': [None],
+  'jump_08txti49972a1': ['jump_target_1jiz9ha8f5wx0'],
+  'jump_25ym40vdw5gzk': ['jump_target_2mwicbtuj64op'],
+  'jump_1bu16a13ndfvh': ['jump_target_0izxt9nz29uy7'],
+  'jump_3ojqmr8hqz9vn': ['jump_target_2f939489wxt1i'],
+  'jump_1oa34haeq5xo3': [None, 'jump_target_0deg2knggru4t'],
+  'jump_10t0qautzu4mt': [None],
+  'jump_06136n1jaynn3': [None]}}</code></pre>
 </div>
 </div>
 <p>The written score’s regions carry the ids you gave and no names; the loader names the <em>Fine</em>, the segno and the coda as the source names them. A destination that goes on at a jump target names that target’s id as its <code>to</code>; a plain repeat and the <em>Da Capo</em> name none and go back to the start of their section, and a bracket the flow simply goes on into states a distance of 0 instead.</p>
+<p>Loading the fragment, the loader also warned that some of its measures do not add up to their bars. The cell above recorded the warning instead of letting it print; its message names each measure and how it does not fit:</p>
+<div id="fd5b5199" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:21.494439Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:21.494271Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:21.497326Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:21.496706Z&quot;}}" data-execution_count="10">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(flow_only_warnings[<span class="dv">0</span>].message)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Floating measures that do not add up to their bars:
+  short: measure '6' (number 2) ends 1 quarter into a bar of 4, and measure '8' (number 4), which it leads to, does not complete the bar;
+  short: measure '7' (number 3) ends 2 quarters into a bar of 4, and it leads to no measure of the map;
+  doubtful split, not joined: measure '12' (number 8) and measure '13' (number 9) together fill a bar of 4 quarters, but '13' states offset 0, not 2 where '12' ends</code></pre>
+</div>
+</div>
 </section>
 <section id="computing-and-checking-the-route" class="level2">
 <h2 class="anchored" data-anchor-id="computing-and-checking-the-route">Computing and checking the route</h2>
 <p><code>get_flow()</code> plays a timeline’s flow control and writes nothing. Its result lists the stretches of the score in the order played and converts positions like a resolved FlowMap; its <code>findings</code> report what looks wrong. Stated in measures, the route of WoO 71 is easy to compare with the score.</p>
-<div id="317470f3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:39.069871Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:39.069588Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:39.209885Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:39.209045Z&quot;}}" data-execution_count="10">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>score_timeline <span class="op">=</span> score_loader.create_timeline(uid<span class="op">=</span><span class="st">"woo71"</span>)</span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>route <span class="op">=</span> score_timeline.get_flow()</span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>played_measures <span class="op">=</span> measure_ranges(</span>
-<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    [stretch.source <span class="cf">for</span> stretch <span class="kw">in</span> route.chunks], score_timeline.measure_map</span>
-<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>flow_report <span class="op">=</span> {</span>
-<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"folded measures"</span>: <span class="bu">len</span>(score_timeline.measure_map),</span>
-<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"played measures"</span>: <span class="bu">sum</span>(stretch.n_measures <span class="cf">for</span> stretch <span class="kw">in</span> played_measures),</span>
-<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"first stretches"</span>: played_measures[:<span class="dv">3</span>],</span>
-<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"findings"</span>: [finding.message <span class="cf">for</span> finding <span class="kw">in</span> route.findings] <span class="kw">or</span> <span class="st">"none"</span>,</span>
-<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>flow_report</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="10">
+<div id="a7e86700" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:21.498850Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:21.498710Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:21.579613Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:21.578996Z&quot;}}" data-execution_count="11">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> warnings.catch_warnings(record<span class="op">=</span><span class="va">True</span>) <span class="im">as</span> woo71_warnings:</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>    warnings.simplefilter(<span class="st">"always"</span>)</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>    score_timeline <span class="op">=</span> score_loader.create_timeline(uid<span class="op">=</span><span class="st">"woo71"</span>)</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>route <span class="op">=</span> score_timeline.get_flow()</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>played_measures <span class="op">=</span> measure_ranges(</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>    [stretch.source <span class="cf">for</span> stretch <span class="kw">in</span> route.chunks], score_timeline.measure_map</span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>flow_report <span class="op">=</span> {</span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"folded measures"</span>: <span class="bu">len</span>(score_timeline.measure_map),</span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"played measures"</span>: <span class="bu">sum</span>(stretch.n_measures <span class="cf">for</span> stretch <span class="kw">in</span> played_measures),</span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"first stretches"</span>: played_measures[:<span class="dv">3</span>],</span>
+<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"findings"</span>: [finding.message <span class="cf">for</span> finding <span class="kw">in</span> route.findings] <span class="kw">or</span> <span class="st">"none"</span>,</span>
+<span id="cb19-13"><a href="#cb19-13" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb19-14"><a href="#cb19-14" aria-hidden="true" tabindex="-1"></a>flow_report</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
 <pre><code>{'folded measures': 397,
  'played measures': 505,
  'first stretches': (MeasureRange(start=1, end=22, sections=()),
@@ -679,32 +696,42 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
  'findings': 'none'}</code></pre>
 </div>
 </div>
-<p>The default route visits 505 measures from a 397-measure folded score, in right-open ranges of measure counts, and finds nothing to report. The short score above is another matter: its second of three brackets has no sign at its end, so its flow stops there and never plays the rest.</p>
-<div id="d03be621" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:39.211805Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:39.211530Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:39.217369Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:39.216596Z&quot;}}" data-execution_count="11">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>[finding.message <span class="cf">for</span> finding <span class="kw">in</span> flow_score.get_flow().findings]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="11">
-<pre><code>["The flow ends at the break 'break_2' at 10 quarters: no jump there has a destination that holds.",
+<p>The default route visits 505 measures from a 397-measure folded score, in right-open ranges of measure counts, and finds nothing to report. The loader’s one warning, recorded as for the fragment, is about the measures themselves: at three places a measure states an offset, or reaches a length, that does not fit its bar.</p>
+<div id="71189765" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:21.581031Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:21.580890Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:21.583474Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:21.582851Z&quot;}}" data-execution_count="12">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(woo71_warnings[<span class="dv">0</span>].message)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Floating measures that do not add up to their bars:
+  offset mismatch: measure '43' (number 38) states offset 3/2, not 1 where '42' ends;
+  offset mismatch: measure '262' (number 237) states offset 3/2, not 4 where '261' ends;
+  overlength: measures '371', '372' (number 346) reach 9/2 quarters into a bar of 3</code></pre>
+</div>
+</div>
+<p>The short score above is another matter: its second of three brackets has no sign at its end, so its flow stops there and never plays the rest.</p>
+<div id="3d531bed" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:21.584958Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:21.584819Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:21.589662Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:21.589236Z&quot;}}" data-execution_count="13">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>[finding.message <span class="cf">for</span> finding <span class="kw">in</span> flow_score.get_flow().findings]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<pre><code>["The flow ends at the break 'break_33vutn8uttd0e' at 10 quarters: no jump there has a destination that holds.",
  'The stretch [10, 37) quarters is never played.']</code></pre>
 </div>
 </div>
 </section>
 <section id="segmenting-the-folded-score" class="level2">
 <h2 class="anchored" data-anchor-id="segmenting-the-folded-score">Segmenting the folded score</h2>
-<p><code>create_flow_maps_from_flow_control()</code> writes the stretches flow control never divides, its atomic sections, as Regions named by letters, and the route as a FlowMap of them. Their starts divide the folded timeline into a <button class="glossary" title="A runtime class parameterized by its segment class, such as SegmentLine[DiscreteGraphicalTimeline], whose contiguous Segments tile its full length. A line is also an instance of that segment class. Any timeline can check this structure with the property is_segment_line and adopt enforcement with as_segment_line(); a line returns to an unenforced timeline with to_timeline(). create_children_from_boundaries() creates boundary-driven tilings. Appending extends an unlocked line, while appending to a locked line raises RuntimeError.">SegmentLine</button> of adjacent, inspectable sections.</p>
-<div id="5414bc74" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:39.219332Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:39.219128Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:40.286377Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:40.285513Z&quot;}}" data-execution_count="12">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>computed <span class="op">=</span> score_timeline.create_flow_maps_from_flow_control()</span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>section_starts <span class="op">=</span> [section.start <span class="cf">for</span> section <span class="kw">in</span> computed.sections]</span>
-<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>boundary_coordinates <span class="op">=</span> [<span class="op">*</span>section_starts, score_timeline.length]</span>
-<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>score_segments <span class="op">=</span> score_timeline.create_segment_line(boundary_coordinates)</span>
-<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>segment_report <span class="op">=</span> {</span>
-<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"first sections"</span>: [section.name <span class="cf">for</span> section <span class="kw">in</span> computed.sections[:<span class="dv">4</span>]],</span>
-<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"first boundaries"</span>: boundary_coordinates[:<span class="dv">4</span>],</span>
-<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"boundary count"</span>: <span class="bu">len</span>(boundary_coordinates),</span>
-<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"segment count"</span>: score_segments.n_children,</span>
-<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"route FlowMap"</span>: computed.flow_maps[<span class="dv">0</span>],</span>
-<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a>segment_report</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="12">
+<p><code>create_flow_maps_from_flow_control()</code> writes the stretches flow control never divides, its atomic sections, as Regions named by letters, and the route as a FlowMap of them. Their starts divide the folded timeline into a <button class="glossary" title="">SegmentLine</button> of adjacent, inspectable sections.</p>
+<div id="6f8dce07" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:21.591275Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:21.591115Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:22.470911Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:22.470344Z&quot;}}" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>computed <span class="op">=</span> score_timeline.create_flow_maps_from_flow_control()</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>section_starts <span class="op">=</span> [section.start <span class="cf">for</span> section <span class="kw">in</span> computed.sections]</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>boundary_coordinates <span class="op">=</span> [<span class="op">*</span>section_starts, score_timeline.length]</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>score_segments <span class="op">=</span> score_timeline.create_segment_line(boundary_coordinates)</span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>segment_report <span class="op">=</span> {</span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"first sections"</span>: [section.name <span class="cf">for</span> section <span class="kw">in</span> computed.sections[:<span class="dv">4</span>]],</span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"first boundaries"</span>: boundary_coordinates[:<span class="dv">4</span>],</span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"boundary count"</span>: <span class="bu">len</span>(boundary_coordinates),</span>
+<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"segment count"</span>: score_segments.n_children,</span>
+<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"route FlowMap"</span>: computed.flow_maps[<span class="dv">0</span>],</span>
+<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb25-12"><a href="#cb25-12" aria-hidden="true" tabindex="-1"></a>segment_report</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="14">
 <pre><code>{'first sections': ['A', 'B', 'C', 'D'],
  'first boundaries': [Coordinate(Fraction(0, 1), quarters),
   Coordinate(Fraction(20, 1), quarters),
@@ -712,7 +739,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   Coordinate(Fraction(58, 1), quarters)],
  'boundary count': 27,
  'segment count': 26,
- 'route FlowMap': FlowMap('flow_map_1', timeline='woo71', 37 chunks, convention='default')}</code></pre>
+ 'route FlowMap': FlowMap('flow_0ly28qh2uw3cw', timeline='woo71', 37 chunks, convention='default')}</code></pre>
 </div>
 </div>
 <p>The boundary coordinates retain their quarter unit. Twenty-seven boundaries divide the score into twenty-six adjacent segments, one per atomic section, and the SegmentLine keeps those segments as children of one timeline. The route’s FlowMap lists the sections in the order played.</p>
@@ -720,16 +747,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="beats-as-a-queryable-grid" class="level2">
 <h2 class="anchored" data-anchor-id="beats-as-a-queryable-grid">Beats as a queryable grid</h2>
 <p>A <button class="glossary" title="An ordered set of BeatGridSegments and the beats they generate on a seconds axis. Each segment states one stretch of a recording — an anchor instant, a tempo, a BeatPolicy, and which beat of a bar the anchor is — and generates beats without end; the grid orders the segments, bounds each by its successor’s start and the last by its extent, and labels the resulting beats with measure and beat numbers. A BeatGrid is not a Timeline and stores nothing per beat.">BeatGrid</button> answers where beats and measures fall in a recording. It is not a timeline: it stores one tempo statement — the anchor instant, the tempo, the meter, and which beat of a bar the anchor is — and generates every beat from it. <code>extent</code> bounds the grid, normally with the length of the audio.</p>
-<div id="a99ac112" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:40.289138Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:40.288829Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:40.295633Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:40.294666Z&quot;}}" data-execution_count="13">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>grid <span class="op">=</span> BeatGrid.from_tempo(<span class="dv">120</span>, metro<span class="op">=</span><span class="st">"3/4"</span>, start<span class="op">=</span><span class="dv">0</span>, extent<span class="op">=</span><span class="dv">12</span>)</span>
-<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>grid_overview <span class="op">=</span> {</span>
-<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"the grid"</span>: grid,</span>
-<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"one stated segment"</span>: grid.segments[<span class="dv">0</span>],</span>
-<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"beat length in seconds"</span>: grid.segments[<span class="dv">0</span>].beat_seconds,</span>
-<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"measures generated"</span>: grid.n_measures,</span>
-<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>grid_overview</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="13">
+<div id="fa64a179" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:22.472466Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:22.472329Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:22.476495Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:22.475688Z&quot;}}" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>grid <span class="op">=</span> BeatGrid.from_tempo(<span class="dv">120</span>, metro<span class="op">=</span><span class="st">"3/4"</span>, start<span class="op">=</span><span class="dv">0</span>, extent<span class="op">=</span><span class="dv">12</span>)</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>grid_overview <span class="op">=</span> {</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"the grid"</span>: grid,</span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"one stated segment"</span>: grid.segments[<span class="dv">0</span>],</span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"beat length in seconds"</span>: grid.segments[<span class="dv">0</span>].beat_seconds,</span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"measures generated"</span>: grid.n_measures,</span>
+<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a>grid_overview</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
 <pre><code>{'the grid': BeatGrid(1 segment, extent=12, 8 measures),
  'one stated segment': BeatGridSegment(start=0, end=12, bpm=120, policy=3/4, battito=1),
  'beat length in seconds': Fraction(1, 2),
@@ -741,19 +768,19 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="both-directions" class="level2">
 <h2 class="anchored" data-anchor-id="both-directions">Both directions</h2>
 <p><code>seconds_at(measure, beat)</code> turns a label into a <button class="glossary" title="A position on a timeline, expressed as the distance from the origin in the timeline’s measuring unit. Combines a numeric value with a TimeUnit. The unit alone decides the number policy: quarters and beats are exact Fractions, discrete units (ticks, samples, frames, pixels) are locked to int, and the remaining continuous units (seconds, points, centimeters, …) are float. That declared number type is preserved at every boundary — authored, converted, interpolated, queried or retrieved — so a fraction-canonical axis always yields Fractions and a float-canonical axis always yields floats. An explicit number_type= overrides the default, and exact input is never degraded.">Coordinate</button> in seconds; <code>position_at(seconds)</code> turns a position into the beat sounding there.</p>
-<div id="233e2361" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:40.297898Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:40.297599Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:40.304523Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:40.303523Z&quot;}}" data-execution_count="14">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>labelled_instant <span class="op">=</span> grid.seconds_at(<span class="dv">3</span>, <span class="dv">2</span>)</span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>sounding_beat <span class="op">=</span> grid.position_at(<span class="fl">6.25</span>)</span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>direction_report <span class="op">=</span> {</span>
-<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"measure 3, beat 2"</span>: labelled_instant,</span>
-<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"beat sounding at 6.25 seconds"</span>: sounding_beat,</span>
-<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"that beat's own instant"</span>: sounding_beat.instant,</span>
-<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"its measure"</span>: sounding_beat.measure,</span>
-<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"it opens a measure"</span>: sounding_beat.is_downbeat,</span>
-<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"quarters in the whole grid"</span>: grid.quarters_between(<span class="dv">0</span>, <span class="dv">12</span>),</span>
-<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a>direction_report</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="14">
+<div id="6c4fdd1e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:22.478517Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:22.478354Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:22.482582Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:22.481867Z&quot;}}" data-execution_count="16">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>labelled_instant <span class="op">=</span> grid.seconds_at(<span class="dv">3</span>, <span class="dv">2</span>)</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>sounding_beat <span class="op">=</span> grid.position_at(<span class="fl">6.25</span>)</span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>direction_report <span class="op">=</span> {</span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"measure 3, beat 2"</span>: labelled_instant,</span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"beat sounding at 6.25 seconds"</span>: sounding_beat,</span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"that beat's own instant"</span>: sounding_beat.instant,</span>
+<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"its measure"</span>: sounding_beat.measure,</span>
+<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"it opens a measure"</span>: sounding_beat.is_downbeat,</span>
+<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"quarters in the whole grid"</span>: grid.quarters_between(<span class="dv">0</span>, <span class="dv">12</span>),</span>
+<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb29-11"><a href="#cb29-11" aria-hidden="true" tabindex="-1"></a>direction_report</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="16">
 <pre><code>{'measure 3, beat 2': Coordinate(3.5, seconds),
  'beat sounding at 6.25 seconds': GridBeat(seconds=Fraction(6, 1), segment=0, measure=5, segment_measure=5, beat=1),
  "that beat's own instant": Coordinate(6.0, seconds),
@@ -768,26 +795,26 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="the-beat-table-and-its-exports" class="level2">
 <h2 class="anchored" data-anchor-id="the-beat-table-and-its-exports">The beat table and its exports</h2>
 <p><code>get_beat_table()</code> renders every beat the grid states. It is the only table the grid builds, and the annotation-file exports are renderings of it. Downbeats are the rows whose <code>beat</code> is 1.</p>
-<div id="7c943171" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:40.306539Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:40.306252Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:40.322093Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:40.321098Z&quot;}}" data-execution_count="15">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>beat_table <span class="op">=</span> grid.get_beat_table()</span>
-<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>downbeat_rows <span class="op">=</span> beat_table[beat_table[<span class="st">"beat"</span>] <span class="op">==</span> <span class="dv">1</span>]</span>
-<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> TemporaryDirectory() <span class="im">as</span> temporary_dir:</span>
-<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>    export_path <span class="op">=</span> Path(temporary_dir) <span class="op">/</span> <span class="st">"beats.csv"</span></span>
-<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>    exported_rows <span class="op">=</span> grid.export_to_csv(</span>
-<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>        export_path,</span>
-<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>        <span class="bu">format</span><span class="op">=</span><span class="st">"sonic_visualiser"</span>,</span>
-<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a>    exported_text <span class="op">=</span> export_path.read_text(encoding<span class="op">=</span><span class="st">"utf-8"</span>)</span>
-<span id="cb27-10"><a href="#cb27-10" aria-hidden="true" tabindex="-1"></a>    first_export_lines <span class="op">=</span> exported_text.splitlines()[:<span class="dv">4</span>]</span>
-<span id="cb27-11"><a href="#cb27-11" aria-hidden="true" tabindex="-1"></a>table_report <span class="op">=</span> {</span>
-<span id="cb27-12"><a href="#cb27-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"first beats"</span>: beat_table.head(<span class="dv">4</span>),</span>
-<span id="cb27-13"><a href="#cb27-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"beats"</span>: <span class="bu">len</span>(beat_table),</span>
-<span id="cb27-14"><a href="#cb27-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"downbeats"</span>: <span class="bu">len</span>(downbeat_rows),</span>
-<span id="cb27-15"><a href="#cb27-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"rows written"</span>: exported_rows,</span>
-<span id="cb27-16"><a href="#cb27-16" aria-hidden="true" tabindex="-1"></a>    <span class="st">"first CSV lines"</span>: first_export_lines,</span>
-<span id="cb27-17"><a href="#cb27-17" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb27-18"><a href="#cb27-18" aria-hidden="true" tabindex="-1"></a>table_report</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="15">
+<div id="5dd172c0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:22.484082Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:22.483938Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:22.493570Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:22.492509Z&quot;}}" data-execution_count="17">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>beat_table <span class="op">=</span> grid.get_beat_table()</span>
+<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>downbeat_rows <span class="op">=</span> beat_table[beat_table[<span class="st">"beat"</span>] <span class="op">==</span> <span class="dv">1</span>]</span>
+<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a><span class="cf">with</span> TemporaryDirectory() <span class="im">as</span> temporary_dir:</span>
+<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>    export_path <span class="op">=</span> Path(temporary_dir) <span class="op">/</span> <span class="st">"beats.csv"</span></span>
+<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a>    exported_rows <span class="op">=</span> grid.export_to_csv(</span>
+<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a>        export_path,</span>
+<span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a>        <span class="bu">format</span><span class="op">=</span><span class="st">"sonic_visualiser"</span>,</span>
+<span id="cb31-8"><a href="#cb31-8" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb31-9"><a href="#cb31-9" aria-hidden="true" tabindex="-1"></a>    exported_text <span class="op">=</span> export_path.read_text(encoding<span class="op">=</span><span class="st">"utf-8"</span>)</span>
+<span id="cb31-10"><a href="#cb31-10" aria-hidden="true" tabindex="-1"></a>    first_export_lines <span class="op">=</span> exported_text.splitlines()[:<span class="dv">4</span>]</span>
+<span id="cb31-11"><a href="#cb31-11" aria-hidden="true" tabindex="-1"></a>table_report <span class="op">=</span> {</span>
+<span id="cb31-12"><a href="#cb31-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"first beats"</span>: beat_table.head(<span class="dv">4</span>),</span>
+<span id="cb31-13"><a href="#cb31-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"beats"</span>: <span class="bu">len</span>(beat_table),</span>
+<span id="cb31-14"><a href="#cb31-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"downbeats"</span>: <span class="bu">len</span>(downbeat_rows),</span>
+<span id="cb31-15"><a href="#cb31-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"rows written"</span>: exported_rows,</span>
+<span id="cb31-16"><a href="#cb31-16" aria-hidden="true" tabindex="-1"></a>    <span class="st">"first CSV lines"</span>: first_export_lines,</span>
+<span id="cb31-17"><a href="#cb31-17" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb31-18"><a href="#cb31-18" aria-hidden="true" tabindex="-1"></a>table_report</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="17">
 <pre><code>{'first beats':    seconds  segment  segment_seconds  measure  beat
  0      0.0        0              0.0        1     1
  1      0.5        0              0.5        1     2
@@ -804,22 +831,22 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="when-the-tempo-changes" class="level2">
 <h2 class="anchored" data-anchor-id="when-the-tempo-changes">When the tempo changes</h2>
 <p>One segment states one tempo. A recording that changes tempo is several <code>BeatGridSegment</code>s in one grid: you state each segment without an end, and the grid orders them and bounds each by the next one’s start. A <code>BeatPolicy</code> says how the lattice beats group into bars.</p>
-<div id="9fd07d7a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:40.324759Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:40.324463Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:40.338345Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:40.337445Z&quot;}}" data-execution_count="16">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>three_four <span class="op">=</span> BeatPolicy.uniform(Fraction(<span class="dv">1</span>), <span class="dv">3</span>, name<span class="op">=</span><span class="st">"3/4"</span>)</span>
-<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>opening <span class="op">=</span> BeatGridSegment(start<span class="op">=</span><span class="dv">0</span>, bpm<span class="op">=</span><span class="dv">120</span>, policy<span class="op">=</span>three_four, battito<span class="op">=</span><span class="dv">1</span>)</span>
-<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>faster <span class="op">=</span> BeatGridSegment(start<span class="op">=</span><span class="dv">6</span>, bpm<span class="op">=</span><span class="dv">180</span>, policy<span class="op">=</span>three_four, battito<span class="op">=</span><span class="dv">1</span>)</span>
-<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a>changing <span class="op">=</span> BeatGrid([opening, faster], extent<span class="op">=</span><span class="dv">12</span>)</span>
-<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>across_the_change <span class="op">=</span> changing.get_beat_table()</span>
-<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>change_report <span class="op">=</span> {</span>
-<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"bounded segments"</span>: changing.segments,</span>
-<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"measures generated"</span>: changing.n_measures,</span>
-<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"around the change"</span>: across_the_change[</span>
-<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a>        (across_the_change[<span class="st">"seconds"</span>] <span class="op">&gt;=</span> <span class="dv">5</span>) <span class="op">&amp;</span> (across_the_change[<span class="st">"seconds"</span>] <span class="op">&lt;=</span> <span class="dv">7</span>)</span>
-<span id="cb29-11"><a href="#cb29-11" aria-hidden="true" tabindex="-1"></a>    ],</span>
-<span id="cb29-12"><a href="#cb29-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"quarters from 5 to 7 seconds"</span>: changing.quarters_between(<span class="dv">5</span>, <span class="dv">7</span>),</span>
-<span id="cb29-13"><a href="#cb29-13" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb29-14"><a href="#cb29-14" aria-hidden="true" tabindex="-1"></a>change_report</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="16">
+<div id="7c49c743" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:22.495447Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:22.495222Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:22.503386Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:22.502659Z&quot;}}" data-execution_count="18">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>three_four <span class="op">=</span> BeatPolicy.uniform(Fraction(<span class="dv">1</span>), <span class="dv">3</span>, name<span class="op">=</span><span class="st">"3/4"</span>)</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>opening <span class="op">=</span> BeatGridSegment(start<span class="op">=</span><span class="dv">0</span>, bpm<span class="op">=</span><span class="dv">120</span>, policy<span class="op">=</span>three_four, battito<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>faster <span class="op">=</span> BeatGridSegment(start<span class="op">=</span><span class="dv">6</span>, bpm<span class="op">=</span><span class="dv">180</span>, policy<span class="op">=</span>three_four, battito<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>changing <span class="op">=</span> BeatGrid([opening, faster], extent<span class="op">=</span><span class="dv">12</span>)</span>
+<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a>across_the_change <span class="op">=</span> changing.get_beat_table()</span>
+<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a>change_report <span class="op">=</span> {</span>
+<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"bounded segments"</span>: changing.segments,</span>
+<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"measures generated"</span>: changing.n_measures,</span>
+<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"around the change"</span>: across_the_change[</span>
+<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a>        (across_the_change[<span class="st">"seconds"</span>] <span class="op">&gt;=</span> <span class="dv">5</span>) <span class="op">&amp;</span> (across_the_change[<span class="st">"seconds"</span>] <span class="op">&lt;=</span> <span class="dv">7</span>)</span>
+<span id="cb33-11"><a href="#cb33-11" aria-hidden="true" tabindex="-1"></a>    ],</span>
+<span id="cb33-12"><a href="#cb33-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"quarters from 5 to 7 seconds"</span>: changing.quarters_between(<span class="dv">5</span>, <span class="dv">7</span>),</span>
+<span id="cb33-13"><a href="#cb33-13" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb33-14"><a href="#cb33-14" aria-hidden="true" tabindex="-1"></a>change_report</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="18">
 <pre><code>{'bounded segments': (BeatGridSegment(start=0, end=6, bpm=120, policy=3/4, battito=1),
   BeatGridSegment(start=6, end=12, bpm=180, policy=3/4, battito=1)),
  'measures generated': 10,
@@ -838,14 +865,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="two-numberings-of-one-lattice" class="level2">
 <h2 class="anchored" data-anchor-id="two-numberings-of-one-lattice">Two numberings of one lattice</h2>
 <p><code>numbering="set"</code> counts measures across the whole grid; <code>numbering="segment"</code> restarts the count at each segment. They label the same beats, so you can read them side by side.</p>
-<div id="a729198c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:55:40.340496Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:55:40.340211Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:55:40.353827Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:55:40.353076Z&quot;}}" data-execution_count="17">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>per_segment <span class="op">=</span> changing.get_beat_table(numbering<span class="op">=</span><span class="st">"segment"</span>)</span>
-<span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>both_numberings <span class="op">=</span> across_the_change.assign(segment_measure<span class="op">=</span>per_segment[<span class="st">"measure"</span>])</span>
-<span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>numbering_report <span class="op">=</span> both_numberings[</span>
-<span id="cb31-4"><a href="#cb31-4" aria-hidden="true" tabindex="-1"></a>    (both_numberings[<span class="st">"seconds"</span>] <span class="op">&gt;=</span> <span class="dv">5</span>) <span class="op">&amp;</span> (both_numberings[<span class="st">"seconds"</span>] <span class="op">&lt;=</span> <span class="dv">7</span>)</span>
-<span id="cb31-5"><a href="#cb31-5" aria-hidden="true" tabindex="-1"></a>]</span>
-<span id="cb31-6"><a href="#cb31-6" aria-hidden="true" tabindex="-1"></a>numbering_report</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="cell-output cell-output-display" data-execution_count="17">
+<div id="1f2f805e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:22.504899Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:22.504757Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:22.513649Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:22.513037Z&quot;}}" data-execution_count="19">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>per_segment <span class="op">=</span> changing.get_beat_table(numbering<span class="op">=</span><span class="st">"segment"</span>)</span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>both_numberings <span class="op">=</span> across_the_change.assign(segment_measure<span class="op">=</span>per_segment[<span class="st">"measure"</span>])</span>
+<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a>numbering_report <span class="op">=</span> both_numberings[</span>
+<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a>    (both_numberings[<span class="st">"seconds"</span>] <span class="op">&gt;=</span> <span class="dv">5</span>) <span class="op">&amp;</span> (both_numberings[<span class="st">"seconds"</span>] <span class="op">&lt;=</span> <span class="dv">7</span>)</span>
+<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a>numbering_report</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="19">
 <div>
 
 

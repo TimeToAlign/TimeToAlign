@@ -77,7 +77,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -302,6 +302,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/CHUNK.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CHUNK</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ClaimFilter</span></a>
   </div>
@@ -482,6 +488,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/EventRegistry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventRegistry</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventStore</span></a>
   </div>
@@ -490,6 +502,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Extraction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Extraction</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -848,6 +866,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/NOMATCH.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NOMATCH</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/Note.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Note</span></a>
   </div>
@@ -880,6 +904,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/OutputNumberTypeError.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">OutputNumberTypeError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Package.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Package</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1040,6 +1070,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/resolve.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">resolve</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/resolve_coordinate_spec.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">resolve_coordinate_spec</span></a>
   </div>
@@ -1066,12 +1102,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ScalarMap</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">ScopedId</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1334,7 +1364,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li>:meth:<code>create_physical_timeline</code> gives the same events on Verovio’s rendered time: one <code>ContinuousPhysicalTimeline</code> in seconds, positions the timemap’s integer milliseconds <code>tstamp</code> as <code>Fraction(tstamp, 1000)</code>, with the inverse C-Map. It is time synthesised from the score’s tempo, not a performance.</li>
 </ul>
 <p>The C-Map is one <code>TableMap</code> through every timemap entry (:meth:<code>create_quarters_to_seconds_map</code>). Verovio holds the tempo constant within a measure, so linear interpolation between the entries reproduces its own time.</p>
-<p><strong>Movements.</strong> Every named <code>&lt;mdiv&gt;</code> Verovio loads (one with a non-blank <code>@label</code>) is a child timeline, in document order, its id minted by the loader after the root’s (<code>score:clt_2</code>, <code>rendered:cpt_2</code>, …; a number a given root id such as <code>score:clt_2</code> holds is skipped): placed at its first position, as long as its measures, named by its <code>label</code>, with <code>meta</code> holding <code>count</code> (its place among all <code>&lt;mdiv&gt;</code>s of the file, from 1), its <code>xml:id</code>, <code>n</code> and <code>label</code> verbatim, and <code>element</code> <code>"mdiv"</code>. A named <code>&lt;mdiv&gt;</code> nests under the child of its nearest named ancestor <code>&lt;mdiv&gt;</code>, else under the root. An unnamed <code>&lt;mdiv&gt;</code> makes no timeline: what it holds belongs to the nearest named ancestor’s child, else to the root, so a score whose one <code>&lt;mdiv&gt;</code> has no label is the root alone. Events live in the innermost named movement holding them, at parent − offset; the root holds the measures, the flow control and the C-Map. All movements are loaded unless an <code>mdivAll</code> or <code>mdivXPathQuery</code> option chooses.</p>
+<p><strong>Movements.</strong> Every named <code>&lt;mdiv&gt;</code> Verovio loads (one with a non-blank <code>@label</code>) is a child timeline, in document order, its id minted from the loader’s minter after the root’s (<code>score:clt_…</code>, <code>rendered:cpt_…</code>): placed at its first position, as long as its measures, named by its <code>label</code>, with <code>meta</code> holding <code>count</code> (its place among all <code>&lt;mdiv&gt;</code>s of the file, from 1), its <code>xml:id</code>, <code>n</code> and <code>label</code> verbatim, and <code>element</code> <code>"mdiv"</code>. A named <code>&lt;mdiv&gt;</code> nests under the child of its nearest named ancestor <code>&lt;mdiv&gt;</code>, else under the root. An unnamed <code>&lt;mdiv&gt;</code> makes no timeline: what it holds belongs to the nearest named ancestor’s child, else to the root, so a score whose one <code>&lt;mdiv&gt;</code> has no label is the root alone. Events live in the innermost named movement holding them, at parent − offset; the root holds the measures, the flow control and the C-Map. All movements are loaded unless an <code>mdivAll</code> or <code>mdivXPathQuery</code> option chooses.</p>
 <p><strong>Repeats.</strong> The timemap is Verovio’s rendering: with repeats expanded (Verovio’s default, steered by the <code>expand</code>, <code>expandAlways</code> and <code>expandNever</code> options), a repeated passage appears once per pass. Event <code>id</code> is the rendered id (<code>…-rend2</code> from the second pass on); field <code>notated_id</code> is the element’s id in the notated score (equal to <code>id</code> when nothing is expanded), read with <code>getNotatedIdForElement</code> for ids the notated tree does not hold. The store’s measure table is the printed one (one row per <code>&lt;measure&gt;</code> in document order, lengths as rendered, positions on the folded axis), carrying the repeat barlines, endings and <code>&lt;repeatMark&gt;</code>s (segno, coda, Fine, D.S., D.C.) and the barline <code>@right</code> states. Without an expansion the timeline carries that table as its <code>MeasureMap</code> and what it states as its flow control (a <code>dbl</code> and an <code>end</code> barline as barlines). With an expansion the timeline is already unfolded: its <code>MeasureMap</code> lists the rendered measures (row id = rendered id, name = <code>@n</code>) without flow control. The order in which the expansion plays the printed measures is a FlowMap of the printed score: :meth:<code>create_stated_flow_map</code> writes it onto the timeline that a loader of the same file with <code>expandNever</code> creates.</p>
 <p><strong>Ids.</strong> Every event keeps its element’s <code>xml:id</code> verbatim. Verovio generates ids only where the source has none, from a random seed unless told otherwise; the loader seeds them from the input’s checksum (<code>xmlIdChecksum</code>), so a generated id is stable for one Verovio version and one input. A user <code>xmlIdSeed</code> wins and is logged. After loading, every <code>xml:id</code> of <code>getMEI()</code> is checked for uniqueness, because Verovio’s generator does not test it: a duplicate held by an element the loader reads raises, any other is logged and listed in the store metadata under <code>"duplicate_ids"</code>.</p>
 <p>Sources of each value:</p>
@@ -1421,7 +1451,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>uid</td>
 <td><code>str</code> | None</td>
-<td>The timeline id. <code>None</code> mints <code>rendered:cpt_N</code>.</td>
+<td>The timeline id. <code>None</code> mints <code>rendered:cpt_…</code>.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="even">
@@ -1621,7 +1651,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>uid</td>
 <td><code>str</code> | None</td>
-<td>The timeline id. <code>None</code> mints <code>score:clt_N</code>.</td>
+<td>The timeline id. <code>None</code> mints <code>score:clt_…</code>.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="even">

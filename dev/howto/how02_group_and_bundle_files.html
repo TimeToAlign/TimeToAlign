@@ -78,7 +78,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -334,6 +334,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../howto/how03_mtd_themes.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load Musical Themes Aligned to Recordings (MTD)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../howto/how03_ieee1599.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">How to Load an IEEE 1599 Document</span></a>
   </div>
@@ -354,6 +360,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../howto/how03_match_claims_package.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">How to Keep MatchClaims, Projections and Beliefs in a Package</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_registry_and_packages.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Write the Registry and Share Tables in a Package</span></a>
   </div>
 </li>
       </ul>
@@ -457,7 +469,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="setup" class="level2">
 <h2 class="anchored" data-anchor-id="setup">Setup</h2>
 <p>Install the library with <code>pip install timetoalign</code>; the TimeToShare package comes with it. Three small helpers keep the cells below short: <code>answers</code> lists what a stamp says about every timeline it reaches, <code>show</code> prints a manifest as the text a file would hold, in canonical YAML (see <a href="#save-and-load-files">Save and load files</a>), with its <code>@context</code> reduced to the prefixes beyond the format’s own terms, and <code>outline</code> shows a manifest with each root timeline reduced to its id and without its <code>@context</code>.</p>
-<div id="1f4379bd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:57.726754Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:57.726150Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.413671Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.413011Z&quot;}}" data-execution_count="1">
+<div id="4f839a2b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:08.098056Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:08.097850Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.096803Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.095993Z&quot;}}" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> difflib</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fractions <span class="im">import</span> Fraction</span>
@@ -508,33 +520,33 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="write-a-timeline" class="level2">
 <h2 class="anchored" data-anchor-id="write-a-timeline">Write a timeline</h2>
 <p>A score of sixteen quarters with one region.</p>
-<div id="ee6ccfd3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.415342Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.415093Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.433872Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.433108Z&quot;}}" data-execution_count="2">
+<div id="0190e54f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.098480Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.098229Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.112202Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.111540Z&quot;}}" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>score <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span>Fraction(<span class="dv">16</span>), name<span class="op">=</span><span class="st">"Score"</span>)</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>score.create_region(<span class="dv">0</span>, <span class="dv">8</span>, name<span class="op">=</span><span class="st">"First half"</span>)</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>score</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
-<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousLogicalTimeline[clt_1] (1 regions)
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousLogicalTimeline[clt_2zjcv11ok5rjn] (1 regions)
                       0 __________________________________ 16 quarters</pre>
 </div>
 </div>
 <p><code>to_dict()</code> writes the <strong>minimal form</strong>: every key holding its default is left out, <code>length</code> being the one key written in every form. The manifest carries the version marker <code>timetoshare: "0.2.0"</code>; its <code>timelines</code> array holds the score as its one root.</p>
 <p>A value on the timeline’s own axis (its <code>length</code>, a region’s <code>start</code> and <code>end</code>) is written bare, in the axis’s number type: quarters count in exact fractions, so sixteen quarters are the pair <code>[16, 1]</code>. The library’s class is not written: the unit decides it.</p>
-<p>Every ID in a manifest, an element’s own and every reference to one, is written <code>#</code> followed by the ID: the score’s ID <code>clt_1</code> is written <code>#clt_1</code>. The objects hold their IDs without it, so <code>score.id</code> is <code>clt_1</code>.</p>
+<p>Every ID in a manifest, an element’s own and every reference to one, is written <code>#</code> followed by the ID: the score’s minted ID <code>clt_…</code> is written <code>#clt_…</code>. The objects hold their IDs without it, so <code>score.id</code> reads <code>clt_…</code>.</p>
 <p>Every manifest written opens with an inline JSON-LD <code>@context</code>: the format’s own terms (<code>timetoshare.FORMAT_CONTEXT</code>) and the prefixes its statements use, none here, which is why <code>show</code> prints it empty. A file holds the whole context; the statements are the subject of <a href="../howto/how03_describe_the_work.html">How to Describe What a Bundle and Its Timelines Stand For</a>.</p>
-<div id="b6bf520b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.435349Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.435209Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.645202Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.644565Z&quot;}}" data-execution_count="3">
+<div id="74952db7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.113723Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.113576Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.334601Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.333939Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>score_data <span class="op">=</span> score.to_dict()</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>show(score_data)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>"@context": {}
 timelines:
   -
-    id: "#clt_1"
+    id: "#clt_2zjcv11ok5rjn"
     length: [16, 1]
     name: Score
     regions:
       -
         end: [8, 1]
-        id: "#region_1"
+        id: "#region_10it1ir9e4m5e"
         name: "First half"
         start: [0, 1]
     unit: quarters
@@ -542,7 +554,7 @@ timetoshare: "0.2.0"</code></pre>
 </div>
 </div>
 <p><code>to_dict(minimal=False)</code> writes the <strong>complete form</strong>: every key the format defines, each written even when it holds its default (<code>null</code>, <code>{}</code>, <code>[]</code>).</p>
-<div id="fd25aab6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.646756Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.646609Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.650152Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.649572Z&quot;}}" data-execution_count="4">
+<div id="ee81ef28" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.336457Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.336311Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.340105Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.339433Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>score_complete <span class="op">=</span> score.to_dict(minimal<span class="op">=</span><span class="va">False</span>)</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>show(score_complete)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
@@ -557,7 +569,7 @@ timelines:
     children: []
     conversion_maps: []
     flow_control: []
-    id: "#clt_1"
+    id: "#clt_2zjcv11ok5rjn"
     is_segment_line: false
     length: [16, 1]
     locked: false
@@ -567,7 +579,7 @@ timelines:
     regions:
       -
         end: [8, 1]
-        id: "#region_1"
+        id: "#region_10it1ir9e4m5e"
         meta: {}
         name: "First half"
         start: [0, 1]
@@ -579,7 +591,7 @@ timetoshare: "0.2.0"</code></pre>
 <section id="read-a-timeline" class="level2">
 <h2 class="anchored" data-anchor-id="read-a-timeline">Read a timeline</h2>
 <p><code>Timeline.from_dict()</code> reads either form and supplies every default that is left out. It returns the class the unit decides, here a <code>ContinuousLogicalTimeline</code> for quarters. Both forms read to the same timeline: each writes back the minimal form of the original, and its complete form.</p>
-<div id="f1350cad" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.651622Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.651484Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.658615Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.657999Z&quot;}}" data-execution_count="5">
+<div id="343feaa1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.341901Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.341730Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.350637Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.350019Z&quot;}}" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>from_minimal <span class="op">=</span> Timeline.from_dict(score_data)</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>from_complete <span class="op">=</span> Timeline.from_dict(score_complete)</span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>(</span>
@@ -592,7 +604,7 @@ timetoshare: "0.2.0"</code></pre>
 </div>
 </div>
 <p>Because every default may be left out, a manifest is easy to write by hand. The smallest one names the version and one timeline with its <code>id</code>, <code>unit</code> and <code>length</code>, the ID written with its <code>#</code>. In a manifest of one timeline and no group, <code>timeline_id=</code> and <code>name=</code> override that timeline’s id and name as it is read, unless a timeline of the manifest already has that id or name: such a timeline is selected instead, and an id and a name given together must then name the same timeline.</p>
-<div id="d25b47d5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.660478Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.660325Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.665351Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.664808Z&quot;}}" data-execution_count="6">
+<div id="1802828a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.352257Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.352063Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.358306Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.357560Z&quot;}}" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>smallest <span class="op">=</span> {</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"timetoshare"</span>: <span class="st">"0.2.0"</span>,</span>
 <span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"timelines"</span>: [{<span class="st">"id"</span>: <span class="st">"#piece"</span>, <span class="st">"unit"</span>: <span class="st">"quarters"</span>, <span class="st">"length"</span>: [<span class="dv">32</span>, <span class="dv">1</span>]}],</span>
@@ -604,7 +616,7 @@ timetoshare: "0.2.0"</code></pre>
 </div>
 </div>
 <p>A bare value must be written in its axis’s number type; reading never coerces it. A length of <code>32</code> on a quarters axis is an integer where the axis counts fractions. The error names the value’s place in the manifest, as a JSON pointer, and says what to write instead.</p>
-<div id="bbda65b5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.666984Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.666841Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.669836Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.669349Z&quot;}}" data-execution_count="7">
+<div id="75e38fc2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.359992Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.359846Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.362958Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.362374Z&quot;}}" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    Timeline.from_dict(</span>
 <span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>        {</span>
@@ -623,7 +635,7 @@ timetoshare: "0.2.0"</code></pre>
 <h2 class="anchored" data-anchor-id="write-a-group">Write a group</h2>
 <p>A group’s members share one start and one end: every member’s 0 coincides with every other member’s 0, and every member’s length with every other member’s length. Positions in between convert linearly and exactly.</p>
 <p>Here only the second half of a score takes part, alongside a recording and a scanned page. The second half is a child of the score, placed at its exact offset, and the child is the member. The three members carry three number types: quarters as fractions, seconds as floats, pixels as integers. They are added page first, so their display order differs from their id order.</p>
-<div id="94b2ca58" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.671570Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.671264Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.679550Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.678990Z&quot;}}" data-execution_count="8">
+<div id="af08cfcb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.364518Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.364377Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.375541Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.374936Z&quot;}}" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>score <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span>Fraction(<span class="dv">16</span>), name<span class="op">=</span><span class="st">"Score"</span>)</span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>second_half <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span>Fraction(<span class="dv">8</span>), name<span class="op">=</span><span class="st">"Second half"</span>)</span>
 <span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>score.add_child(second_half, offset<span class="op">=</span>Fraction(<span class="dv">8</span>))</span>
@@ -633,70 +645,71 @@ timetoshare: "0.2.0"</code></pre>
 <span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>group <span class="op">=</span> TimelineGroup(name<span class="op">=</span><span class="st">"Second half"</span>, timelines<span class="op">=</span>[page, second_half, recording])</span>
 <span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>group.<span class="bu">id</span>, group.timeline_ids</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="8">
-<pre><code>('group_1', ['dgt_1', 'clt_2', 'cpt_1'])</code></pre>
+<pre><code>('group_2q8my9zelevxv',
+ ['dgt_1orwcwwfq03tb', 'clt_2muyd6ylpzh8r', 'cpt_3pjxm0c9p6iip'])</code></pre>
 </div>
 </div>
 <p>One third of a quarter into the second half is <code>1/3 · 10/8 = 5/12</code> seconds into the recording and <code>1/3 · 1920/8 = 80</code> pixels into the page. The conversion is computed exactly, and each answer is then written in its member’s own number type: a Fraction of quarters, an integer of pixels, and for the recording the float nearest to 5/12, <code>0.4166666666666667</code>.</p>
-<div id="d457a5bf" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.681193Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.681044Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.686070Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.685550Z&quot;}}" data-execution_count="9">
+<div id="a1c2517b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.377310Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.377165Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.382450Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.381923Z&quot;}}" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>positions <span class="op">=</span> [Fraction(<span class="dv">0</span>), Fraction(<span class="dv">1</span>, <span class="dv">3</span>), Fraction(<span class="dv">3</span>), Fraction(<span class="dv">8</span>)]</span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>before <span class="op">=</span> answers(group.get_timestamps_at(positions, second_half.<span class="bu">id</span>))</span>
 <span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>before</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="9">
-<pre><code>[{'clt_2': IdCoordinate(Fraction(0, 1), quarters, 'clt_2'),
-  'dgt_1': IdCoordinate(0, pixels, 'dgt_1'),
-  'cpt_1': IdCoordinate(0.0, seconds, 'cpt_1')},
- {'clt_2': IdCoordinate(Fraction(1, 3), quarters, 'clt_2'),
-  'dgt_1': IdCoordinate(80, pixels, 'dgt_1'),
-  'cpt_1': IdCoordinate(0.4166666666666667, seconds, 'cpt_1')},
- {'clt_2': IdCoordinate(Fraction(3, 1), quarters, 'clt_2'),
-  'dgt_1': IdCoordinate(720, pixels, 'dgt_1'),
-  'cpt_1': IdCoordinate(3.75, seconds, 'cpt_1')},
- {'clt_2': IdCoordinate(Fraction(8, 1), quarters, 'clt_2'),
-  'dgt_1': IdCoordinate(1920, pixels, 'dgt_1'),
-  'cpt_1': IdCoordinate(10.0, seconds, 'cpt_1')}]</code></pre>
+<pre><code>[{'clt_2muyd6ylpzh8r': IdCoordinate(Fraction(0, 1), quarters, 'clt_2muyd6ylpzh8r'),
+  'dgt_1orwcwwfq03tb': IdCoordinate(0, pixels, 'dgt_1orwcwwfq03tb'),
+  'cpt_3pjxm0c9p6iip': IdCoordinate(0.0, seconds, 'cpt_3pjxm0c9p6iip')},
+ {'clt_2muyd6ylpzh8r': IdCoordinate(Fraction(1, 3), quarters, 'clt_2muyd6ylpzh8r'),
+  'dgt_1orwcwwfq03tb': IdCoordinate(80, pixels, 'dgt_1orwcwwfq03tb'),
+  'cpt_3pjxm0c9p6iip': IdCoordinate(0.4166666666666667, seconds, 'cpt_3pjxm0c9p6iip')},
+ {'clt_2muyd6ylpzh8r': IdCoordinate(Fraction(3, 1), quarters, 'clt_2muyd6ylpzh8r'),
+  'dgt_1orwcwwfq03tb': IdCoordinate(720, pixels, 'dgt_1orwcwwfq03tb'),
+  'cpt_3pjxm0c9p6iip': IdCoordinate(3.75, seconds, 'cpt_3pjxm0c9p6iip')},
+ {'clt_2muyd6ylpzh8r': IdCoordinate(Fraction(8, 1), quarters, 'clt_2muyd6ylpzh8r'),
+  'dgt_1orwcwwfq03tb': IdCoordinate(1920, pixels, 'dgt_1orwcwwfq03tb'),
+  'cpt_3pjxm0c9p6iip': IdCoordinate(10.0, seconds, 'cpt_3pjxm0c9p6iip')}]</code></pre>
 </div>
 </div>
 <p>A group writes an anonymous bundle holding its group:</p>
 <ul>
-<li><code>timelines</code>: the root of every member’s tree, sorted by id. The child member arrives inside its root, the score, among the score’s <code>children</code>.</li>
+<li><code>timelines</code>: the root of every member, sorted by id; a member that is a child arrives inside its root. Here the second half arrives inside the score, among the score’s <code>children</code>.</li>
 <li><code>groups</code>: the one group, with its <code>id</code>, its <code>name</code> and its <code>members</code>, the member ids sorted so that two equal groups write equal text.</li>
 <li><code>graphical.order</code>: the members in the order they were added, keyed by the group’s id. This is the display order.</li>
 </ul>
 <p>The minimal form shows the structure without the defaults.</p>
-<div id="0e2aa399" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.687584Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.687450Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.691398Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.690665Z&quot;}}" data-execution_count="10">
+<div id="5a4f336d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.383943Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.383805Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.387862Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.387225Z&quot;}}" data-execution_count="10">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>group_data <span class="op">=</span> group.to_dict()</span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>show(group_data)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>"@context": {}
 graphical:
   order:
-    "#group_1": ["#dgt_1", "#clt_2", "#cpt_1"]
+    "#group_2q8my9zelevxv": ["#dgt_1orwcwwfq03tb", "#clt_2muyd6ylpzh8r", "#cpt_3pjxm0c9p6iip"]
 groups:
   -
-    id: "#group_1"
-    members: ["#clt_2", "#cpt_1", "#dgt_1"]
+    id: "#group_2q8my9zelevxv"
+    members: ["#clt_2muyd6ylpzh8r", "#cpt_3pjxm0c9p6iip", "#dgt_1orwcwwfq03tb"]
     name: "Second half"
 timelines:
   -
     children:
       -
-        id: "#clt_2"
+        id: "#clt_2muyd6ylpzh8r"
         length: [8, 1]
         locked: true
         name: "Second half"
         offset: [8, 1]
         unit: quarters
-    id: "#clt_1"
+    id: "#clt_2vmtd2dv5nsp8"
     length: [16, 1]
     name: Score
     unit: quarters
   -
-    id: "#cpt_1"
+    id: "#cpt_3pjxm0c9p6iip"
     length: 10.0
     name: Recording
     unit: seconds
   -
-    id: "#dgt_1"
+    id: "#dgt_1orwcwwfq03tb"
     length: 1920
     name: Page
     unit: pixels
@@ -704,17 +717,19 @@ timetoshare: "0.2.0"</code></pre>
 </div>
 </div>
 <p>A child’s <code>offset</code> is a bare value on its parent’s axis, in its parent’s number type: the second half starts at <code>[8, 1]</code> quarters into the score. <code>add_child()</code> locks a child unless it is given <code>locked=False</code>, so this one writes <code>locked: true</code>. An unlocked child writes <code>false</code>, and reading keeps whichever the manifest states.</p>
-<div id="96d43ba3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.692964Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.692829Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.696032Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.695470Z&quot;}}" data-execution_count="11">
+<div id="11423a6d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.389730Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.389557Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.393052Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.392553Z&quot;}}" data-execution_count="11">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>group_data[<span class="st">"timelines"</span>][<span class="dv">0</span>][<span class="st">"children"</span>][<span class="dv">0</span>][<span class="st">"offset"</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="11">
 <pre><code>[8, 1]</code></pre>
 </div>
 </div>
 <p><code>graphical</code> may also carry <code>styles</code>, <code>rules</code>, <code>timestamps</code> and <code>matchstamps</code>, the TimeToShare styling. The library does not interpret them: <code>from_dict()</code> keeps them as the group’s <code>styling</code> and <code>to_dict()</code> writes them back. In the complete form they appear at their defaults.</p>
-<div id="16ca0466" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.697649Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.697512Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.701753Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.701177Z&quot;}}" data-execution_count="12">
+<div id="bd421a47" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.394691Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.394548Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.399057Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.398507Z&quot;}}" data-execution_count="12">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>group.to_dict(minimal<span class="op">=</span><span class="va">False</span>)[<span class="st">"graphical"</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="12">
-<pre><code>{'order': {'#group_1': ['#dgt_1', '#clt_2', '#cpt_1']},
+<pre><code>{'order': {'#group_2q8my9zelevxv': ['#dgt_1orwcwwfq03tb',
+   '#clt_2muyd6ylpzh8r',
+   '#cpt_3pjxm0c9p6iip']},
  'styles': {},
  'rules': [],
  'timestamps': [],
@@ -726,7 +741,7 @@ timetoshare: "0.2.0"</code></pre>
 <section id="read-a-group" class="level2">
 <h2 class="anchored" data-anchor-id="read-a-group">Read a group</h2>
 <p><code>TimelineGroup.from_dict()</code> rebuilds the timelines, resolves each member id among the roots and their descendants, and adds the members in their display order. The rebuilt group writes the same manifest and answers the same queries with the same coordinates, in the same number types.</p>
-<div id="d2761bef" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.703355Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.703220Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.712778Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.712110Z&quot;}}" data-execution_count="13">
+<div id="c5a26d4f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.400398Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.400261Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.413384Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.412676Z&quot;}}" data-execution_count="13">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>rebuilt <span class="op">=</span> TimelineGroup.from_dict(group_data)</span>
 <span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>(</span>
 <span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    rebuilt.timeline_ids,</span>
@@ -734,7 +749,7 @@ timetoshare: "0.2.0"</code></pre>
 <span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>    answers(rebuilt.get_timestamps_at(positions, second_half.<span class="bu">id</span>)) <span class="op">==</span> before,</span>
 <span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="13">
-<pre><code>(['dgt_1', 'clt_2', 'cpt_1'], True, True)</code></pre>
+<pre><code>(['dgt_1orwcwwfq03tb', 'clt_2muyd6ylpzh8r', 'cpt_3pjxm0c9p6iip'], True, True)</code></pre>
 </div>
 </div>
 </section>
@@ -746,8 +761,8 @@ timetoshare: "0.2.0"</code></pre>
 <li><strong>Facsimile</strong>: a page and an excerpt of a long recording, the excerpt being a child of that recording;</li>
 <li>ungrouped: an annotation layer, and the long recording itself. When a child joins a group, its root joins the bundle too, ungrouped unless you group it.</li>
 </ul>
-<p><code>as_group=</code> names a new group; its id is minted (<code>group_1</code>, <code>group_2</code>, …).</p>
-<div id="d743a021" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.714352Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.714212Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.724760Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.724083Z&quot;}}" data-execution_count="14">
+<p><code>as_group=</code> names a new group; its id is minted (<code>group_…</code>).</p>
+<div id="b3a70c75" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.414783Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.414622Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.429549Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.428904Z&quot;}}" data-execution_count="14">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>score <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span>Fraction(<span class="dv">12</span>), name<span class="op">=</span><span class="st">"Score"</span>)</span>
 <span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>performance <span class="op">=</span> ContinuousPhysicalTimeline(length<span class="op">=</span><span class="fl">12.5</span>, name<span class="op">=</span><span class="st">"Performance"</span>)</span>
 <span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>page <span class="op">=</span> DiscreteGraphicalTimeline(length<span class="op">=</span><span class="dv">1920</span>, name<span class="op">=</span><span class="st">"Page"</span>)</span>
@@ -765,11 +780,12 @@ timetoshare: "0.2.0"</code></pre>
 <span id="cb25-15"><a href="#cb25-15" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb25-16"><a href="#cb25-16" aria-hidden="true" tabindex="-1"></a>{group_id: bundle.get_group(group_id).timeline_ids <span class="cf">for</span> group_id <span class="kw">in</span> bundle.group_ids}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="14">
-<pre><code>{'group_1': ['cpt_1', 'clt_1'], 'group_2': ['dgt_1', 'dpt_2']}</code></pre>
+<pre><code>{'group_1to9tdyc2vduc': ['cpt_0mb1ovv8h6nu0', 'clt_0w16gtqdm1hof'],
+ 'group_2whxqvkk96nwi': ['dgt_1zrfm79dc2qu2', 'dpt_325i5pqhkjql7']}</code></pre>
 </div>
 </div>
 <p>Within a group, a MatchStamp converts linearly, as the group does. A position on the excerpt also reaches its root through the child’s offset.</p>
-<div id="3107bca2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.726355Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.726217Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.743412Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.742610Z&quot;}}" data-execution_count="15">
+<div id="eaeacca5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.430995Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.430860Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.448594Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.447981Z&quot;}}" data-execution_count="15">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>bundle_queries <span class="op">=</span> {</span>
 <span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>    score.<span class="bu">id</span>: [Fraction(<span class="dv">0</span>), Fraction(<span class="dv">3</span>), Fraction(<span class="dv">12</span>)],</span>
 <span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>    excerpt.<span class="bu">id</span>: [<span class="dv">0</span>, <span class="dv">22050</span>, <span class="dv">88200</span>],</span>
@@ -780,45 +796,52 @@ timetoshare: "0.2.0"</code></pre>
 <span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a>}</span>
 <span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a>bundle_before</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="15">
-<pre><code>{'clt_1': [{'clt_1': IdCoordinate(Fraction(0, 1), quarters, 'clt_1'),
-   'cpt_1': IdCoordinate(0.0, seconds, 'cpt_1')},
-  {'clt_1': IdCoordinate(Fraction(3, 1), quarters, 'clt_1'),
-   'cpt_1': IdCoordinate(3.125, seconds, 'cpt_1')},
-  {'clt_1': IdCoordinate(Fraction(12, 1), quarters, 'clt_1'),
-   'cpt_1': IdCoordinate(12.5, seconds, 'cpt_1')}],
- 'dpt_2': [{'dpt_2': IdCoordinate(0, samples, 'dpt_2'),
-   'dgt_1': IdCoordinate(0, pixels, 'dgt_1'),
-   'dpt_1': IdCoordinate(44100, samples, 'dpt_1')},
-  {'dpt_2': IdCoordinate(22050, samples, 'dpt_2'),
-   'dgt_1': IdCoordinate(480, pixels, 'dgt_1'),
-   'dpt_1': IdCoordinate(66150, samples, 'dpt_1')},
-  {'dpt_2': IdCoordinate(88200, samples, 'dpt_2'),
-   'dgt_1': IdCoordinate(1920, pixels, 'dgt_1'),
-   'dpt_1': IdCoordinate(132300, samples, 'dpt_1')}]}</code></pre>
+<pre><code>{'clt_0w16gtqdm1hof': [{'clt_0w16gtqdm1hof': IdCoordinate(Fraction(0, 1), quarters, 'clt_0w16gtqdm1hof'),
+   'cpt_0mb1ovv8h6nu0': IdCoordinate(0.0, seconds, 'cpt_0mb1ovv8h6nu0')},
+  {'clt_0w16gtqdm1hof': IdCoordinate(Fraction(3, 1), quarters, 'clt_0w16gtqdm1hof'),
+   'cpt_0mb1ovv8h6nu0': IdCoordinate(3.125, seconds, 'cpt_0mb1ovv8h6nu0')},
+  {'clt_0w16gtqdm1hof': IdCoordinate(Fraction(12, 1), quarters, 'clt_0w16gtqdm1hof'),
+   'cpt_0mb1ovv8h6nu0': IdCoordinate(12.5, seconds, 'cpt_0mb1ovv8h6nu0')}],
+ 'dpt_325i5pqhkjql7': [{'dpt_325i5pqhkjql7': IdCoordinate(0, samples, 'dpt_325i5pqhkjql7'),
+   'dgt_1zrfm79dc2qu2': IdCoordinate(0, pixels, 'dgt_1zrfm79dc2qu2'),
+   'dpt_3uw8nvr6a3vhp': IdCoordinate(44100, samples, 'dpt_3uw8nvr6a3vhp')},
+  {'dpt_325i5pqhkjql7': IdCoordinate(22050, samples, 'dpt_325i5pqhkjql7'),
+   'dgt_1zrfm79dc2qu2': IdCoordinate(480, pixels, 'dgt_1zrfm79dc2qu2'),
+   'dpt_3uw8nvr6a3vhp': IdCoordinate(66150, samples, 'dpt_3uw8nvr6a3vhp')},
+  {'dpt_325i5pqhkjql7': IdCoordinate(88200, samples, 'dpt_325i5pqhkjql7'),
+   'dgt_1zrfm79dc2qu2': IdCoordinate(1920, pixels, 'dgt_1zrfm79dc2qu2'),
+   'dpt_3uw8nvr6a3vhp': IdCoordinate(132300, samples, 'dpt_3uw8nvr6a3vhp')}]}</code></pre>
 </div>
 </div>
 <p>A bundle writes the same shape. Its <code>timelines</code> array holds every root timeline of the bundle, so each timeline is written once; its <code>groups</code>, sorted by id, point into that one array; <code>graphical.order</code> holds each group’s display order. The roots that no group names, here the annotation layer and the long recording, are the ungrouped timelines.</p>
 <p>This bundle has a <code>name</code>, so it writes a named bundle. It has no <code>id</code>: the bundle was given none, and the id it minted for itself is never written. <code>id</code> and <code>name</code> are independent; a manifest may carry either, both or neither.</p>
-<div id="959d09f1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.744904Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.744765Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.749628Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.748912Z&quot;}}" data-execution_count="16">
+<div id="35a72150" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.450056Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.449915Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.454707Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.454092Z&quot;}}" data-execution_count="16">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>bundle_data <span class="op">=</span> bundle.to_dict()</span>
 <span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>outline(bundle_data)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="16">
 <pre><code>{'timetoshare': '0.2.0',
  'name': 'Edition',
- 'timelines': ['#clt_1', '#clt_2', '#cpt_1', '#dgt_1', '#dpt_1'],
- 'groups': [{'id': '#group_1',
+ 'timelines': ['#clt_0w16gtqdm1hof',
+  '#clt_1ie1yiu0kg5bg',
+  '#cpt_0mb1ovv8h6nu0',
+  '#dgt_1zrfm79dc2qu2',
+  '#dpt_3uw8nvr6a3vhp'],
+ 'groups': [{'id': '#group_1to9tdyc2vduc',
    'name': 'Performance',
-   'members': ['#clt_1', '#cpt_1']},
-  {'id': '#group_2', 'name': 'Facsimile', 'members': ['#dgt_1', '#dpt_2']}],
- 'graphical': {'order': {'#group_1': ['#cpt_1', '#clt_1'],
-   '#group_2': ['#dgt_1', '#dpt_2']}}}</code></pre>
+   'members': ['#clt_0w16gtqdm1hof', '#cpt_0mb1ovv8h6nu0']},
+  {'id': '#group_2whxqvkk96nwi',
+   'name': 'Facsimile',
+   'members': ['#dgt_1zrfm79dc2qu2', '#dpt_325i5pqhkjql7']}],
+ 'graphical': {'order': {'#group_1to9tdyc2vduc': ['#cpt_0mb1ovv8h6nu0',
+    '#clt_0w16gtqdm1hof'],
+   '#group_2whxqvkk96nwi': ['#dgt_1zrfm79dc2qu2', '#dpt_325i5pqhkjql7']}}}</code></pre>
 </div>
 </div>
 </section>
 <section id="read-a-bundle" class="level2">
 <h2 class="anchored" data-anchor-id="read-a-bundle">Read a bundle</h2>
 <p><code>AlignmentBundle.from_dict()</code> reads any manifest. It rebuilds the timelines and the groups, each group in its display order, and lets every root that no group names join ungrouped. The rebuilt bundle writes the same manifest and answers the same queries.</p>
-<div id="6cb41463" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.751212Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.751055Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.773950Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.773402Z&quot;}}" data-execution_count="17">
+<div id="0ec41b55" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.456522Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.456349Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.484362Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.483682Z&quot;}}" data-execution_count="17">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>rebuilt_bundle <span class="op">=</span> AlignmentBundle.from_dict(bundle_data)</span>
 <span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>(</span>
 <span id="cb31-3"><a href="#cb31-3" aria-hidden="true" tabindex="-1"></a>    rebuilt_bundle.to_dict() <span class="op">==</span> bundle_data,</span>
@@ -836,36 +859,36 @@ timetoshare: "0.2.0"</code></pre>
 <section id="select-one-timeline-or-group-from-a-larger-manifest" class="level2">
 <h2 class="anchored" data-anchor-id="select-one-timeline-or-group-from-a-larger-manifest">Select one timeline or group from a larger manifest</h2>
 <p>From a manifest that holds several timelines or any group, <code>Timeline.from_dict()</code> reads one timeline, which <code>timeline_id=</code> or <code>name=</code> (or both) select. The selected timeline may be a root or any descendant, here the excerpt, a child of the long recording.</p>
-<div id="f48059a1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.775952Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.775786Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.783875Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.783180Z&quot;}}" data-execution_count="18">
+<div id="889fd7bd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.485880Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.485738Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.498493Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.497852Z&quot;}}" data-execution_count="18">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb33"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>excerpt_read <span class="op">=</span> Timeline.from_dict(bundle_data, name<span class="op">=</span><span class="st">"Excerpt"</span>)</span>
 <span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a>excerpt_read</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="18">
-<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">DiscretePhysicalTimeline[dpt_2]
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">DiscretePhysicalTimeline[dpt_325i5pqhkjql7]
                       0 ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 88200 samples</pre>
 </div>
 </div>
 <p><code>TimelineGroup.from_dict()</code> selects one group the same way, by <code>group_id=</code> or <code>name=</code>, and reads it with the timelines its members need.</p>
-<div id="c459555a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.785446Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.785290Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.793437Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.792714Z&quot;}}" data-execution_count="19">
+<div id="2fc3cbe1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.499940Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.499791Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.512391Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.511781Z&quot;}}" data-execution_count="19">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>facsimile <span class="op">=</span> TimelineGroup.from_dict(bundle_data, name<span class="op">=</span><span class="st">"Facsimile"</span>)</span>
 <span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>facsimile.<span class="bu">id</span>, facsimile.timeline_ids</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="19">
-<pre><code>('group_2', ['dgt_1', 'dpt_2'])</code></pre>
+<pre><code>('group_2whxqvkk96nwi', ['dgt_1zrfm79dc2qu2', 'dpt_325i5pqhkjql7'])</code></pre>
 </div>
 </div>
 <p>A selection must match exactly one timeline. Without a selection the read is refused; a selection that matches none lists the manifest’s timelines to choose from.</p>
-<div id="68445778" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.795154Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.795006Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.807763Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.807011Z&quot;}}" data-execution_count="20">
+<div id="463eaa74" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.513919Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.513775Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.533413Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.532814Z&quot;}}" data-execution_count="20">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> selection <span class="kw">in</span> ({}, {<span class="st">"name"</span>: <span class="st">"Coda"</span>}):</span>
 <span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">try</span>:</span>
 <span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>        Timeline.from_dict(bundle_data, <span class="op">**</span>selection)</span>
 <span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> error:</span>
 <span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"ValueError: </span><span class="sc">{</span>error<span class="sc">}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>ValueError: the manifest holds several timelines or groups: give timeline_id or name to select one; its timelines: 'clt_1' (name 'Score'), 'clt_2' (name 'Annotations'), 'cpt_1' (name 'Performance'), 'dgt_1' (name 'Page'), 'dpt_1' (name 'Recording'), 'dpt_2' (name 'Excerpt')
-ValueError: the manifest holds no timeline with name 'Coda'; its timelines: 'clt_1' (name 'Score'), 'clt_2' (name 'Annotations'), 'cpt_1' (name 'Performance'), 'dgt_1' (name 'Page'), 'dpt_1' (name 'Recording'), 'dpt_2' (name 'Excerpt')</code></pre>
+<pre><code>ValueError: the manifest holds several timelines or groups: give timeline_id or name to select one; its timelines: 'clt_0w16gtqdm1hof' (name 'Score'), 'clt_1ie1yiu0kg5bg' (name 'Annotations'), 'cpt_0mb1ovv8h6nu0' (name 'Performance'), 'dgt_1zrfm79dc2qu2' (name 'Page'), 'dpt_3uw8nvr6a3vhp' (name 'Recording'), 'dpt_325i5pqhkjql7' (name 'Excerpt')
+ValueError: the manifest holds no timeline with name 'Coda'; its timelines: 'clt_0w16gtqdm1hof' (name 'Score'), 'clt_1ie1yiu0kg5bg' (name 'Annotations'), 'cpt_0mb1ovv8h6nu0' (name 'Performance'), 'dgt_1zrfm79dc2qu2' (name 'Page'), 'dpt_3uw8nvr6a3vhp' (name 'Recording'), 'dpt_325i5pqhkjql7' (name 'Excerpt')</code></pre>
 </div>
 </div>
 <p>The other way round, <code>TimelineGroup.from_dict()</code> makes a group of the one timeline of a manifest when you give the group an id or a name.</p>
-<div id="5cd2d541" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.809477Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.809324Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.813657Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.812794Z&quot;}}" data-execution_count="21">
+<div id="9fe2ec26" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.534987Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.534848Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.539581Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.539016Z&quot;}}" data-execution_count="21">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>TimelineGroup.from_dict(smallest, name<span class="op">=</span><span class="st">"Piece alone"</span>).timeline_ids</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="21">
 <pre><code>['piece']</code></pre>
@@ -875,7 +898,7 @@ ValueError: the manifest holds no timeline with name 'Coda'; its timelines: 'clt
 <section id="keep-keys-the-library-does-not-know" class="level2">
 <h2 class="anchored" data-anchor-id="keep-keys-the-library-does-not-know">Keep keys the library does not know</h2>
 <p>A manifest may carry keys the format does not define, written by another application for its own use. The library keeps every such key on the object read from the JSON object it was found in, and writes it back in place. Here an editor stored its zoom on the manifest, a colour on the timeline and a note on a region. The manifest states the format’s <code>@context</code>, as every manifest the library writes does, so that it is written back unchanged.</p>
-<div id="442de0eb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.815278Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.815125Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.821776Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.821108Z&quot;}}" data-execution_count="22">
+<div id="91acfd24" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.541557Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.541381Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.557235Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.556647Z&quot;}}" data-execution_count="22">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>annotated <span class="op">=</span> {</span>
 <span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"@context"</span>: <span class="bu">dict</span>(FORMAT_CONTEXT),</span>
 <span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"timetoshare"</span>: <span class="st">"0.2.0"</span>,</span>
@@ -903,7 +926,7 @@ ValueError: the manifest holds no timeline with name 'Coda'; its timelines: 'clt
 <p><code>to_file()</code> writes an object’s manifest to a file and returns its path; <code>from_file()</code> reads a file as <code>from_dict()</code> reads a manifest, taking the same selection arguments.</p>
 <p>The format’s validator checks every manifest the library reads and every manifest it writes. A manifest it refuses raises a <code>ValueError</code>, and <code>to_file()</code> then writes no file.</p>
 <p>A file is written in <strong>canonical YAML</strong> unless you ask for another serialization: the keys of every object sorted, the arrays in a canonical order, every member and every item on lines of its own, and a list of plain values, such as a Fraction pair, on one line. Equal manifests so give equal text. Floats keep their float spelling: the recording’s <code>10.0</code> seconds stay <code>10.0</code>. The file opens with the whole <code>@context</code>.</p>
-<div id="f8f3903f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.823325Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.823185Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.827826Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.827189Z&quot;}}" data-execution_count="23">
+<div id="08528b58" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.558999Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.558846Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.563454Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.562946Z&quot;}}" data-execution_count="23">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb42"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>group_path <span class="op">=</span> group.to_file(FILES <span class="op">/</span> <span class="st">"second_half.yaml"</span>)</span>
 <span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(group_path.read_text(encoding<span class="op">=</span><span class="st">"utf-8"</span>), end<span class="op">=</span><span class="st">""</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
@@ -964,33 +987,33 @@ ValueError: the manifest holds no timeline with name 'Coda'; its timelines: 'clt
   value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#object"
 graphical:
   order:
-    "#group_1": ["#dgt_1", "#clt_2", "#cpt_1"]
+    "#group_2q8my9zelevxv": ["#dgt_1orwcwwfq03tb", "#clt_2muyd6ylpzh8r", "#cpt_3pjxm0c9p6iip"]
 groups:
   -
-    id: "#group_1"
-    members: ["#clt_2", "#cpt_1", "#dgt_1"]
+    id: "#group_2q8my9zelevxv"
+    members: ["#clt_2muyd6ylpzh8r", "#cpt_3pjxm0c9p6iip", "#dgt_1orwcwwfq03tb"]
     name: "Second half"
 timelines:
   -
     children:
       -
-        id: "#clt_2"
+        id: "#clt_2muyd6ylpzh8r"
         length: [8, 1]
         locked: true
         name: "Second half"
         offset: [8, 1]
         unit: quarters
-    id: "#clt_1"
+    id: "#clt_2vmtd2dv5nsp8"
     length: [16, 1]
     name: Score
     unit: quarters
   -
-    id: "#cpt_1"
+    id: "#cpt_3pjxm0c9p6iip"
     length: 10.0
     name: Recording
     unit: seconds
   -
-    id: "#dgt_1"
+    id: "#dgt_1orwcwwfq03tb"
     length: 1920
     name: Page
     unit: pixels
@@ -998,7 +1021,7 @@ timetoshare: "0.2.0"</code></pre>
 </div>
 </div>
 <p>The group read from the file writes the same manifest and answers the same queries.</p>
-<div id="fa2f3dc8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.829436Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.829277Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.849349Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.848617Z&quot;}}" data-execution_count="24">
+<div id="fd9cb5be" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.564794Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.564660Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.588199Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.587687Z&quot;}}" data-execution_count="24">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb44"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a>group_read <span class="op">=</span> TimelineGroup.from_file(group_path)</span>
 <span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>(</span>
 <span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a>    group_read.to_dict() <span class="op">==</span> group_data,</span>
@@ -1010,7 +1033,7 @@ timetoshare: "0.2.0"</code></pre>
 </div>
 <p>A manifest file has a <strong>form</strong> (minimal or complete), may hold <strong>styling</strong> (a <code>graphical</code> object) and has a <strong>serialization</strong>: canonical YAML (<code>"yaml"</code>), pretty JSON (<code>"json"</code>) or RFC 8785 JSON (<code>"jcs"</code>), whose bytes suit a digest or a signature. <code>from_file()</code> reads all three and notes what it found: the form is minimal when no key holds its default, and the serialization is the one the text is written in. <code>to_file()</code> writes an object read from a file back in the same form, styling and serialization. A file in canonical YAML, pretty JSON or RFC 8785 JSON that is read and written back unchanged so keeps its bytes; any other JSON or YAML text is written back in the canonical form of the serialization it was read as. <code>minimal=</code>, <code>styling=</code> and <code>serialization=</code> override each; an object built in code is written in the minimal form, its styling included, in canonical YAML.</p>
 <p>Here the bundle is saved as pretty JSON in the complete form, and a copy written from the file read back is the same file, byte for byte.</p>
-<div id="d019fd61" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.850920Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.850780Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.870400Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.869842Z&quot;}}" data-execution_count="25">
+<div id="efecc8f6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.589961Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.589789Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.615211Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.614671Z&quot;}}" data-execution_count="25">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a>bundle_path <span class="op">=</span> bundle.to_file(</span>
 <span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a>    FILES <span class="op">/</span> <span class="st">"edition.json"</span>, minimal<span class="op">=</span><span class="va">False</span>, serialization<span class="op">=</span><span class="st">"json"</span></span>
 <span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a>)</span>
@@ -1040,7 +1063,7 @@ timetoshare: "0.2.0"</code></pre>
 <h2 class="anchored" data-anchor-id="edit-a-file-and-review-the-change">Edit a file and review the change</h2>
 <p>Manifests are meant to be kept in a repository and changed by reviewed pull requests. The workflow is: read the file, enrich what it holds, write it back, and review the diff. Canonical YAML keeps every change to its own lines, so the diff shows what was added and nothing else.</p>
 <p>Here a second performance joins the performance’s group in the bundle’s YAML file.</p>
-<div id="c97cbe5a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.872227Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.872077Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.899848Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.899333Z&quot;}}" data-execution_count="26">
+<div id="9e369fe4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.616787Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.616652Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.651788Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.651163Z&quot;}}" data-execution_count="26">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>edition_path <span class="op">=</span> bundle.to_file(FILES <span class="op">/</span> <span class="st">"edition.yaml"</span>)</span>
 <span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>before_text <span class="op">=</span> edition_path.read_text(encoding<span class="op">=</span><span class="st">"utf-8"</span>)</span>
 <span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -1063,29 +1086,29 @@ timetoshare: "0.2.0"</code></pre>
    value: "http://www.w3.org/1999/02/22-rdf-syntax-ns#object"
  graphical:
    order:
--    "#group_1": ["#cpt_1", "#clt_1"]
-+    "#group_1": ["#cpt_1", "#clt_1", "#cpt_2"]
-     "#group_2": ["#dgt_1", "#dpt_2"]
+-    "#group_1to9tdyc2vduc": ["#cpt_0mb1ovv8h6nu0", "#clt_0w16gtqdm1hof"]
++    "#group_1to9tdyc2vduc": ["#cpt_0mb1ovv8h6nu0", "#clt_0w16gtqdm1hof", "#cpt_0bm2e5r8e8utu"]
+     "#group_2whxqvkk96nwi": ["#dgt_1zrfm79dc2qu2", "#dpt_325i5pqhkjql7"]
  groups:
    -
-     id: "#group_1"
--    members: ["#clt_1", "#cpt_1"]
-+    members: ["#clt_1", "#cpt_1", "#cpt_2"]
+     id: "#group_1to9tdyc2vduc"
+-    members: ["#clt_0w16gtqdm1hof", "#cpt_0mb1ovv8h6nu0"]
++    members: ["#clt_0w16gtqdm1hof", "#cpt_0bm2e5r8e8utu", "#cpt_0mb1ovv8h6nu0"]
      name: Performance
    -
-     id: "#group_2"
-@@ -84,6 +84,11 @@
-     name: Performance
-     unit: seconds
-   -
-+    id: "#cpt_2"
+     id: "#group_2whxqvkk96nwi"
+@@ -78,6 +78,11 @@
+     length: [12, 1]
+     name: Annotations
+     unit: quarters
++  -
++    id: "#cpt_0bm2e5r8e8utu"
 +    length: 13.25
 +    name: "Second performance"
 +    unit: seconds
-+  -
-     id: "#dgt_1"
-     length: 1920
-     name: Page</code></pre>
+   -
+     id: "#cpt_0mb1ovv8h6nu0"
+     length: 12.5</code></pre>
 </div>
 </div>
 <p>The diff holds the lines of the new timeline, and the one line each of the group’s <code>members</code> and of its display order in <code>graphical.order</code>, which now name it. Every other line of the file is unchanged.</p>
@@ -1093,7 +1116,7 @@ timetoshare: "0.2.0"</code></pre>
 <section id="a-timeline-of-unknown-length" class="level2">
 <h2 class="anchored" data-anchor-id="a-timeline-of-unknown-length">A timeline of unknown length</h2>
 <p>Some timelines have no known end: a live stream still running, a recording whose duration has not been measured. <code>length=None</code> states that the length is not known. It is a fact about the timeline, never inferred from its content: adding content leaves it unknown.</p>
-<div id="93be7864" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.901533Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.901393Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.907398Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.906985Z&quot;}}" data-execution_count="27">
+<div id="15c269e9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.653616Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.653401Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.662865Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.662238Z&quot;}}" data-execution_count="27">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb51"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a>stream <span class="op">=</span> ContinuousPhysicalTimeline(length<span class="op">=</span><span class="va">None</span>, name<span class="op">=</span><span class="st">"Live stream"</span>)</span>
 <span id="cb51-2"><a href="#cb51-2" aria-hidden="true" tabindex="-1"></a>stream.create_region(<span class="fl">30.0</span>, <span class="fl">45.0</span>, name<span class="op">=</span><span class="st">"Interview"</span>)</span>
 <span id="cb51-3"><a href="#cb51-3" aria-hidden="true" tabindex="-1"></a>stream.add_child(ContinuousPhysicalTimeline(length<span class="op">=</span><span class="fl">20.0</span>, name<span class="op">=</span><span class="st">"Clip"</span>), offset<span class="op">=</span><span class="fl">100.0</span>)</span>
@@ -1103,23 +1126,23 @@ timetoshare: "0.2.0"</code></pre>
 </div>
 </div>
 <p>Its positions are not bounded above, so a query far beyond all content still resolves. The <code>reach</code> is the farthest coordinate the content reaches, here the clip’s end at 120 seconds; the diagram is drawn to it and marks the unknown end <code>?</code>.</p>
-<div id="907cda0f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.909201Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.909054Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.912194Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.911755Z&quot;}}" data-execution_count="28">
+<div id="84db2402" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.664280Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.664145Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.667352Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.666908Z&quot;}}" data-execution_count="28">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb53"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a>stream.get_timestamp_at(<span class="fl">1000.0</span>), stream.reach</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="28">
-<pre><code>(TimeStamp(axis=1000 seconds @cpt_1, source='cpt_1'),
+<pre><code>(TimeStamp(axis=1000 seconds @cpt_0qmf1es92eejz, source='cpt_0qmf1es92eejz'),
  Coordinate(120.0, seconds))</code></pre>
 </div>
 </div>
-<div id="76325289" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.913839Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.913707Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.917938Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.917255Z&quot;}}" data-execution_count="29">
+<div id="68872ca0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.668860Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.668728Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.673583Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.672782Z&quot;}}" data-execution_count="29">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a>stream</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="29">
-<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousPhysicalTimeline[cpt_1] (1 children, 1 regions)
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousPhysicalTimeline[cpt_0qmf1es92eejz] (1 children, 1 regions)
                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ? seconds
   └─ Clip           100                               ~~~~~~ 120</pre>
 </div>
 </div>
 <p>A manifest writes the unknown length as <code>null</code>, in both forms, and reading it gives back a timeline whose length is not known.</p>
-<div id="af06d3bd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.919404Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.919272Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.926177Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.925634Z&quot;}}" data-execution_count="30">
+<div id="056d1802" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.675295Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.675126Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.684218Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.683648Z&quot;}}" data-execution_count="30">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb56"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a>stream_data <span class="op">=</span> stream.to_dict()</span>
 <span id="cb56-2"><a href="#cb56-2" aria-hidden="true" tabindex="-1"></a>show(stream_data)</span>
 <span id="cb56-3"><a href="#cb56-3" aria-hidden="true" tabindex="-1"></a>Timeline.from_dict(stream_data).is_length_known</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -1129,19 +1152,19 @@ timelines:
   -
     children:
       -
-        id: "#cpt_2"
+        id: "#cpt_2dgcya08y5my0"
         length: 20.0
         locked: true
         name: Clip
         offset: 100.0
         unit: seconds
-    id: "#cpt_1"
+    id: "#cpt_0qmf1es92eejz"
     length: null
     name: "Live stream"
     regions:
       -
         end: 45.0
-        id: "#region_1"
+        id: "#region_3b0pyrqpa8lof"
         name: Interview
         start: 30.0
     unit: seconds
@@ -1152,7 +1175,7 @@ timetoshare: "0.2.0"</code></pre>
 </div>
 </div>
 <p>Operations that need the end raise <code>UnknownLengthError</code>, a <code>ValueError</code> that names the operation and the timeline, before they change anything. A group converts positions in proportion to its members’ lengths, so a conversion to or from a member of unknown length is one of them; appending a child at a parent’s end is another.</p>
-<div id="b037cbec" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.927759Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.927621Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.932289Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.931630Z&quot;}}" data-execution_count="31">
+<div id="0f701b39" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.685563Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.685421Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.691850Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.691288Z&quot;}}" data-execution_count="31">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb59"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb59-1"><a href="#cb59-1" aria-hidden="true" tabindex="-1"></a>programme <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span>Fraction(<span class="dv">16</span>), name<span class="op">=</span><span class="st">"Programme"</span>)</span>
 <span id="cb59-2"><a href="#cb59-2" aria-hidden="true" tabindex="-1"></a>broadcast <span class="op">=</span> TimelineGroup(name<span class="op">=</span><span class="st">"Broadcast"</span>, timelines<span class="op">=</span>[programme, stream])</span>
 <span id="cb59-3"><a href="#cb59-3" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> operation <span class="kw">in</span> (</span>
@@ -1164,25 +1187,25 @@ timetoshare: "0.2.0"</code></pre>
 <span id="cb59-9"><a href="#cb59-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">except</span> UnknownLengthError <span class="im">as</span> error:</span>
 <span id="cb59-10"><a href="#cb59-10" aria-hidden="true" tabindex="-1"></a>        <span class="bu">print</span>(<span class="ss">f"UnknownLengthError: </span><span class="sc">{</span>error<span class="sc">}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
-<pre><code>UnknownLengthError: Cannot convert a position from 'clt_1' to 'cpt_1': the length of timeline 'cpt_1' is unknown
-UnknownLengthError: Cannot append a child: the length of timeline 'cpt_1' is unknown</code></pre>
+<pre><code>UnknownLengthError: Cannot convert a position from 'clt_05m23yu04a4xh' to 'cpt_0qmf1es92eejz': the length of timeline 'cpt_0qmf1es92eejz' is unknown
+UnknownLengthError: Cannot append a child: the length of timeline 'cpt_0qmf1es92eejz' is unknown</code></pre>
 </div>
 </div>
 <p>Once the length is known, setting it is an ordinary edit, and every operation is available again.</p>
-<div id="26971f9b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:50:58.933871Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:50:58.933739Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:50:58.938270Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:50:58.937646Z&quot;}}" data-execution_count="32">
+<div id="d6808228" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:36:09.693296Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:36:09.693158Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:36:09.697092Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:36:09.696637Z&quot;}}" data-execution_count="32">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb61"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb61-1"><a href="#cb61-1" aria-hidden="true" tabindex="-1"></a>stream.length <span class="op">=</span> <span class="fl">3600.0</span></span>
 <span id="cb61-2"><a href="#cb61-2" aria-hidden="true" tabindex="-1"></a>stream.is_length_known, answers([broadcast.get_timestamp_at(Fraction(<span class="dv">4</span>), programme.<span class="bu">id</span>)])</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="32">
 <pre><code>(True,
- [{'clt_1': IdCoordinate(Fraction(4, 1), quarters, 'clt_1'),
-   'cpt_1': IdCoordinate(900.0, seconds, 'cpt_1')}])</code></pre>
+ [{'clt_05m23yu04a4xh': IdCoordinate(Fraction(4, 1), quarters, 'clt_05m23yu04a4xh'),
+   'cpt_0qmf1es92eejz': IdCoordinate(900.0, seconds, 'cpt_0qmf1es92eejz')}])</code></pre>
 </div>
 </div>
 </section>
 <section id="next" class="level2">
 <h2 class="anchored" data-anchor-id="next">Next</h2>
 <ul>
-<li>Events: <code>to_dict(events=True)</code> writes every timeline’s event rows; see <a href="../howto/how01_manual_timeline_construction.html">How to Construct Timelines Manually</a>.</li>
+<li>Events: <code>to_dict(events=True)</code> writes every timeline’s event rows into the dict; see <a href="../howto/how01_manual_timeline_construction.html">How to Construct Timelines Manually</a>. A bundle’s file names no event: <code>to_file(events=True)</code> writes its events into the registry beside the manifest, their content into one pre-parsed table per event type; see <a href="../howto/how03_registry_and_packages.html">How to Write the Registry and Share Tables in a Package</a>.</li>
 <li>Groups in depth: the <a href="../tutorials/tut05_timeline_groups.html">Timeline Groups</a> tutorial.</li>
 <li>Alignments between groups: the <a href="../tutorials/tut06_alignment_bundles.html">Alignment Bundles and MatchClaims</a> tutorial.</li>
 </ul>

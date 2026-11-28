@@ -78,7 +78,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <link href="../site_libs/quarto-contrib/glossary/glossary.css" rel="stylesheet">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
@@ -359,7 +359,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="setup" class="level2">
 <h2 class="anchored" data-anchor-id="setup">Setup</h2>
-<div id="d09fcf06" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:42.170351Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:42.170036Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:46.671348Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:46.670555Z&quot;}}" data-execution_count="1">
+<div id="357f8aaf" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:24.857544Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:24.856677Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:27.204199Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:27.203524Z&quot;}}" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pyarrow <span class="im">as</span> pa</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -402,7 +402,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="faithfulness" class="level2">
 <h2 class="anchored" data-anchor-id="faithfulness">Faithfulness</h2>
 <p>A typed view records what a source represented, not what another source you might infer. Begin with the two source facts that the rest of the notebook will compare.</p>
-<div id="4798a862" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:46.674007Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:46.673549Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:46.682195Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:46.681239Z&quot;}}" data-execution_count="2">
+<div id="b82bdcaf" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:27.206267Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:27.205857Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:27.211653Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:27.211075Z&quot;}}" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>source_facts <span class="op">=</span> {</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"score notation"</span>: <span class="st">"C♯4"</span>,</span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"MIDI performance"</span>: <span class="dv">61</span>,</span>
@@ -417,7 +417,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="choose-four-source-files" class="level2">
 <h2 class="anchored" data-anchor-id="choose-four-source-files">Choose four source files</h2>
 <p>To compare formats fairly, use the same Chopin work in each source. The mapping pairs every path with the public loader that understands it.</p>
-<div id="4b44935e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:46.684266Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:46.684032Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:46.690198Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:46.689293Z&quot;}}" data-execution_count="3">
+<div id="b2dca0d5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:27.213851Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:27.213692Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:27.217782Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:27.217214Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>chopin_sources <span class="op">=</span> {</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"ms3 TSV"</span>: (Ms3Loader, vienna_data <span class="op">/</span> <span class="st">"ms3"</span> <span class="op">/</span> <span class="st">"chopin_op10_no3.notes.tsv"</span>),</span>
 <span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"music21"</span>: (Music21Loader, vienna_data <span class="op">/</span> <span class="st">"Chopin_op10_no3.musicxml"</span>),</span>
@@ -444,7 +444,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="create-the-loaders" class="level2">
 <h2 class="anchored" data-anchor-id="create-the-loaders">Create the loaders</h2>
 <p>Each loader uses the same public <code>from_file</code> construction route. Their short representations report how many source files and events were loaded.</p>
-<div id="dfa5b4f7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:46.692368Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:46.692119Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:50.505328Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:50.504089Z&quot;}}" data-execution_count="4">
+<div id="dffea5de" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:27.219218Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:27.219030Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:28.911603Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:28.911167Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>chopin_loaders <span class="op">=</span> {</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    name: loader_class.from_file(path)</span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> name, (loader_class, path) <span class="kw">in</span> chopin_sources.items()</span>
@@ -462,7 +462,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="retrieve-the-event-tables" class="level2">
 <h2 class="anchored" data-anchor-id="retrieve-the-event-tables">Retrieve the event tables</h2>
 <p>The data-model tutorial introduced the loader-level <code>get_events</code> route. Here it gives us the <button class="glossary" title="Anything associated with a timeline via Instants. An InstantEvent has zero duration; a TimeIntervalEvent has duration defined by start and end coordinates.">Event</button> data from which every pitch view will be requested.</p>
-<div id="4be28be7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:50.508686Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:50.508424Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:50.514436Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:50.513435Z&quot;}}" data-execution_count="5">
+<div id="cbfb217a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:28.913572Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:28.913282Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:28.917027Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:28.916413Z&quot;}}" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>chopin_events <span class="op">=</span> {name: loader.get_events() <span class="cf">for</span> name, loader <span class="kw">in</span> chopin_loaders.items()}</span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>chopin_events</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="5">
@@ -477,7 +477,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="request-a-common-pitch-field" class="level2">
 <h2 class="anchored" data-anchor-id="request-a-common-pitch-field">Request a common pitch field</h2>
 <p><code>EnharmonicPitch</code> is the most informative pitch type shared by all four sources. Asking by scalar type returns the matching typed field.</p>
-<div id="b2bf1b51" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:50.516888Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:50.516557Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:50.526268Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:50.525103Z&quot;}}" data-execution_count="6">
+<div id="1adf4efe" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:28.918603Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:28.918462Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:28.922993Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:28.922161Z&quot;}}" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>enharmonic_fields <span class="op">=</span> {</span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    name: events.get_field(EnharmonicPitch) <span class="cf">for</span> name, events <span class="kw">in</span> chopin_events.items()</span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>}</span>
@@ -494,7 +494,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="define-one-selection-rule" class="level2">
 <h2 class="anchored" data-anchor-id="define-one-selection-rule">Define one selection rule</h2>
 <p>A small helper makes the comparison reproducible: every field is searched for the first non-null value whose public <code>midi_number</code> attribute is 61.</p>
-<div id="f8bfff36" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:50.531289Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:50.531016Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:50.536313Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:50.535221Z&quot;}}" data-execution_count="7">
+<div id="7825ebe4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:28.925279Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:28.925064Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:28.927885Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:28.927402Z&quot;}}" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> index_of_midi_pitch(pitch_field, midi_pitch):</span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Return the index of the first non-null value with this MIDI pitch."""</span></span>
 <span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> position, pitch <span class="kw">in</span> <span class="bu">enumerate</span>(pitch_field):</span>
@@ -507,7 +507,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="locate-midi-pitch-61" class="level2">
 <h2 class="anchored" data-anchor-id="locate-midi-pitch-61">Locate MIDI pitch 61</h2>
 <p>The formats need not organise rows identically. Keeping their positions by source lets us retrieve the corresponding typed value from each field.</p>
-<div id="6fad8f7c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:50.540758Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:50.540442Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:50.561292Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:50.560183Z&quot;}}" data-execution_count="8">
+<div id="a6400e8a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:28.929651Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:28.929503Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:28.936359Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:28.935645Z&quot;}}" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>c_sharp_indices <span class="op">=</span> {</span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    name: index_of_midi_pitch(field, source_facts[<span class="st">"MIDI performance"</span>])</span>
 <span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> name, field <span class="kw">in</span> enharmonic_fields.items()</span>
@@ -522,7 +522,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="compare-the-common-view" class="level2">
 <h2 class="anchored" data-anchor-id="compare-the-common-view">Compare the common view</h2>
 <p>Indexing each typed field at its saved position gives the four scalar values that the formats can be compared on without inventing a spelling.</p>
-<div id="52f0da93" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:50.564006Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:50.563727Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:50.570204Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:50.569154Z&quot;}}" data-execution_count="9">
+<div id="c6787904" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:28.937738Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:28.937602Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:28.941936Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:28.941227Z&quot;}}" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>c_sharp_by_format <span class="op">=</span> {</span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    name: enharmonic_fields[name][position]</span>
 <span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> name, position <span class="kw">in</span> c_sharp_indices.items()</span>
@@ -540,7 +540,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="where-they-diverge" class="level2">
 <h2 class="anchored" data-anchor-id="where-they-diverge">Where they diverge</h2>
 <p>The symbolic sources also represented spelling, so they afford <code>SpecificPitch</code>. The MIDI performance did not; request the same field deliberately and retain the resulting refusal as the cell value.</p>
-<div id="d4384b3b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:50.574025Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:50.573744Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:50.582610Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:50.581537Z&quot;}}" data-execution_count="10">
+<div id="66022d49" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:28.943660Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:28.943513Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:28.948693Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:28.948105Z&quot;}}" data-execution_count="10">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>symbolic_sources <span class="op">=</span> (<span class="st">"ms3 TSV"</span>, <span class="st">"music21"</span>, <span class="st">"partitura"</span>)</span>
 <span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>specific_fields <span class="op">=</span> {</span>
 <span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    name: chopin_events[name].get_field(SpecificPitch) <span class="cf">for</span> name <span class="kw">in</span> symbolic_sources</span>
@@ -552,7 +552,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>    midi_specific_error <span class="op">=</span> exc</span>
 <span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>midi_specific_error</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="10">
-<pre><code>KeyError("No field matching 'SpecificPitchField' found in table. Available columns: ['id', 'name', 'temporal_type', 'event_type', 'start', 'end', 'duration', 'pitch', 'velocity', 'channel', 'track', 'control', 'value', 'program']")</code></pre>
+<pre><code>KeyError("No field matching 'SpecificPitchField' found in table. Available columns: ['id', 'name', 'temporal_type', 'event_type', 'start', 'end', 'duration', 'pitch', 'velocity', 'channel', 'track', 'control', 'value', 'program', 'locator', 'extraction_id']")</code></pre>
 </div>
 </div>
 <p>The three assignments in <code>specific_fields</code> succeed. The displayed <code>KeyError</code> says that the MIDI table has no <code>SpecificPitchField</code>: refusing the request is the feature, because returning C♯4 or D♭4 would invent information.</p>
@@ -560,7 +560,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="what-midi-does-afford" class="level2">
 <h2 class="anchored" data-anchor-id="what-midi-does-afford">What MIDI does afford</h2>
 <p>MIDI does afford a numeric pitch view. The scalar exposes both its stored <code>midi_number</code> and its zero-based <code>pitch_class</code>.</p>
-<div id="e732e42f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:50.585135Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:50.584749Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:50.592062Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:50.590989Z&quot;}}" data-execution_count="11">
+<div id="8ba18928" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:28.950253Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:28.950045Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:28.954302Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:28.953644Z&quot;}}" data-execution_count="11">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>midi_pitch_field <span class="op">=</span> chopin_events[<span class="st">"performance MIDI"</span>].get_field(MidiPitch)</span>
 <span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>numeric_c_sharp <span class="op">=</span> midi_pitch_field[c_sharp_indices[<span class="st">"performance MIDI"</span>]]</span>
 <span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>numeric_pitch_view <span class="op">=</span> {</span>
@@ -578,7 +578,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="recognise-pitch-fields" class="level2">
 <h2 class="anchored" data-anchor-id="recognise-pitch-fields">Recognise pitch fields</h2>
 <p>Scalar values live in typed columns. Checking the two field classes makes the scalar-versus-column distinction explicit.</p>
-<div id="54a25200" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:50.594814Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:50.594543Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:50.602697Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:50.601663Z&quot;}}" data-execution_count="12">
+<div id="9a88e210" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:28.956344Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:28.956082Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:28.960922Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:28.960061Z&quot;}}" data-execution_count="12">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>pitch_field_checks <span class="op">=</span> {</span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"enharmonic field"</span>: <span class="bu">isinstance</span>(</span>
 <span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>        enharmonic_fields[<span class="st">"performance MIDI"</span>], EnharmonicPitchField</span>
@@ -595,7 +595,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="the-pitch-ladder" class="level2">
 <h2 class="anchored" data-anchor-id="the-pitch-ladder">The pitch ladder</h2>
 <p>Pitch types differ by how much they promise to know. Obtain the scalars from public fields, except for the octave-free spelling constructed with the documented <code>from_string</code> factory.</p>
-<div id="8851b91a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:50.605263Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:50.605001Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:50.616545Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:50.615456Z&quot;}}" data-execution_count="13">
+<div id="10f0c42d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:28.962856Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:28.962704Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:28.967540Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:28.966832Z&quot;}}" data-execution_count="13">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>enharmonic_pitch <span class="op">=</span> c_sharp_by_format[<span class="st">"ms3 TSV"</span>]</span>
 <span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>midi_pitch <span class="op">=</span> numeric_pitch_view[<span class="st">"MIDI scalar"</span>]</span>
 <span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>specific_pitch <span class="op">=</span> specific_fields[<span class="st">"ms3 TSV"</span>][c_sharp_indices[<span class="st">"ms3 TSV"</span>]]</span>
@@ -625,7 +625,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="protocols-encode-the-ladder" class="level2">
 <h2 class="anchored" data-anchor-id="protocols-encode-the-ladder">Protocols encode the ladder</h2>
 <p>Protocols let an analysis require only the knowledge it needs. Testing the scalar values against all four protocols makes their guarantees explicit.</p>
-<div id="5aeb3e77" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:50.619688Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:50.619321Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:50.630323Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:50.629301Z&quot;}}" data-execution_count="14">
+<div id="70929dc5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:28.968993Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:28.968850Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:28.973463Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:28.972843Z&quot;}}" data-execution_count="14">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>pitch_protocols <span class="op">=</span> {</span>
 <span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"GenericPitchLike"</span>: GenericPitchLike,</span>
 <span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"EnharmonicPitchLike"</span>: EnharmonicPitchLike,</span>
@@ -665,7 +665,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="side-by-side" class="level2">
 <h2 class="anchored" data-anchor-id="side-by-side">Side by side</h2>
 <p>A compact table now separates the common enharmonic view from the extra spelling supplied by symbolic notation and the numeric face used for MIDI.</p>
-<div id="5c82ea0b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:50.634826Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:50.634570Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:50.656014Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:50.654957Z&quot;}}" data-execution_count="15">
+<div id="da2ecc85" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:28.975541Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:28.975364Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:28.984961Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:28.984423Z&quot;}}" data-execution_count="15">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>comparison_rows <span class="op">=</span> [</span>
 <span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>    {</span>
 <span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>        <span class="st">"format"</span>: name,</span>
@@ -739,7 +739,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="a-fifth-source" class="level2">
 <h2 class="anchored" data-anchor-id="a-fifth-source">A fifth source</h2>
 <p>A parangonada export is a note alignment, rather than a score or a recording. Begin by loading the export directory so that its short summary is visible before asking it to build anything.</p>
-<div id="16a02991" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:50.658322Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:50.658033Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:51.014448Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:51.013361Z&quot;}}" data-execution_count="16">
+<div id="ca65f896" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:28.986356Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:28.986210Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:29.254844Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:29.254171Z&quot;}}" data-execution_count="16">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>eroica_path <span class="op">=</span> parangonar_data <span class="op">/</span> <span class="st">"Beethoven_Eroica_op35-cpjku"</span></span>
 <span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>parangonada_loader <span class="op">=</span> ParangonadaLoader.from_file(eroica_path)</span>
 <span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>parangonada_loader</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -785,63 +785,63 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="build-the-alignment-bundle" class="level2">
 <h2 class="anchored" data-anchor-id="build-the-alignment-bundle">Build the alignment bundle</h2>
 <p><code>create_bundle</code> turns the loaded export into an earlier <button class="glossary" title="A collection of TimelineGroups with inter-group MatchClaim connections; provides coordinate transfer via offset arithmetic, interpolation, and WarpMaps.">AlignmentBundle</button> without changing its pitch representation.</p>
-<div id="a29f2c49" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:51.016837Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:51.016555Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:51.082901Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:51.079237Z&quot;}}" data-execution_count="17">
+<div id="37231e57" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:29.257068Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:29.256878Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:29.298929Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:29.298211Z&quot;}}" data-execution_count="17">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>eroica_bundle <span class="op">=</span> parangonada_loader.create_bundle()</span>
 <span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>eroica_bundle</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="17">
-<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">AlignmentBundle[bundle_1]
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">AlignmentBundle[bundle_3faafq2vehspj]
 
-  TimelineGroup[group_1] (2 timelines)
+  TimelineGroup[group_1ij2wilarkh74] (2 timelines)
   ┌────────────────────────────────────────────────────────────────────────────┐
-  │ ContinuousLogicalTimeline[score:clt_1] (251 events)                        │
+  │ ContinuousLogicalTimeline[score:clt_1nja666w5qk37] (251 events)            │
   │                       0 ______________________________________ 64 quarters │
   │                                                                            │
-  │ DiscreteLogicalTimeline[score:dlt_1] (251 events, 1 cmaps)                 │
+  │ DiscreteLogicalTimeline[score:dlt_2aq31ztdm4t6x] (251 events, 1 cmaps)     │
   │                       0 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,, 2064 ticks │
   └────────────────────────────────────────────────────────────────────────────┘
 
-  TimelineGroup[group_2] (2 timelines)
+  TimelineGroup[group_3hmwte5k6a5gw] (2 timelines)
   ┌────────────────────────────────────────────────────────────────────────────┐
-  │ ContinuousPhysicalTimeline[perf:1966_Szegedi:cpt_1] (358 events)           │
+  │ ContinuousPhysicalTimeline[perf:cpt_0h3vv2t63w2z7] (358 events)            │
   │                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 73.1 seconds │
   │                                                                            │
-  │ DiscretePhysicalTimeline[perf:1966_Szegedi:dpt_1] (232 events, 1 cmaps)    │
+  │ DiscretePhysicalTimeline[perf:dpt_1qzwtmb841nn0] (232 events, 1 cmaps)     │
   │                         0 ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 3222035 samples │
   └────────────────────────────────────────────────────────────────────────────┘
 
-  TimelineGroup[group_3] (2 timelines)
+  TimelineGroup[group_1z3xdcnd8oy9a] (2 timelines)
   ┌────────────────────────────────────────────────────────────────────────────┐
-  │ ContinuousPhysicalTimeline[perf:1970_Gould:cpt_1] (379 events)             │
+  │ ContinuousPhysicalTimeline[perf:cpt_0w5pjhp7nve40] (379 events)            │
   │                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 122.9 seconds │
   │                                                                            │
-  │ DiscretePhysicalTimeline[perf:1970_Gould:dpt_1] (253 events, 1 cmaps)      │
+  │ DiscretePhysicalTimeline[perf:dpt_35zyecpt3aawt] (253 events, 1 cmaps)     │
   │                         0 ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 5419538 samples │
   └────────────────────────────────────────────────────────────────────────────┘
 
-  TimelineGroup[group_4] (2 timelines)
+  TimelineGroup[group_0s4nmu6qqn6he] (2 timelines)
   ┌────────────────────────────────────────────────────────────────────────────┐
-  │ ContinuousPhysicalTimeline[perf:1971_Curzon:cpt_1] (372 events)            │
+  │ ContinuousPhysicalTimeline[perf:cpt_366u652u8lquu] (372 events)            │
   │                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 77.8 seconds │
   │                                                                            │
-  │ DiscretePhysicalTimeline[perf:1971_Curzon:dpt_1] (246 events, 1 cmaps)     │
+  │ DiscretePhysicalTimeline[perf:dpt_2ii3iicuf5y6g] (246 events, 1 cmaps)     │
   │                         0 ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 3430226 samples │
   └────────────────────────────────────────────────────────────────────────────┘
 
-  TimelineGroup[group_5] (2 timelines)
+  TimelineGroup[group_1ddxyece7hon9] (2 timelines)
   ┌────────────────────────────────────────────────────────────────────────────┐
-  │ ContinuousPhysicalTimeline[perf:1985_Brendel:cpt_1] (375 events)           │
+  │ ContinuousPhysicalTimeline[perf:cpt_3h9peanfy5q0w] (375 events)            │
   │                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 74.9 seconds │
   │                                                                            │
-  │ DiscretePhysicalTimeline[perf:1985_Brendel:dpt_1] (249 events, 1 cmaps)    │
+  │ DiscretePhysicalTimeline[perf:dpt_3lmci5ykrc8v9] (249 events, 1 cmaps)     │
   │                         0 ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 3302297 samples │
   └────────────────────────────────────────────────────────────────────────────┘
 
-  TimelineGroup[group_6] (2 timelines)
+  TimelineGroup[group_2cfkapdg649z2] (2 timelines)
   ┌────────────────────────────────────────────────────────────────────────────┐
-  │ ContinuousPhysicalTimeline[perf:2023_Hewitt:cpt_1] (370 events)            │
+  │ ContinuousPhysicalTimeline[perf:cpt_3djtlr0boww79] (370 events)            │
   │                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 89.9 seconds │
   │                                                                            │
-  │ DiscretePhysicalTimeline[perf:2023_Hewitt:dpt_1] (244 events, 1 cmaps)     │
+  │ DiscretePhysicalTimeline[perf:dpt_351yfzzgebwy0] (244 events, 1 cmaps)     │
   │                         0 ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 3966487 samples │
   └────────────────────────────────────────────────────────────────────────────┘
 
@@ -852,12 +852,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="select-the-score-timeline" class="level2">
 <h2 class="anchored" data-anchor-id="select-the-score-timeline">Select the score timeline</h2>
-<p>The score <button class="glossary" title="A positive coordinate axis defined by an origin and a measuring unit; continuous (real) or discrete (integer). Accommodates events and potentially Child timelines.">Timeline</button> carries the aligned score notes in quarters. Selecting it keeps the performance timelines out of this example.</p>
-<div id="3088d553" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:51.086924Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:51.086669Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:51.092634Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:51.091702Z&quot;}}" data-execution_count="18">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>eroica_score_timeline <span class="op">=</span> eroica_bundle.get_timeline(<span class="st">"score:clt_1"</span>)</span>
+<p>The score <button class="glossary" title="A positive coordinate axis defined by an origin and a measuring unit; continuous (real) or discrete (integer). Accommodates events and potentially Child timelines.">Timeline</button> carries the aligned score notes in quarters. Selecting it keeps the performance timelines out of this example. The loader leads the score’s timeline IDs with the role <code>score:</code> and mints the rest (<code>score:clt_…</code> in quarters), so a regular expression matching the whole ID selects it.</p>
+<div id="4ee028f7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:29.300477Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:29.300333Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:29.304505Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:29.303760Z&quot;}}" data-execution_count="18">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>eroica_score_timeline <span class="op">=</span> eroica_bundle.get_timeline(<span class="st">"score:clt_.*"</span>)</span>
 <span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>eroica_score_timeline</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="18">
-<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousLogicalTimeline[score:clt_1] (251 events)
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousLogicalTimeline[score:clt_1nja666w5qk37] (251 events)
                       0 __________________________________ 64 quarters</pre>
 </div>
 </div>
@@ -866,7 +866,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="retrieve-the-aligned-score-events" class="level2">
 <h2 class="anchored" data-anchor-id="retrieve-the-aligned-score-events">Retrieve the aligned score events</h2>
 <p>The timeline’s event table is the same public boundary used for the four Chopin sources.</p>
-<div id="88946f24" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:51.094710Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:51.094461Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:51.099858Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:51.098854Z&quot;}}" data-execution_count="19">
+<div id="634c45b4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:29.305994Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:29.305841Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:29.309975Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:29.309210Z&quot;}}" data-execution_count="19">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>eroica_events <span class="op">=</span> eroica_score_timeline.get_events()</span>
 <span id="cb31-2"><a href="#cb31-2" aria-hidden="true" tabindex="-1"></a>eroica_events</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="19">
@@ -909,7 +909,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="request-the-fifth-sources-pitch-fields" class="level2">
 <h2 class="anchored" data-anchor-id="request-the-fifth-sources-pitch-fields">Request the fifth source’s pitch fields</h2>
 <p>The alignment stores MIDI pitches, so it affords both enharmonic and numeric views but does not claim a written spelling.</p>
-<div id="17de6104" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:51.102118Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:51.101772Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:51.107500Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:51.106632Z&quot;}}" data-execution_count="20">
+<div id="e1748431" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:29.311606Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:29.311416Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:29.315191Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:29.314592Z&quot;}}" data-execution_count="20">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>eroica_pitch_fields <span class="op">=</span> {</span>
 <span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"enharmonic"</span>: eroica_events.get_field(EnharmonicPitch),</span>
 <span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"numeric"</span>: eroica_events.get_field(MidiPitch),</span>
@@ -925,7 +925,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="select-an-aligned-pitch" class="level2">
 <h2 class="anchored" data-anchor-id="select-an-aligned-pitch">Select an aligned pitch</h2>
 <p>MIDI pitch 63 genuinely occurs in this Beethoven export. Reuse the same first-occurrence rule rather than pretending this is another copy of C♯4.</p>
-<div id="cebe5241" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:51.109731Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:51.109498Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:51.116013Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:51.115068Z&quot;}}" data-execution_count="21">
+<div id="9f52e088" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:29.316874Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:29.316734Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:29.320922Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:29.320190Z&quot;}}" data-execution_count="21">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>eroica_target_midi_pitch <span class="op">=</span> <span class="dv">63</span></span>
 <span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>eroica_pitch_index <span class="op">=</span> index_of_midi_pitch(</span>
 <span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>    eroica_pitch_fields[<span class="st">"enharmonic"</span>], eroica_target_midi_pitch</span>
@@ -945,7 +945,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="extend-the-comparison" class="level2">
 <h2 class="anchored" data-anchor-id="extend-the-comparison">Extend the comparison</h2>
 <p>A final row places the note alignment beside the four earlier formats while stating plainly that no specific spelling was represented.</p>
-<div id="96901073" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:51.118191Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:51.117951Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:51.136509Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:51.135526Z&quot;}}" data-execution_count="22">
+<div id="998bf0a6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:29.322905Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:29.322665Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:29.330661Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:29.330104Z&quot;}}" data-execution_count="22">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>eroica_row <span class="op">=</span> pd.DataFrame(</span>
 <span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>    [</span>
 <span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>        {</span>
@@ -1021,7 +1021,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="the-same-principle-for-harmony" class="level2">
 <h2 class="anchored" data-anchor-id="the-same-principle-for-harmony">The same principle for harmony</h2>
 <p><code>HarmonyLabel</code> names the general harmony-label type. For a DCML label, the documented <code>DcmlHarmony.from_label</code> factory parses the encoded structure and gives us a scalar for testing the full harmony protocol chain.</p>
-<div id="ac159099" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:51.138868Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:51.138492Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:51.152291Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:51.151101Z&quot;}}" data-execution_count="23">
+<div id="939b6bcc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:29.332158Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:29.332016Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:29.336691Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:29.336103Z&quot;}}" data-execution_count="23">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb37"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>parsed_harmony <span class="op">=</span> DcmlHarmony.from_label(<span class="st">"V65"</span>, globalkey<span class="op">=</span><span class="st">"C"</span>)</span>
 <span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a>harmony_protocol_checks <span class="op">=</span> {</span>
 <span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"HarmonyLabelLike"</span>: <span class="bu">isinstance</span>(parsed_harmony, HarmonyLabelLike),</span>
@@ -1053,7 +1053,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="building-a-harmony-field" class="level2">
 <h2 class="anchored" data-anchor-id="building-a-harmony-field">Building a harmony field</h2>
 <p>Harmony uses the same bulk-construction route that the data-model tutorial used for pitch: build one Arrow struct array, then wrap it as the matching semantic field.</p>
-<div id="0616f579" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-19T22:16:51.156569Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-19T22:16:51.156243Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-19T22:16:51.168491Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-19T22:16:51.167503Z&quot;}}" data-execution_count="24">
+<div id="f5585203" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:35:29.338162Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:35:29.337988Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:35:29.343405Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:35:29.342778Z&quot;}}" data-execution_count="24">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb39"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>harmony_progression <span class="op">=</span> [</span>
 <span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a>    DcmlHarmony.from_label(<span class="st">"I"</span>, globalkey<span class="op">=</span><span class="st">"C"</span>),</span>
 <span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a>    DcmlHarmony.from_label(<span class="st">"viio7"</span>, globalkey<span class="op">=</span><span class="st">"C"</span>),</span>

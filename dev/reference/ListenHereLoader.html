@@ -77,7 +77,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -302,6 +302,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/CHUNK.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CHUNK</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ClaimFilter</span></a>
   </div>
@@ -482,6 +488,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/EventRegistry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventRegistry</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventStore</span></a>
   </div>
@@ -490,6 +502,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Extraction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Extraction</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -848,6 +866,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/NOMATCH.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NOMATCH</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/Note.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Note</span></a>
   </div>
@@ -880,6 +904,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/OutputNumberTypeError.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">OutputNumberTypeError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Package.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Package</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1040,6 +1070,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/resolve.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">resolve</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/resolve_coordinate_spec.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">resolve_coordinate_spec</span></a>
   </div>
@@ -1066,12 +1102,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ScalarMap</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">ScopedId</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1328,9 +1358,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <section id="timetoalign.loader.alignment.listen_here.ListenHereLoader" class="level1">
 <h1>ListenHereLoader</h1>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>loader.alignment.listen_here.ListenHereLoader()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>loader.alignment.listen_here.ListenHereLoader(seed<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Load a Listen Here! alignment JSON file as one AlignmentBundle.</p>
-<p>The loader parses a single alignment JSON file describing many recordings of one work warped onto a shared equidistant reference grid, and assembles a bundle in which every recording is a samples timeline in its own group, related to every other recording by a complete set of pairwise synchronous instant :class:<code>MatchClaim</code> rows held columnar in a :class:<code>MatchClaimField</code>.</p>
+<p>The loader parses a single alignment JSON file describing many recordings of one work warped onto a shared equidistant reference grid, and assembles a bundle in which every recording is a seconds timeline in its own group, related to every other recording by a complete set of pairwise synchronous instant :class:<code>MatchClaim</code> rows held columnar in a :class:<code>MatchClaimField</code>. The file states grid positions, not events, so every claim is :data:<code>~timetoalign.core.ids.CHUNK</code> on both sides and the timelines hold no events.</p>
 <p><strong>Usage follows the standard loader two-phase pattern:</strong></p>
 <ol type="1">
 <li><code>loader.load(alignment_json)</code> — parse one alignment JSON file.</li>
@@ -1375,11 +1405,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="even">
 <td><a href="#timetoalign.loader.alignment.listen_here.ListenHereLoader.create_timeline">create_timeline</a></td>
-<td>Return a single recording’s samples timeline by its uid.</td>
+<td>Return a single recording’s seconds timeline by its uid.</td>
 </tr>
 <tr class="odd">
 <td><a href="#timetoalign.loader.alignment.listen_here.ListenHereLoader.create_timelines">create_timelines</a></td>
-<td>Return one samples timeline per recording, in sorted order.</td>
+<td>Return one seconds timeline per recording, in sorted order.</td>
 </tr>
 <tr class="even">
 <td><a href="#timetoalign.loader.alignment.listen_here.ListenHereLoader.get_field">get_field</a></td>
@@ -1395,7 +1425,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="timetoalign.loader.alignment.listen_here.ListenHereLoader.create_bundle">create_bundle</h3>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>loader.alignment.listen_here.ListenHereLoader.create_bundle()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Assemble the AlignmentBundle from the loaded alignment.</p>
-<p>Each recording becomes a samples :class:<code>DiscretePhysicalTimeline</code> in its own group, and the complete pairwise claim field is added to the bundle <strong>columnar</strong>.</p>
+<p>Each recording becomes a seconds :class:<code>ContinuousPhysicalTimeline</code> in its own group, and the complete pairwise claim field is added to the bundle <strong>columnar</strong>.</p>
 <p>The field is handed to the bundle with :meth:<code>~timetoalign.alignment.bundle.AlignmentBundle.add_match_claim_field</code>, not exploded into a list of :class:<code>MatchClaim</code> objects. The bundle answers <code>get_matchstamp_at</code> by filtering the field’s claim columns vectorized and materialising only the handful of claims at the queried coordinate, so a whole-work file (on the order of a million claims) never builds a million Python claims.</p>
 <section id="returns" class="level4 doc-section doc-section-returns">
 <h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns">Returns</h4>
@@ -1457,15 +1487,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    uid<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>kwargs,</span>
 <span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Return a single recording’s samples timeline by its uid.</p>
+<p>Return a single recording’s seconds timeline by its uid.</p>
 <section id="parameters" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
+<col style="width: 7%">
+<col style="width: 20%">
+<col style="width: 62%">
 <col style="width: 10%">
-<col style="width: 27%">
-<col style="width: 48%">
-<col style="width: 13%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -1479,7 +1509,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>uid</td>
 <td><code>str</code> | None</td>
-<td>A timeline uid (<code>"&lt;stem&gt;:dpt_1"</code>).</td>
+<td>A timeline uid (<code>cpt_…</code>), as :meth:<code>create_timelines</code> lists them.</td>
 <td><code>None</code></td>
 </tr>
 </tbody>
@@ -1518,7 +1548,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="timetoalign.loader.alignment.listen_here.ListenHereLoader.create_timelines" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.loader.alignment.listen_here.ListenHereLoader.create_timelines">create_timelines</h3>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>loader.alignment.listen_here.ListenHereLoader.create_timelines(id_pattern<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>Return one samples timeline per recording, in sorted order.</p>
+<p>Return one seconds timeline per recording, in sorted order.</p>
 <section id="parameters-1" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-1">Parameters</h4>
 <table class="caption-top table">
@@ -1634,10 +1664,10 @@ True</code></pre>
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-3">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 8%">
-<col style="width: 40%">
+<col style="width: 5%">
 <col style="width: 38%">
-<col style="width: 12%">
+<col style="width: 47%">
+<col style="width: 8%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -1650,8 +1680,8 @@ True</code></pre>
 <tbody>
 <tr class="odd">
 <td>source</td>
-<td><code>str</code> | <code>Path</code></td>
-<td>Path to the <code>alignment.json</code> file.</td>
+<td><code>SourceLike</code></td>
+<td>Path to the <code>alignment.json</code> file, or its member in a ZIP archive.</td>
 <td><em>required</em></td>
 </tr>
 </tbody>

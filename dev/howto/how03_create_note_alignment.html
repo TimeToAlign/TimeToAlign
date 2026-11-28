@@ -78,7 +78,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <link href="../site_libs/quarto-contrib/glossary/glossary.css" rel="stylesheet">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
@@ -335,6 +335,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../howto/how03_mtd_themes.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load Musical Themes Aligned to Recordings (MTD)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../howto/how03_ieee1599.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">How to Load an IEEE 1599 Document</span></a>
   </div>
@@ -355,6 +361,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../howto/how03_match_claims_package.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">How to Keep MatchClaims, Projections and Beliefs in a Package</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_registry_and_packages.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Write the Registry and Share Tables in a Package</span></a>
   </div>
 </li>
       </ul>
@@ -446,10 +458,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <section id="how-to-create-a-note-alignment" class="level1">
 <h1>How to Create a Note Alignment</h1>
-<p>This notebook demonstrates the essential pattern for aligning a performance with a score using <button class="glossary" title="A claim of equivalence between two events on different timelines, each coordinate on its own timeline’s axis, with its Provenance (how it was made and who believes it) and a certainty. A side without an event of its own is given a Projection. May be synchronous (producing AlignmentAnchors) or not: conceptual (structural equivalence without temporal commitment) or NOMATCH (an event on one side, the sentinel on the other). A MatchClaim is always stated: what a MatchGraph infers through groups is the graph’s own (its inferred edges), never a MatchClaim. A person stating claims is recorded as believing them “true” (create_match_claims(…, actor=)). A claim is never deleted: who disagrees records a belief “false” in it (AlignmentBundle.add_match_claim_belief()), and every reader of claims, the MatchStamp and coordinate getters included, takes the belief filter (believer=, beliefs=; see Provenance). Readers of claims take the same timeline filters: timeline_ids keeps a claim with any of the named timelines on either side, within a claim whose both timelines are in the set. Held individually, or in the bundle’s one MatchClaim table, a MatchClaimField. Its ID never changes: a claim given none is minted one when it is constructed (claim_ and 13 random characters, seeded from the claim’s content or by seed=), and joining an AlignmentBundle mints nothing. A MatchClaim is addressed by its ID alone: a bundle or field already holding an ID refuses a second claim under it, and merging bundles (from_bundles()) refuses, before anything is merged, two sources holding one ID.">MatchClaim</button> objects in an <button class="glossary" title="A collection of TimelineGroups with inter-group MatchClaim connections; provides coordinate transfer via offset arithmetic, interpolation, and WarpMaps.">AlignmentBundle</button>.</p>
+<p>This notebook demonstrates the essential pattern for aligning a performance with a score using <button class="glossary" title="A claim of equivalence between two events on different timelines, each coordinate on its own timeline’s axis, with its Provenance (how it was made and who believes it) and a certainty. A side without an event of its own is given a Projection, or is the sentinel CHUNK on a synchronous claim stated from positions. May be synchronous (producing AlignmentAnchors) or not: conceptual (structural equivalence without temporal commitment) or NOMATCH (an event on one side, the sentinel on the other). A MatchClaim is always stated: what a MatchGraph infers through groups is the graph’s own (its inferred edges), never a MatchClaim. A person stating claims is recorded as believing them “true” (create_match_claims(…, actor=)). A claim is never deleted: who disagrees records a belief “false” in it (AlignmentBundle.add_match_claim_belief()), and every reader of claims, the MatchStamp and coordinate getters included, takes the belief filter (believer=, beliefs=; see Provenance). Readers of claims take the same timeline filters: timeline_ids keeps a claim with any of the named timelines on either side, within a claim whose both timelines are in the set. Held individually, or in the bundle’s one MatchClaim table, a MatchClaimField. Its ID never changes: a claim given none is minted one when it is constructed (claim_ and 13 random characters, seeded from the claim’s content or by seed=), and joining an AlignmentBundle mints nothing. A MatchClaim is addressed by its ID alone: a bundle or field already holding an ID refuses a second claim under it, and merging bundles (from_bundles()) refuses, before anything is merged, two sources holding one ID.">MatchClaim</button> objects in an <button class="glossary" title="A collection of TimelineGroups with inter-group MatchClaim connections; provides coordinate transfer via offset arithmetic, interpolation, and WarpMaps.">AlignmentBundle</button>.</p>
 <p><strong>What you will learn:</strong></p>
 <ol type="1">
-<li>Match performance notes to score notes by shared attributes (pitch, staff), giving each matched position a <button class="glossary" title="An event standing on a timeline for an event that timeline does not hold, so that a MatchClaim can join two events: its ID (projection_ and 13 random characters when none is given), its position on the timeline’s own axis (start, and a duration for a span), and projection_of, the event it stands for ({timeline_id, event_id}), or none when its side was stated as a position only. Timeline.add_projections() adds Projections, reusing one the timeline already holds for the same event and position; AlignmentBundle.create_match_claims(), the alignment loaders and match_notes_by_attributes() give a Projection to every side stated as a position. A package holds every timeline’s Projections in one table, the Projections table (projections.parquet, one row per Projection with its timeline_id), which an AlignmentBundle’s to_file() writes beside the manifest whenever one of its timelines holds Projections, named in its resources, sorted by timeline ID, and from_file() reads back onto the timelines. In memory a Projection’s start and duration are coordinate cells, each naming its unit and number type; the table writes them in the package form: the timeline’s unit and number_type once per row, each number once, in the member its number type names (see MatchClaimField). A Projection’s ID is unique among all Projections of its manifest: a missing one is minted when the Projection is added, an ID another timeline’s Projection already holds is refused, and no ID is ever renamed, since a MatchClaim may name it. Timelines given Projections apart and joined later may hold one ID twice; writing their package refuses it, naming both timelines.">Projection</button></li>
+<li>Match performance notes to score notes by shared attributes (pitch, staff), stating each matched pair by its two positions</li>
 <li>Create an <code>AlignmentBundle</code> with performance and score groups</li>
 <li>Query coordinates across both using <code>get_matchstamp_at()</code></li>
 <li>Create <code>MatchLine</code> objects from both directions</li>
@@ -467,7 +479,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="setup" class="level2">
 <h2 class="anchored" data-anchor-id="setup">1. Setup</h2>
-<div id="cbab21fb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:29.665654Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:29.665483Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:32.095963Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:32.095326Z&quot;}}" data-execution_count="1">
+<div id="db79a6d7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:24.722874Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:24.722695Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:27.120704Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:27.119882Z&quot;}}" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
@@ -491,7 +503,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="load-the-performance-and-the-score" class="level2">
 <h2 class="anchored" data-anchor-id="load-the-performance-and-the-score">2. Load the Performance and the Score</h2>
 <p>The performance notes come from <code>.notes</code> files (EEP format with timestamps in seconds); the loader turns them into the performance timeline. The score is the ABC edition played through. The loader reads the folded score with its repeats, and <code>get_flow()</code> plays them: the played-through score is as long as that flow. That is the axis on which the edition’s unfolded TSV of score notes counts its <code>quarterbeats_playthrough</code>; the matching below places its score positions on a timeline of that length.</p>
-<div id="a6eeff0c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:32.098180Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:32.097848Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:34.202491Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:34.201791Z&quot;}}" data-execution_count="2">
+<div id="4002536e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:27.122462Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:27.122159Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:29.211139Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:29.210345Z&quot;}}" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Performance notes and timeline from the Normal recording</span></span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>eep_loader <span class="op">=</span> EepNotesLoader()</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>eep_loader.load(<span class="op">*</span><span class="bu">sorted</span>(NORMAL_DIR.glob(<span class="st">"*_align_*.notes"</span>)))</span>
@@ -532,7 +544,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="prepare-match-notes" class="level2">
 <h2 class="anchored" data-anchor-id="prepare-match-notes">3. Prepare &amp; Match Notes</h2>
 <p>Before matching, we drop the rests of the performance notes and explode their chords into individual pitches. Of the score notes we keep those that sound anew: a note without a tie, or the first note of a tie. The notes a tie continues or ends prolong a sound already started, so a tied sound is matched at its first note.</p>
-<div id="ae057fdc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:34.204190Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:34.204010Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:34.233906Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:34.233168Z&quot;}}" data-execution_count="3">
+<div id="6997ff36" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:29.212880Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:29.212697Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:29.242974Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:29.242385Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>eep_prepared <span class="op">=</span> prepare_eep_notes_for_matching(eep_df)</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>abc_prepared <span class="op">=</span> prepare_abc_notes_for_matching(abc_df)</span>
 <span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -541,8 +553,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <pre><code>{'EEP prepared': 3756, 'ABC prepared': 3751}</code></pre>
 </div>
 </div>
-<p>Now match by pitch name and staff number. A <button class="glossary" title="A claim of equivalence between two events on different timelines, each coordinate on its own timeline’s axis, with its Provenance (how it was made and who believes it) and a certainty. A side without an event of its own is given a Projection. May be synchronous (producing AlignmentAnchors) or not: conceptual (structural equivalence without temporal commitment) or NOMATCH (an event on one side, the sentinel on the other). A MatchClaim is always stated: what a MatchGraph infers through groups is the graph’s own (its inferred edges), never a MatchClaim. A person stating claims is recorded as believing them “true” (create_match_claims(…, actor=)). A claim is never deleted: who disagrees records a belief “false” in it (AlignmentBundle.add_match_claim_belief()), and every reader of claims, the MatchStamp and coordinate getters included, takes the belief filter (believer=, beliefs=; see Provenance). Readers of claims take the same timeline filters: timeline_ids keeps a claim with any of the named timelines on either side, within a claim whose both timelines are in the set. Held individually, or in the bundle’s one MatchClaim table, a MatchClaimField. Its ID never changes: a claim given none is minted one when it is constructed (claim_ and 13 random characters, seeded from the claim’s content or by seed=), and joining an AlignmentBundle mints nothing. A MatchClaim is addressed by its ID alone: a bundle or field already holding an ID refuses a second claim under it, and merging bundles (from_bundles()) refuses, before anything is merged, two sources holding one ID.">MatchClaim</button> joins two events, but neither table names its events uniquely: the four EEP files reuse their note IDs, one file per instrument, and a played-through score repeats a passage’s notes under the same IDs. So both sides are given as positions (<code>source_coord_column</code>, <code>target_coord_column</code>, each on its timeline’s axis), and every matched position gets a Projection on its timeline: an event standing there for the matched note. The notes of a chord share one Projection, since a timeline holds one Projection per position. The matcher returns a <code>MatchResult</code> containing the matched pairs and the <code>MatchClaim</code> objects between the Projections.</p>
-<div id="70957ff6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:34.235414Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:34.235262Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:36.962082Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:36.961480Z&quot;}}" data-execution_count="4">
+<p>Now match by pitch name and staff number. A <button class="glossary" title="A claim of equivalence between two events on different timelines, each coordinate on its own timeline’s axis, with its Provenance (how it was made and who believes it) and a certainty. A side without an event of its own is given a Projection, or is the sentinel CHUNK on a synchronous claim stated from positions. May be synchronous (producing AlignmentAnchors) or not: conceptual (structural equivalence without temporal commitment) or NOMATCH (an event on one side, the sentinel on the other). A MatchClaim is always stated: what a MatchGraph infers through groups is the graph’s own (its inferred edges), never a MatchClaim. A person stating claims is recorded as believing them “true” (create_match_claims(…, actor=)). A claim is never deleted: who disagrees records a belief “false” in it (AlignmentBundle.add_match_claim_belief()), and every reader of claims, the MatchStamp and coordinate getters included, takes the belief filter (believer=, beliefs=; see Provenance). Readers of claims take the same timeline filters: timeline_ids keeps a claim with any of the named timelines on either side, within a claim whose both timelines are in the set. Held individually, or in the bundle’s one MatchClaim table, a MatchClaimField. Its ID never changes: a claim given none is minted one when it is constructed (claim_ and 13 random characters, seeded from the claim’s content or by seed=), and joining an AlignmentBundle mints nothing. A MatchClaim is addressed by its ID alone: a bundle or field already holding an ID refuses a second claim under it, and merging bundles (from_bundles()) refuses, before anything is merged, two sources holding one ID.">MatchClaim</button> joins two events, but neither table names its events uniquely: the four EEP files reuse their note IDs, one file per instrument, and a played-through score repeats a passage’s notes under the same IDs. So both sides are given as positions (<code>source_coord_column</code>, <code>target_coord_column</code>, each on its timeline’s axis). A synchronous claim between two positions names no event: each side is the sentinel CHUNK, whose coordinate the claim’s anchor states, and no event is added to either timeline. The matcher returns a <code>MatchResult</code> containing the matched pairs and their <code>MatchClaim</code> objects.</p>
+<div id="e640138f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:29.244595Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:29.244441Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:31.473506Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:31.472935Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>match_result <span class="op">=</span> match_notes_by_attributes(</span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    eep_prepared,</span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    abc_prepared,</span>
@@ -561,45 +573,27 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
  'match_claims': 3741}</code></pre>
 </div>
 </div>
-<div id="8752d64d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:36.963685Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:36.963534Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:36.970198Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:36.969552Z&quot;}}" data-execution_count="5">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># The Projections the matching added, and the first claim's two events</span></span>
+<div id="73990c36" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:31.475214Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:31.475031Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:31.480007Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:31.479337Z&quot;}}" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="co"># The first claim, its CHUNK sides, and the Projections the matching added</span></span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>first_claim <span class="op">=</span> match_result.match_claims[<span class="dv">0</span>]</span>
 <span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>{</span>
-<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"performance Projections"</span>: <span class="bu">len</span>(perf_tl.get_events(event_type<span class="op">=</span><span class="st">"Projection"</span>)),</span>
-<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"score Projections"</span>: <span class="bu">len</span>(clt1.get_events(event_type<span class="op">=</span><span class="st">"Projection"</span>)),</span>
-<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"first claim, performance side"</span>: perf_tl.get_event(first_claim.event_a_id),</span>
-<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"first claim, score side"</span>: clt1.get_event(first_claim.event_b_id),</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"first claim"</span>: first_claim,</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"its CHUNK sides"</span>: first_claim.chunk_sides,</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"performance Projections"</span>: <span class="bu">len</span>(perf_tl.get_events(event_type<span class="op">=</span><span class="st">"Projection"</span>)),</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"score Projections"</span>: <span class="bu">len</span>(clt1.get_events(event_type<span class="op">=</span><span class="st">"Projection"</span>)),</span>
 <span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="5">
-<pre><code>{'performance Projections': 3375,
- 'score Projections': 1601,
- 'first claim, performance side': {'id': 'projection_1',
-  'name': None,
-  'temporal_type': 'instant',
-  'event_type': 'Projection',
-  'start': {'value': 1.249978,
-   'numerator': 2814700227510659,
-   'denominator': 2251799813685248},
-  'end': None,
-  'duration': None,
-  'pitch': None,
-  'staff': None,
-  'projection_of': None},
- 'first claim, score side': {'id': 'projection_1',
-  'name': None,
-  'temporal_type': 'instant',
-  'event_type': 'Projection',
-  'start': {'value': 1.0, 'numerator': 1, 'denominator': 1},
-  'end': None,
-  'duration': None,
-  'projection_of': None}}</code></pre>
+<pre><code>{'first claim': MatchClaim(instant: cpt_1@1.249978 seconds [CHUNK] &lt;-&gt; clt_1@1 quarters [CHUNK]),
+ 'its CHUNK sides': ('cpt_1', 'clt_1'),
+ 'performance Projections': 0,
+ 'score Projections': 0}</code></pre>
 </div>
 </div>
 </section>
 <section id="create-alignmentbundle" class="level2">
 <h2 class="anchored" data-anchor-id="create-alignmentbundle">4. Create AlignmentBundle</h2>
-<p>We need two <button class="glossary" title="An array of member timelines that share the same graphical start and end: every member’s 0 coincides with every other member’s 0, and every member’s length with every other member’s length. Placing timelines in a group asserts commensurability regardless of their units. A position in between converts linearly and exactly (p on member A is p · len_B / len_A on member B) and is written in the target member’s number type. When only part of a timeline takes part, the member is a child of that timeline at its exact offset; a member is never placed partially. No member is an ancestor or a descendant of another member of the same group, since a child sits at its offset inside its parent. A group answers with the same TimeStamp class as a Timeline; to_dict() and from_dict() write and read it with every timeline it needs.">TimelineGroup</button> objects: one for the performance, one for the score. The <code>AlignmentBundle</code> holds both and manages cross-group connections via <button class="glossary" title="A claim of equivalence between two events on different timelines, each coordinate on its own timeline’s axis, with its Provenance (how it was made and who believes it) and a certainty. A side without an event of its own is given a Projection. May be synchronous (producing AlignmentAnchors) or not: conceptual (structural equivalence without temporal commitment) or NOMATCH (an event on one side, the sentinel on the other). A MatchClaim is always stated: what a MatchGraph infers through groups is the graph’s own (its inferred edges), never a MatchClaim. A person stating claims is recorded as believing them “true” (create_match_claims(…, actor=)). A claim is never deleted: who disagrees records a belief “false” in it (AlignmentBundle.add_match_claim_belief()), and every reader of claims, the MatchStamp and coordinate getters included, takes the belief filter (believer=, beliefs=; see Provenance). Readers of claims take the same timeline filters: timeline_ids keeps a claim with any of the named timelines on either side, within a claim whose both timelines are in the set. Held individually, or in the bundle’s one MatchClaim table, a MatchClaimField. Its ID never changes: a claim given none is minted one when it is constructed (claim_ and 13 random characters, seeded from the claim’s content or by seed=), and joining an AlignmentBundle mints nothing. A MatchClaim is addressed by its ID alone: a bundle or field already holding an ID refuses a second claim under it, and merging bundles (from_bundles()) refuses, before anything is merged, two sources holding one ID.">MatchClaim</button> objects.</p>
-<div id="41461c6e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:36.971687Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:36.971534Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:36.975495Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:36.974893Z&quot;}}" data-execution_count="6">
+<p>We need two <button class="glossary" title="An array of member timelines that share the same graphical start and end: every member’s 0 coincides with every other member’s 0, and every member’s length with every other member’s length. Placing timelines in a group asserts commensurability regardless of their units. A position in between converts linearly and exactly (p on member A is p · len_B / len_A on member B) and is written in the target member’s number type. When only part of a timeline takes part, the member is a child of that timeline at its exact offset; a member is never placed partially. No member is an ancestor or a descendant of another member of the same group, since a child sits at its offset inside its parent. A group answers with the same TimeStamp class as a Timeline; to_dict() and from_dict() write and read it with every timeline it needs.">TimelineGroup</button> objects: one for the performance, one for the score. The <code>AlignmentBundle</code> holds both and manages cross-group connections via <button class="glossary" title="A claim of equivalence between two events on different timelines, each coordinate on its own timeline’s axis, with its Provenance (how it was made and who believes it) and a certainty. A side without an event of its own is given a Projection, or is the sentinel CHUNK on a synchronous claim stated from positions. May be synchronous (producing AlignmentAnchors) or not: conceptual (structural equivalence without temporal commitment) or NOMATCH (an event on one side, the sentinel on the other). A MatchClaim is always stated: what a MatchGraph infers through groups is the graph’s own (its inferred edges), never a MatchClaim. A person stating claims is recorded as believing them “true” (create_match_claims(…, actor=)). A claim is never deleted: who disagrees records a belief “false” in it (AlignmentBundle.add_match_claim_belief()), and every reader of claims, the MatchStamp and coordinate getters included, takes the belief filter (believer=, beliefs=; see Provenance). Readers of claims take the same timeline filters: timeline_ids keeps a claim with any of the named timelines on either side, within a claim whose both timelines are in the set. Held individually, or in the bundle’s one MatchClaim table, a MatchClaimField. Its ID never changes: a claim given none is minted one when it is constructed (claim_ and 13 random characters, seeded from the claim’s content or by seed=), and joining an AlignmentBundle mints nothing. A MatchClaim is addressed by its ID alone: a bundle or field already holding an ID refuses a second claim under it, and merging bundles (from_bundles()) refuses, before anything is merged, two sources holding one ID.">MatchClaim</button> objects.</p>
+<div id="be2f54cc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:31.481630Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:31.481477Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:31.485353Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:31.484696Z&quot;}}" data-execution_count="6">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>perf_group <span class="op">=</span> TimelineGroup(</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span><span class="op">=</span><span class="st">"performance"</span>,</span>
 <span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">"Normal Recording"</span>,</span>
@@ -609,12 +603,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div class="cell-output cell-output-display" data-execution_count="6">
 <pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">TimelineGroup[performance] (1 timelines)
 ┌────────────────────────────────────────────────────────────────────┐
-│ ContinuousPhysicalTimeline[cpt_1] (7401 events)                    │
+│ ContinuousPhysicalTimeline[cpt_1] (4026 events)                    │
 │                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 265.9 seconds │
 └────────────────────────────────────────────────────────────────────┘</pre>
 </div>
 </div>
-<div id="664fa11b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:36.977080Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:36.976926Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:36.980866Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:36.980166Z&quot;}}" data-execution_count="7">
+<div id="21cf7906" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:31.486742Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:31.486593Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:31.490647Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:31.489843Z&quot;}}" data-execution_count="7">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>score_group <span class="op">=</span> TimelineGroup(</span>
 <span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span><span class="op">=</span><span class="st">"score"</span>,</span>
 <span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="st">"ABC Score"</span>,</span>
@@ -624,12 +618,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div class="cell-output cell-output-display" data-execution_count="7">
 <pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">TimelineGroup[score] (1 timelines)
 ┌────────────────────────────────────────────────────────────────────┐
-│ ContinuousLogicalTimeline[clt_1] (1601 events)                     │
+│ ContinuousLogicalTimeline[clt_1]                                   │
 │                       0 ____________________________ 1116 quarters │
 └────────────────────────────────────────────────────────────────────┘</pre>
 </div>
 </div>
-<div id="dbc74e06" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:36.982242Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:36.982074Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:37.161555Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:37.160921Z&quot;}}" data-execution_count="8">
+<div id="b7d6dca7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:31.492120Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:31.491963Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:31.570095Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:31.569379Z&quot;}}" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Create the bundle and add the match claims; the bundle gives them their ids</span></span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>bundle <span class="op">=</span> AlignmentBundle(name<span class="op">=</span><span class="st">"Beethoven Op.18/4 — Simple Alignment"</span>)</span>
 <span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>bundle.add_group(perf_group)</span>
@@ -638,24 +632,24 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>bundle</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="8">
-<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">AlignmentBundle[bundle_1]
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">AlignmentBundle[bundle_1n8cui0i3w05u]
 
   TimelineGroup[performance] (1 timelines)
   ┌────────────────────────────────────────────────────────────────────────────┐
-  │ ContinuousPhysicalTimeline[cpt_1] (7401 events)                            │
+  │ ContinuousPhysicalTimeline[cpt_1] (4026 events)                            │
   │                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 265.9 seconds │
   └────────────────────────────────────────────────────────────────────────────┘
 
   TimelineGroup[score] (1 timelines)
   ┌────────────────────────────────────────────────────────────────────────────┐
-  │ ContinuousLogicalTimeline[clt_1] (1601 events)                             │
+  │ ContinuousLogicalTimeline[clt_1]                                           │
   │                       0 ____________________________________ 1116 quarters │
   └────────────────────────────────────────────────────────────────────────────┘
 
   MatchClaims: 3741</pre>
 </div>
 </div>
-<div id="cabfd39f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:37.163382Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:37.163207Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:37.166970Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:37.166258Z&quot;}}" data-execution_count="9">
+<div id="5c24b797" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:31.571572Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:31.571429Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:31.574595Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:31.574052Z&quot;}}" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Display an example MatchClaim (shows event IDs, timelines, coordinates)</span></span>
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>match_result.match_claims[<span class="dv">0</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="9">
@@ -669,7 +663,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="even" style="color: #555; font-size: 0.9em;">
 <td>Event A</td>
-<td colspan="2">projection_1</td>
+<td colspan="2">CHUNK</td>
 </tr>
 <tr class="odd">
 <td>Timeline B</td>
@@ -678,7 +672,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="even" style="color: #555; font-size: 0.9em;">
 <td>Event B</td>
-<td colspan="2">projection_1</td>
+<td colspan="2">CHUNK</td>
 </tr>
 <tr class="odd" style="color: #666;">
 <td>Provenance</td>
@@ -693,7 +687,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="query-coordinates-via-matchstamp" class="level2">
 <h2 class="anchored" data-anchor-id="query-coordinates-via-matchstamp">5. Query Coordinates via MatchStamp</h2>
 <p>The <code>get_matchstamp_at()</code> method is the primary interface for cross-group coordinate transfer. Given a coordinate on one timeline, it returns the corresponding coordinates on all connected timelines.</p>
-<div id="8b9582b7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:37.168901Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:37.168732Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:37.251164Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:37.250572Z&quot;}}" data-execution_count="10">
+<div id="37672e12" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:31.575997Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:31.575856Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:31.647609Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:31.647078Z&quot;}}" data-execution_count="10">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Query from the score side: quarterbeat 78 (a matched note onset)</span></span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>stamp <span class="op">=</span> bundle.get_matchstamp_at(<span class="fl">78.0</span>, <span class="st">"clt_1"</span>)</span>
 <span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>stamp</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -723,7 +717,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>stamp.get_coordinate_for(&lt;tl_id&gt;)</code>, <code>stamp.get_coordinates_for(&lt;tl_ids&gt;)</code>, <code>stamp.get_unit(&lt;unit&gt;)</code>, <code>stamp.get_conversion_for(&lt;key&gt;)</code></div></div>
 </div>
 </div>
-<div id="93cab750" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:37.252798Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:37.252619Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:37.256412Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:37.255761Z&quot;}}" data-execution_count="11">
+<div id="0d64e7ea" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:31.649381Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:31.649234Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:31.652411Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:31.651944Z&quot;}}" data-execution_count="11">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="co"># The stamp shows coordinates on both timelines</span></span>
 <span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"score_qb"</span>: stamp.get_coordinate(<span class="st">"clt_1"</span>),</span>
@@ -737,7 +731,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="reverse-lookup-performance-to-score" class="level3">
 <h3 class="anchored" data-anchor-id="reverse-lookup-performance-to-score">Reverse lookup: performance to score</h3>
 <p>We can also query from the performance side. The claims store performance coordinates in seconds (native EEP format).</p>
-<div id="92a22be0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:37.258113Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:37.257920Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:37.270082Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:37.269460Z&quot;}}" data-execution_count="12">
+<div id="2c2dd78d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:31.654001Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:31.653864Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:31.664752Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:31.664106Z&quot;}}" data-execution_count="12">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Find the score position for a performance coordinate (~100 seconds)</span></span>
 <span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Using 100.3583 which is an exact matched coordinate</span></span>
 <span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>stamp_rev <span class="op">=</span> bundle.get_matchstamp_at(<span class="fl">100.3583</span>, <span class="st">"cpt_1"</span>)</span>
@@ -757,7 +751,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="create-matchlines">6. Create MatchLines</h2>
 <p>A <button class="glossary" title="An ordered sequence of AlignmentAnchors derived from MatchClaims, sorted by coordinate on a source timeline; input for WarpMap generation.">MatchLine</button> is an ordered sequence of coordinate pairs for a given source timeline. It is the input for WarpMap generation.</p>
 <p>The <strong>direction matters</strong>: the source timeline determines the ordering.</p>
-<div id="78f755a0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:37.271965Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:37.271785Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:37.611173Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:37.610448Z&quot;}}" data-execution_count="13">
+<div id="d05abd26" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:31.666238Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:31.666095Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:31.953794Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:31.953313Z&quot;}}" data-execution_count="13">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Performance-to-score: source is performance, sorted by performance time</span></span>
 <span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>perf_to_score <span class="op">=</span> MatchLine.from_claims(</span>
 <span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>    match_result.match_claims,</span>
@@ -768,7 +762,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <pre><code>MatchLine(source='cpt_1', stamps=1473, targets=[clt_1])</code></pre>
 </div>
 </div>
-<div id="9409a176" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:37.612640Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:37.612494Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:37.950552Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:37.949913Z&quot;}}" data-execution_count="14">
+<div id="30ca157d" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:31.955454Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:31.955300Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:32.358538Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:32.357751Z&quot;}}" data-execution_count="14">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Score-to-performance: source is score, sorted by score position</span></span>
 <span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>score_to_perf <span class="op">=</span> MatchLine.from_claims(</span>
 <span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    match_result.match_claims,</span>
@@ -785,7 +779,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li><code>score_to_perf</code>: Use when you have a score coordinate and want to find the corresponding performance time. Sorted by score position.</li>
 </ul>
 <p>Both contain the same number of stamps (one per matched note), but the ordering and lookup direction differ.</p>
-<div id="f66ecadc" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:37.952530Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:37.952365Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:37.967145Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:37.966549Z&quot;}}" data-execution_count="15">
+<div id="ee8789ac" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:32.360048Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:32.359898Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:32.372539Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:32.371842Z&quot;}}" data-execution_count="15">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Extract typed anchors — each carries both timeline IDs and both coordinates</span></span>
 <span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>anchors <span class="op">=</span> score_to_perf.get_alignment_anchors(<span class="st">"cpt_1"</span>)</span>
 <span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -805,7 +799,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="export-to-.match-format">7. Export to .match Format</h2>
 <p>A <button class="glossary" title="An ordered sequence of AlignmentAnchors derived from MatchClaims, sorted by coordinate on a source timeline; input for WarpMap generation.">MatchLine</button> can be exported to the Vienna <code>.match</code> file format using <code>save_as()</code>. The <code>.match</code> format is the standard interchange format for note-level alignments in MIR.</p>
 <p>To produce a rich <code>.match</code> file (with real pitch, duration, and staff data rather than placeholders), supply a <code>MatchFileContext</code> built from the same DataFrames used for matching.</p>
-<div id="ab12fd07" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:37.968819Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:37.968665Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:38.539225Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:38.538428Z&quot;}}" data-execution_count="16">
+<div id="db91045f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:32.373867Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:32.373726Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:32.909636Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:32.908852Z&quot;}}" data-execution_count="16">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>ctx <span class="op">=</span> MatchFileContext.from_dataframes(</span>
 <span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>    score_df<span class="op">=</span>abc_prepared,</span>
 <span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    perf_df<span class="op">=</span>eep_prepared,</span>
@@ -845,7 +839,7 @@ snote(n16,[C,n],5,2:1,5/8,1/2,3.5000,4.0000,[staff1])-note(n1489,72,1695,1799,64
 <section id="conversion-maps-in-matchstamp-display" class="level2">
 <h2 class="anchored" data-anchor-id="conversion-maps-in-matchstamp-display">8. Conversion Maps in MatchStamp Display</h2>
 <p>A conversion map can be added to any timeline at any time; loaders attach their own. Either way, <code>get_matchstamp_at()</code> leaves them out of the <button class="glossary" title="The union of TimeStamps from groups synchronously connected by a MatchGraph. Contains one coordinate per participating timeline. C-map conversion values are opt-in here: every matchstamp getter defaults to conversion_maps=False, unlike the TimeStamp getters, where conversions are shown by default — across a large bundle they would bury the alignment answer. MatchStamp implements the shared Stamp interface: get_coordinate_for(timeline_id) returns an IdCoordinate by default and a plain number under format=“float”/“int”/“fraction”, get_unit() converts through a C-map, get_conversion_for() reads label and structured map values, present_timelines lists available timelines, and is_interpolated identifies interpolation fallback. within= on a MatchStamp getter (and on MatchStamp.filter_by_timelines()) always keeps the queried timeline and selects among the others; on get_matchstamp_table() and a group’s get_timestamp_table() it selects the table’s columns; the MatchClaims the stamp is read from are chosen by the belief filter (believer=, beliefs=), and a stamp counts apart the timeline pairs a MatchClaim’s anchor links and those an inferred edge links (n_stated_pairs, n_inferred_pairs).">MatchStamp</button> by default — <code>conversion_maps</code> is opt-in.</p>
-<div id="b249340e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:38.540916Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:38.540753Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:38.543881Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:38.543108Z&quot;}}" data-execution_count="17">
+<div id="6eed6b9b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:32.911144Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:32.910992Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:32.913882Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:32.913283Z&quot;}}" data-execution_count="17">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Add a conversion map to the performance timeline.</span></span>
 <span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.maps <span class="im">import</span> ScalarMap</span>
 <span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a></span>
@@ -855,7 +849,7 @@ snote(n16,[C,n],5,2:1,5/8,1/2,3.5000,4.0000,[staff1])-note(n1489,72,1695,1799,64
 <span id="cb28-7"><a href="#cb28-7" aria-hidden="true" tabindex="-1"></a>    )</span>
 <span id="cb28-8"><a href="#cb28-8" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
-<div id="969140dd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:38.545629Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:38.545399Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:38.557829Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:38.557192Z&quot;}}" data-execution_count="18">
+<div id="c6119ead" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:32.915313Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:32.915169Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:32.925451Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:32.924862Z&quot;}}" data-execution_count="18">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Default: conversion_maps=False, so none of the enabled maps show up.</span></span>
 <span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>bundle.get_matchstamp_at(<span class="fl">78.0</span>, <span class="st">"clt_1"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="18">
@@ -884,7 +878,7 @@ snote(n16,[C,n],5,2:1,5/8,1/2,3.5000,4.0000,[staff1])-note(n1489,72,1695,1799,64
 <div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>stamp.get_coordinate_for(&lt;tl_id&gt;)</code>, <code>stamp.get_coordinates_for(&lt;tl_ids&gt;)</code>, <code>stamp.get_unit(&lt;unit&gt;)</code>, <code>stamp.get_conversion_for(&lt;key&gt;)</code></div></div>
 </div>
 </div>
-<div id="9578abf3" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:38.559424Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:38.559259Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:38.571011Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:38.570253Z&quot;}}" data-execution_count="19">
+<div id="63558c15" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:32.926993Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:32.926850Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:32.937584Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:32.936991Z&quot;}}" data-execution_count="19">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="co"># conversion_maps=True adds the enabled maps, each evaluated at its own</span></span>
 <span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a><span class="co"># timeline's coordinate: milliseconds from the map just added. The</span></span>
 <span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a><span class="co"># played-through score was built by hand and holds no conversion map.</span></span>
@@ -921,10 +915,10 @@ snote(n16,[C,n],5,2:1,5/8,1/2,3.5000,4.0000,[staff1])-note(n1489,72,1695,1799,64
 </div>
 </div>
 <p>The same flag adds a derived column to <code>get_matchstamp_table()</code> — one column per (timeline, enabled numeric-unit map), after the timeline columns. A label-valued map would still show in the stamp display above but never as a table column.</p>
-<div id="23e6e058" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T07:56:38.572545Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T07:56:38.572372Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T07:56:38.584352Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T07:56:38.583693Z&quot;}}" data-execution_count="20">
+<div id="dc073220" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-26T09:05:32.938943Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-26T09:05:32.938804Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-26T09:05:32.949664Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-26T09:05:32.949103Z&quot;}}" data-execution_count="20">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb31"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a>bundle.get_matchstamp_table([<span class="fl">78.0</span>], <span class="st">"clt_1"</span>, conversion_maps<span class="op">=</span><span class="va">True</span>).column_names</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="20">
-<pre><code>['clt_1', 'cpt_1', 'milliseconds']</code></pre>
+<pre><code>['cpt_1', 'milliseconds', 'clt_1']</code></pre>
 </div>
 </div>
 </section>

@@ -77,7 +77,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -302,6 +302,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/CHUNK.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CHUNK</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ClaimFilter</span></a>
   </div>
@@ -482,6 +488,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/EventRegistry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventRegistry</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventStore</span></a>
   </div>
@@ -490,6 +502,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Extraction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Extraction</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -848,6 +866,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/NOMATCH.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NOMATCH</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/Note.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Note</span></a>
   </div>
@@ -880,6 +904,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/OutputNumberTypeError.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">OutputNumberTypeError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Package.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Package</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1040,6 +1070,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/resolve.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">resolve</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/resolve_coordinate_spec.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">resolve_coordinate_spec</span></a>
   </div>
@@ -1066,12 +1102,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ScalarMap</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">ScopedId</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1838,7 +1868,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    locked<span class="op">=</span><span class="va">False</span>,</span>
 <span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    meta<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>A positive coordinate axis with events and nested child timelines.</p>
 <p>A Timeline represents a temporal dimension in one of three domains (Logical, Physical, Graphical) with either continuous or discrete coordinates. It stores events in an EventData and can contain nested child timelines (segments) at specified offsets.</p>
 <p><strong>Intended usage:</strong> This base class provides the full Timeline API but does not enforce domain or modality constraints. For typical usage, prefer one of the six concrete subclasses or the <code>create_timeline()</code> factory function:</p>
@@ -2544,13 +2576,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    use_conversion_map<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
 <span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    locked<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Embed a child timeline at the specified offset.</p>
 <p>The child timeline is locked once added unless <code>locked=False</code>, which leaves its own state as it is. An unlocked child may change its length, but only within this timeline’s known end: this timeline never grows because a child grew. A segment of a segment line is never locked: the line’s lock governs it, and the segment’s own lock is lifted when it joins. A segment line is locked like any child, whether it becomes a child or a segment; unlocking it is not supported yet, so <code>locked=False</code> is refused for a segment line that is unlocked, and accepted (asking for nothing) for one already locked. Parent-child coordinate conversion uses exact offset arithmetic.</p>
-<p>The child’s whole subtree joins this timeline’s manifest, in which every id is unique across all element kinds: an element of the subtree whose minted id is already held here receives a freshly minted one, and an element whose given id is already held here makes the call raise without changing anything.</p>
+<p>The child’s whole subtree joins this timeline’s manifest, in which every id is unique across all element kinds: an element of the subtree whose id, given or minted, is already held here makes the call raise without changing anything. Nothing is renamed.</p>
 <p>A timeline can accommodate events and other timelines, called Children, as long as they use the same measuring unit.</p>
 <p>When the child uses a different unit than the parent, set <code>use_conversion_map</code> to automatically convert the child to the parent’s unit via a C-Map. The parent must have a C-Map whose <code>target_unit</code> matches the child’s unit, so that inverting it yields the <code>child_unit -&gt; parent_unit</code> conversion. The child’s events are copied with converted coordinates; the original child is NOT modified.</p>
-<p>The converted child is named <code>"{child.name} [{parent.unit}]"</code> and receives a minted id.</p>
+<p>The converted child is named <code>"{child.name} [{parent.unit}]"</code> and receives a minted id: from <code>IdMinter(seed)</code> with <em>seed</em>, else from the content minter of the source’s id and the parent’s unit.</p>
 <section id="parameters-2" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-2">Parameters</h4>
 <table class="caption-top table">
@@ -2593,6 +2626,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>Whether to lock the child. <code>None</code> (the default) locks every child but a plain segment, which is never locked. <code>False</code> keeps the child’s own state: an unlocked child stays unlocked, a locked one stays locked; it is refused for an unlocked segment line.</td>
 <td><code>None</code></td>
 </tr>
+<tr class="even">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of the minter of a converted child’s id; not stored.</td>
+<td><code>None</code></td>
+</tr>
 </tbody>
 </table>
 </section>
@@ -2602,7 +2641,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <colgroup>
 <col style="width: 0%">
 <col style="width: 3%">
-<col style="width: 96%">
+<col style="width: 95%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -2620,7 +2659,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="even">
 <td></td>
 <td><code>ValueError</code></td>
-<td>If units don’t match (and no conversion map given), the offset is negative (not supported yet), the child is already a child of this timeline, <code>locked=True</code> asks to lock a plain segment, <code>locked=False</code> asks to leave a segment line unlocked, an id given in the child’s subtree is already held in this manifest, a Jump of the child’s subtree that is not rejected lies at a position of the root’s axis where one of this timeline’s tree lies (one Jump lies at a position of a root’s axis), or this timeline is locked and the child would end beyond its length without <code>allow_expansion</code>. An unlocked timeline expands to fit the child instead, provided its own parent contains its new end. A child of unknown length has no end, so only its offset must fit; a parent of unknown length has no end to exceed, unless it is a segment, which ends at its successor’s offset.</td>
+<td>If units don’t match (and no conversion map given), the offset is negative (not supported yet), the child is already a child of this timeline, <code>locked=True</code> asks to lock a plain segment, <code>locked=False</code> asks to leave a segment line unlocked, an id of the child’s subtree is already held in this manifest, a Jump of the child’s subtree that is not rejected lies at a position of the root’s axis where one of this timeline’s tree lies (one Jump lies at a position of a root’s axis), or this timeline is locked and the child would end beyond its length without <code>allow_expansion</code>. An unlocked timeline expands to fit the child instead, provided its own parent contains its new end. A child of unknown length has no end, so only its offset must fit; a parent of unknown length has no end to exceed, unless it is a segment, which ends at its successor’s offset.</td>
 </tr>
 </tbody>
 </table>
@@ -2687,11 +2726,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="timetoalign.timelines.Timeline.add_events" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.timelines.Timeline.add_events">add_events</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.add_events(rows, allow_expansion<span class="op">=</span><span class="va">False</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.add_events(rows, allow_expansion<span class="op">=</span><span class="va">False</span>, <span class="op">*</span>, seed<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Add events to the timeline.</p>
 <p>Only <code>event_type</code> and a coordinate are strictly required per dict. Missing fields are filled in automatically:</p>
 <ul>
-<li><strong>id</strong>: minted above every ID held on this timeline, its prefix the event type in lower case: <code>note_1</code>, <code>beat_1</code>, <code>projection_1</code>. An ID once given on the timeline is never given again.</li>
+<li><strong>id</strong>: minted (:func:<code>~timetoalign.storage.events.mint_event_ids</code>), its prefix the event type in lower case: <code>note_…</code>, <code>beat_…</code>, <code>projection_…</code>; from <code>IdMinter(seed)</code> when <em>seed</em> is given, else from the content minter of the timeline’s ID, the number of events it holds and the event types of the rows without an ID.</li>
 <li><strong>temporal_type</strong>: inferred from keys – <code>"interval"</code> when both <code>start</code> and <code>end</code> (or <code>duration</code>) are present, <code>"instant"</code> otherwise.</li>
 </ul>
 <p>Positions are stored on this timeline’s axis. A <code>start</code>, <code>end</code> or <code>instant</code> given as a :class:<code>~timetoalign.core.Coordinate</code> in another unit is converted through the timeline’s C-Map; a <code>duration</code> given as a :class:<code>~timetoalign.core.Duration</code> (or <code>Coordinate</code>) in another unit is the span from the start it is added to, converted as the two ends of that span are, so its start must be given in the same unit. Each converted value is written in the timeline’s number type. Bare numbers and struct dicts are taken as on this timeline’s axis.</p>
@@ -2727,6 +2766,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><code>bool</code></td>
 <td>If True, expand timeline if events exceed length.</td>
 <td><code>False</code></td>
+</tr>
+<tr class="odd">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of the minter of the missing IDs.</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -2774,7 +2819,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td></td>
 <td><code>ValueError</code></td>
-<td>If an ID is already held by an event of this timeline or given twice, a Projection row holds a key a Projection does not have or names an event of this timeline, a Box’s shape is off the timeline’s axis (or its row’s <code>unit</code>, <code>number_type</code> or <code>timeline_id</code> names another), a number of its shape is one the axis cannot hold exactly, or its start contradicts its shape, a position cannot be converted, or the events exceed the length and expansion is not allowed. Nothing is added then.</td>
+<td>If an ID, given or minted, is already held by an event of this timeline or given twice, a Projection row holds a key a Projection does not have or names an event of this timeline, a Box’s shape is off the timeline’s axis (or its row’s <code>unit</code>, <code>number_type</code> or <code>timeline_id</code> names another), a number of its shape is one the axis cannot hold exactly, or its start contradicts its shape, a position cannot be converted, or the events exceed the length and expansion is not allowed. Nothing is added then.</td>
 </tr>
 </tbody>
 </table>
@@ -2786,8 +2831,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> tl.add_events([</span>
 <span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>...     {<span class="st">"event_type"</span>: <span class="st">"Beat"</span>, <span class="st">"instant"</span>: <span class="fl">0.0</span>},</span>
 <span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>...     {<span class="st">"event_type"</span>: <span class="st">"Note"</span>, <span class="st">"start"</span>: <span class="fl">0.0</span>, <span class="st">"end"</span>: <span class="fl">0.5</span>},</span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>... ])</span>
-<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>[<span class="st">'beat_1'</span>, <span class="st">'note_1'</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>... ], seed<span class="op">=</span><span class="dv">0</span>)</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>[<span class="st">'beat_1be6k8ij6dzad'</span>, <span class="st">'note_3cccv6pc7fclm'</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 </section>
 <section id="timetoalign.timelines.Timeline.add_external_references" class="level3">
@@ -2904,7 +2949,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="timetoalign.timelines.Timeline.add_flow_map">add_flow_map</h3>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.add_flow_map(flow_map)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Attach a FlowMap to this root timeline.</p>
-<p>The FlowMap is read against the timeline first (:meth:<code>FlowMap.resolve &lt;timetoalign.timelines.flow.FlowMap.resolve&gt;</code>), so one that names nothing of the tree never joins. Its gaps are kept in the timeline’s number type. Its ID must be unique in the timeline’s manifest: a minted ID already held there is minted again, a given one raises.</p>
+<p>The FlowMap is read against the timeline first (:meth:<code>FlowMap.resolve &lt;timetoalign.timelines.flow.FlowMap.resolve&gt;</code>), so one that names nothing of the tree never joins. Its gaps are kept in the timeline’s number type. Its ID must be unique in the timeline’s manifest.</p>
 <section id="parameters-6" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-6">Parameters</h4>
 <table class="caption-top table">
@@ -2956,7 +3001,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="even">
 <td></td>
 <td>'FlowMap'</td>
-<td>the timeline’s number type or under the newly minted ID.</td>
+<td>the timeline’s number type.</td>
 </tr>
 </tbody>
 </table>
@@ -2966,8 +3011,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <table class="caption-top table">
 <colgroup>
 <col style="width: 3%">
-<col style="width: 10%">
-<col style="width: 86%">
+<col style="width: 11%">
+<col style="width: 85%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -2980,7 +3025,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td></td>
 <td><code>ValueError</code></td>
-<td>If this timeline is a child, the FlowMap names another timeline or cannot be read against this one, the timeline already holds a canonical FlowMap and this is a second one, or its given ID is already held in the manifest.</td>
+<td>If this timeline is a child, the FlowMap names another timeline or cannot be read against this one, the timeline already holds a canonical FlowMap and this is a second one, or its ID is already held in the manifest.</td>
 </tr>
 </tbody>
 </table>
@@ -3179,9 +3224,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="timetoalign.timelines.Timeline.add_projections" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.timelines.Timeline.add_projections">add_projections</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.add_projections(projections, allow_expansion<span class="op">=</span><span class="va">False</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.add_projections(</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    projections,</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    allow_expansion<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Add Projections to the timeline, reusing those it already holds.</p>
-<p>Get-or-add: each Projection is placed on the timeline’s axis as :meth:<code>add_events</code> places it, and the timeline keeps one Projection per thing it stands for. A Projection without an <code>id</code> reuses the Projection the timeline holds with the same <code>projection_of</code> (the same event of another timeline, or none) at the same exact <code>start</code> and <code>duration</code>; a Projection with an <code>id</code> reuses the one held under that id when its content is equal. Rows of one call are taken alike, so two rows standing for one thing give one Projection. Everything else is added, its id kept or minted (<code>projection_N</code>).</p>
+<p>Get-or-add: each Projection is placed on the timeline’s axis as :meth:<code>add_events</code> places it, and the timeline keeps one Projection per thing it stands for. A Projection without an <code>id</code> reuses the Projection the timeline holds with the same <code>projection_of</code> (the same event of another timeline, or none) at the same exact <code>start</code> and <code>duration</code>; a Projection with an <code>id</code> reuses the one held under that id when its content is equal. Rows of one call are taken alike, so two rows standing for one thing give one Projection. Everything else is added, its id kept or minted (<code>projection_…</code>, by :meth:<code>add_events</code>).</p>
 <section id="parameters-9" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-9">Parameters</h4>
 <table class="caption-top table">
@@ -3205,6 +3255,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><code>bool</code></td>
 <td>If True, expand the timeline if a Projection added exceeds its length.</td>
 <td><code>False</code></td>
+</tr>
+<tr class="odd">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of the minter of the missing IDs, as :meth:<code>add_events</code> takes it.</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -3264,17 +3320,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> tl <span class="op">=</span> ContinuousPhysicalTimeline(length<span class="op">=</span><span class="fl">10.0</span>)</span>
 <span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> n1 <span class="op">=</span> EventReference(timeline_id<span class="op">=</span><span class="st">"score"</span>, event_id<span class="op">=</span><span class="st">"n1"</span>)</span>
 <span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> at <span class="op">=</span> Coordinate(<span class="fl">2.5</span>, <span class="st">"seconds"</span>)</span>
-<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> tl.add_projections([Projection(start<span class="op">=</span>at, projection_of<span class="op">=</span>n1)] <span class="op">*</span> <span class="dv">2</span>)</span>
-<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>[<span class="st">'projection_1'</span>, <span class="st">'projection_1'</span>]</span>
+<span id="cb18-6"><a href="#cb18-6" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> tl.add_projections([Projection(start<span class="op">=</span>at, projection_of<span class="op">=</span>n1)] <span class="op">*</span> <span class="dv">2</span>, seed<span class="op">=</span><span class="dv">0</span>)</span>
+<span id="cb18-7"><a href="#cb18-7" aria-hidden="true" tabindex="-1"></a>[<span class="st">'projection_1be6k8ij6dzad'</span>, <span class="st">'projection_1be6k8ij6dzad'</span>]</span>
 <span id="cb18-8"><a href="#cb18-8" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> tl.add_projections(Projection(start<span class="op">=</span>at, projection_of<span class="op">=</span>n1))</span>
-<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>[<span class="st">'projection_1'</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb18-9"><a href="#cb18-9" aria-hidden="true" tabindex="-1"></a>[<span class="st">'projection_1be6k8ij6dzad'</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 </section>
 <section id="timetoalign.timelines.Timeline.add_region" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.timelines.Timeline.add_region">add_region</h3>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.add_region(region)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Attach a pre-existing Region object to this timeline.</p>
-<p>The region’s id must be unique in this timeline’s manifest: a minted id already held there is replaced by a freshly minted one, a given one raises.</p>
+<p>The region’s id must be unique in this timeline’s manifest.</p>
 <section id="parameters-10" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-10">Parameters</h4>
 <table class="caption-top table">
@@ -3310,12 +3366,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td></td>
 <td><a href="../reference/Region.html#timetoalign.timelines.Region">Region</a></td>
-<td>The stored Region: <em>region</em> itself, or a copy under the newly</td>
-</tr>
-<tr class="even">
-<td></td>
-<td><a href="../reference/Region.html#timetoalign.timelines.Region">Region</a></td>
-<td>minted id.</td>
+<td>The stored Region, <em>region</em> itself.</td>
 </tr>
 </tbody>
 </table>
@@ -3325,8 +3376,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <table class="caption-top table">
 <colgroup>
 <col style="width: 5%">
-<col style="width: 19%">
-<col style="width: 75%">
+<col style="width: 20%">
+<col style="width: 73%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -3339,7 +3390,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td></td>
 <td><code>ValueError</code></td>
-<td>If the region’s unit does not match the timeline’s unit, or its given id is already held in this manifest.</td>
+<td>If the region’s unit does not match the timeline’s unit, or its id is already held in this manifest.</td>
 </tr>
 </tbody>
 </table>
@@ -3561,7 +3612,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="timetoalign.timelines.Timeline.add_virtual_timeline">add_virtual_timeline</h3>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.add_virtual_timeline(virtual)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Attach a virtual timeline to this root timeline.</p>
-<p>The statement must be true of this timeline: it applies a FlowMap the timeline holds to the timeline itself, and states the length, unit and number type the FlowMap gives. Its ID must be unique in the timeline’s manifest: a minted ID already held there is minted again, a given one raises.</p>
+<p>The statement must be true of this timeline: it applies a FlowMap the timeline holds to the timeline itself, and states the length, unit and number type the FlowMap gives. Its ID must be unique in the timeline’s manifest.</p>
 <section id="parameters-13" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-13">Parameters</h4>
 <table class="caption-top table">
@@ -3593,9 +3644,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns-7">Returns</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 8%">
-<col style="width: 22%">
-<col style="width: 68%">
+<col style="width: 10%">
+<col style="width: 27%">
+<col style="width: 62%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -3608,12 +3659,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td></td>
 <td>'VirtualTimeline'</td>
-<td>The stored virtual timeline: <em>virtual</em> itself, or a copy under</td>
-</tr>
-<tr class="even">
-<td></td>
-<td>'VirtualTimeline'</td>
-<td>the newly minted ID.</td>
+<td>The stored virtual timeline, <em>virtual</em> itself.</td>
 </tr>
 </tbody>
 </table>
@@ -3637,7 +3683,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td></td>
 <td><code>ValueError</code></td>
-<td>If this timeline is a child, the statement cannot be read against it (:meth:<code>VirtualTimeline.resolve &lt;timetoalign.timelines.flow.VirtualTimeline.resolve&gt;</code>) or states another length than its FlowMap gives, or its given ID is already held in the manifest.</td>
+<td>If this timeline is a child, the statement cannot be read against it (:meth:<code>VirtualTimeline.resolve &lt;timetoalign.timelines.flow.VirtualTimeline.resolve&gt;</code>) or states another length than its FlowMap gives, or its ID is already held in the manifest.</td>
 </tr>
 </tbody>
 </table>
@@ -3647,7 +3693,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="timetoalign.timelines.Timeline.append_child">append_child</h3>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.append_child(child, <span class="op">*</span>, name<span class="op">=</span><span class="va">None</span>, uid<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Append a child timeline at the current end of this timeline.</p>
-<p>The child is placed at <code>offset = self.length</code> (a segment line appends after its last segment), so successive calls stack children end-to-end and expand this timeline. Because the child is a fresh, unlocked timeline, its identity may be set here: <em>uid</em> becomes the child’s ID (the key under which it is stored and retrieved) and <em>name</em> its human-readable name — both applied before :meth:<code>add_child</code> embeds it (locking it unless it is a plain segment of a segment line).</p>
+<p>The child is placed at <code>offset = self.length</code> (a segment line appends after its last segment), so successive calls stack children end-to-end and expand this timeline. Because the child is a fresh, unlocked timeline, its identity may be set here: <em>uid</em> becomes the child’s ID (the key under which it is stored and retrieved) and <em>name</em> its human-readable name — both applied before :meth:<code>add_child</code> embeds it (locking it unless it is a plain segment of a segment line). A child :meth:<code>add_child</code> refuses keeps the id and name it had.</p>
 <section id="parameters-14" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-14">Parameters</h4>
 <table class="caption-top table">
@@ -3849,7 +3895,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>    law<span class="op">=</span>LinearMap,</span>
 <span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a>    uid<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb29-11"><a href="#cb29-11" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Create a child over a calibrated segment, with the map it reads.</p>
 <p>A segment of this timeline is calibrated by pairs of a position and the value read there in another unit, such as the labelled ticks of a drawn axis. The child starts at <em>offset</em>, and <em>law</em> builds the conversion map from the child’s unit to the values’ unit through the pairs, reading each position from <em>offset</em> in this timeline’s own arithmetic (see :meth:<code>~timetoalign.maps.ConversionMap.from_pairs</code>). The pairs are checked against the law on the positions as given, where their rounding happened. The map is built before the child, so a refusal leaves this timeline unchanged.</p>
 <section id="parameters-16" class="level4 doc-section doc-section-parameters">
@@ -3910,6 +3957,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td>name</td>
 <td><code>str</code> | None</td>
 <td>Human-readable name for the child.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of one minter of every id the call mints: the map’s, then the child’s when <em>uid</em> is None (:func:<code>~timetoalign.core.ids.minting_from</code>); not stored.</td>
 <td><code>None</code></td>
 </tr>
 </tbody>
@@ -3996,7 +4049,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb31-7"><a href="#cb31-7" aria-hidden="true" tabindex="-1"></a>    child_class<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb31-8"><a href="#cb31-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
 <span id="cb31-9"><a href="#cb31-9" aria-hidden="true" tabindex="-1"></a>    measures<span class="op">=</span><span class="va">False</span>,</span>
-<span id="cb31-10"><a href="#cb31-10" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb31-10"><a href="#cb31-10" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb31-11"><a href="#cb31-11" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Create and embed a child selected by this timeline’s spawn hook.</p>
 <p>By default, this is equivalent to:</p>
 <pre><code>child_type = parent._spawn_class()
@@ -4063,6 +4117,12 @@ parent.add_child(child, offset=offset)</code></pre>
 <td><code>bool</code></td>
 <td>Give the child the slice of this timeline’s measure map over its span.</td>
 <td><code>False</code></td>
+</tr>
+<tr class="even">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of the minter of the child’s id when <em>uid</em> is None; not stored.</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -4139,7 +4199,8 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>    copy_events<span class="op">=</span><span class="va">True</span>,</span>
 <span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>    uid<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a>    measures<span class="op">=</span><span class="va">False</span>,</span>
-<span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb34-8"><a href="#cb34-8" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Create a child timeline from a region (partitioning).</p>
 <p>The child’s length = region duration, offset = region start. The child’s class matches the parent’s concrete class, and its name is the region’s name. If copy_events, the events starting in [start, end) are copied whole with adjusted coordinates (the child grows to hold one running past the region’s end). Where this timeline holds Boxes, the child states the part of its area of an image (<code>meta["box"]</code>, <code>meta["image"]</code>) over the region, as :meth:<code>get_slice</code> states it, so a Box keeps its shape and its start moves with the child’s origin.</p>
 <p>A locked timeline gives a child from a region as an unlocked one does: the child lies inside the fixed length, which it leaves as it is. A region reaching past the end of a locked timeline gives no child, since the child would end past that end.</p>
@@ -4184,6 +4245,12 @@ parent.add_child(child, offset=offset)</code></pre>
 <td><code>bool</code></td>
 <td>Give the child the slice of this timeline’s measure map over the region, as :meth:<code>create_child</code> does.</td>
 <td><code>False</code></td>
+</tr>
+<tr class="odd">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of the minter of the child’s id when <em>uid</em> is None; not stored.</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -4243,8 +4310,8 @@ parent.add_child(child, offset=offset)</code></pre>
 </section>
 <section id="examples-9" class="level4 doc-section doc-section-examples">
 <h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-9">Examples</h4>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> tl.create_regions_by_splitting(<span class="st">"breaks"</span>, prefix<span class="op">=</span><span class="st">"movement"</span>)</span>
-<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> mov4 <span class="op">=</span> tl.create_child_from_region(<span class="st">"region_4"</span>)</span>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb35"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> movements <span class="op">=</span> tl.create_regions_by_splitting(<span class="st">"breaks"</span>, prefix<span class="op">=</span><span class="st">"movement"</span>)</span>
+<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> mov4 <span class="op">=</span> tl.create_child_from_region(movements[<span class="dv">3</span>].<span class="bu">id</span>)</span>
 <span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> mov4.name</span>
 <span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a><span class="co">'movement_4'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
@@ -4259,17 +4326,18 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a>    prefix<span class="op">=</span><span class="st">'section'</span>,</span>
 <span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>    allow_expansion<span class="op">=</span><span class="va">False</span>,</span>
 <span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a>    measures<span class="op">=</span><span class="va">False</span>,</span>
-<span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb36-10"><a href="#cb36-10" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Create children spanning consecutive boundary coordinates.</p>
 <p>Source events are not copied into the children.</p>
 <section id="parameters-19" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-19">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 7%">
-<col style="width: 40%">
-<col style="width: 44%">
-<col style="width: 7%">
+<col style="width: 4%">
+<col style="width: 26%">
+<col style="width: 63%">
+<col style="width: 5%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -4315,6 +4383,12 @@ parent.add_child(child, offset=offset)</code></pre>
 <td><code>bool</code></td>
 <td>Give each child the slice of this timeline’s measure map over its span, as :meth:<code>create_child</code> does.</td>
 <td><code>False</code></td>
+</tr>
+<tr class="odd">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of one minter of every id the call mints (the measure maps and views of each child, with <em>measures</em>), in boundary order (:func:<code>~timetoalign.core.ids.minting_from</code>). The children’s ids are their names. Not stored.</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -4386,7 +4460,8 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
 <span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a>    copy_events<span class="op">=</span><span class="va">True</span>,</span>
 <span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a>    measures<span class="op">=</span><span class="va">False</span>,</span>
-<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Create children from multiple regions (batch partitioning).</p>
 <p>Each region becomes a child. Regions may overlap — resulting children are independent.</p>
 <section id="parameters-20" class="level4 doc-section doc-section-parameters">
@@ -4424,6 +4499,12 @@ parent.add_child(child, offset=offset)</code></pre>
 <td><code>bool</code></td>
 <td>Give each child the slice of this timeline’s measure map over its region, as :meth:<code>create_child</code> does.</td>
 <td><code>False</code></td>
+</tr>
+<tr class="even">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of one minter of the children’s ids, minted in region order; None mints each from its content.</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -4503,7 +4584,8 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb40-6"><a href="#cb40-6" aria-hidden="true" tabindex="-1"></a>    canonical<span class="op">=</span><span class="va">False</span>,</span>
 <span id="cb40-7"><a href="#cb40-7" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb40-8"><a href="#cb40-8" aria-hidden="true" tabindex="-1"></a>    provenance<span class="op">=</span>(),</span>
-<span id="cb40-9"><a href="#cb40-9" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb40-9"><a href="#cb40-9" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb40-10"><a href="#cb40-10" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Create a FlowMap of this root timeline and attach it.</p>
 <section id="parameters-21" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-21">Parameters</h4>
@@ -4532,7 +4614,7 @@ parent.add_child(child, offset=offset)</code></pre>
 <tr class="even">
 <td>id</td>
 <td><code>str</code> | None</td>
-<td>The FlowMap’s ID, kept verbatim. When None, <code>flow_map_{N}</code> is minted, unique in this timeline’s manifest.</td>
+<td>The FlowMap’s ID, kept verbatim. When None, an ID with the prefix <code>flow</code> is minted (:class:<code>FlowMap &lt;timetoalign.timelines.flow.FlowMap&gt;</code>).</td>
 <td><code>None</code></td>
 </tr>
 <tr class="odd">
@@ -4558,6 +4640,12 @@ parent.add_child(child, offset=offset)</code></pre>
 <td><code>Sequence</code>[<code>Any</code>]</td>
 <td>How the FlowMap was made: provenance entries.</td>
 <td><code>()</code></td>
+</tr>
+<tr class="odd">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of the minter of the ID when <em>id</em> is None; not stored.</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -4606,9 +4694,9 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> score <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span><span class="dv">24</span>, uid<span class="op">=</span><span class="st">"score"</span>)</span>
 <span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> a <span class="op">=</span> score.create_region(<span class="dv">0</span>, <span class="dv">16</span>, <span class="bu">id</span><span class="op">=</span><span class="st">"a"</span>)</span>
 <span id="cb41-4"><a href="#cb41-4" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> b <span class="op">=</span> score.create_region(<span class="dv">16</span>, <span class="dv">24</span>, <span class="bu">id</span><span class="op">=</span><span class="st">"b"</span>)</span>
-<span id="cb41-5"><a href="#cb41-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> score.create_flow_map([a, a, <span class="st">"b"</span>], name<span class="op">=</span><span class="st">"with the repeat"</span>)</span>
-<span id="cb41-6"><a href="#cb41-6" aria-hidden="true" tabindex="-1"></a>FlowMap(<span class="st">'flow_map_1'</span>, timeline<span class="op">=</span><span class="st">'score'</span>, <span class="dv">3</span> chunks, name<span class="op">=</span><span class="st">'with the repeat'</span>)</span>
-<span id="cb41-7"><a href="#cb41-7" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> score.get_flow_map(<span class="st">"flow_map_1"</span>).resolve(score).length</span>
+<span id="cb41-5"><a href="#cb41-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> score.create_flow_map([a, a, <span class="st">"b"</span>], <span class="bu">id</span><span class="op">=</span><span class="st">"repeat"</span>, name<span class="op">=</span><span class="st">"with the repeat"</span>)</span>
+<span id="cb41-6"><a href="#cb41-6" aria-hidden="true" tabindex="-1"></a>FlowMap(<span class="st">'repeat'</span>, timeline<span class="op">=</span><span class="st">'score'</span>, <span class="dv">3</span> chunks, name<span class="op">=</span><span class="st">'with the repeat'</span>)</span>
+<span id="cb41-7"><a href="#cb41-7" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> score.get_flow_map(<span class="st">"repeat"</span>).resolve(score).length</span>
 <span id="cb41-8"><a href="#cb41-8" aria-hidden="true" tabindex="-1"></a>Coordinate(Fraction(<span class="dv">40</span>, <span class="dv">1</span>), quarters)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 </section>
@@ -4619,7 +4707,8 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
 <span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span><span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb42-7"><a href="#cb42-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Write an order of measures a source states as a FlowMap of this root.</p>
 <p>A source may state the order in which its measures are played itself: the successors of a measure table (:func:<code>~timetoalign.timelines.flow.measure_order_from_successors</code>), or an expansion a renderer wrote out. Each stretch of measures consecutive in the timeline’s measure map becomes a Region (one Region for a stretch played more than once), and the FlowMap lists them in the order stated. The FlowMap says by its provenance that the source states it (method <code>imported</code>) and follows no convention: it is no flow computed from flow control.</p>
 <p>The stated order is compared with the default flow of the timeline’s flow control (:meth:<code>get_flow</code>). Where they differ a warning is logged and the result says from where.</p>
@@ -4628,10 +4717,10 @@ parent.add_child(child, offset=offset)</code></pre>
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-22">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
+<col style="width: 3%">
+<col style="width: 26%">
+<col style="width: 64%">
 <col style="width: 5%">
-<col style="width: 37%">
-<col style="width: 48%">
-<col style="width: 8%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -4651,13 +4740,19 @@ parent.add_child(child, offset=offset)</code></pre>
 <tr class="even">
 <td>id</td>
 <td><code>str</code> | None</td>
-<td>The FlowMap’s ID, kept verbatim. When None, <code>flow_map_{N}</code> is minted.</td>
+<td>The FlowMap’s ID, kept verbatim. When None, an ID with the prefix <code>flow</code> is minted.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="odd">
 <td>name</td>
 <td><code>str</code> | None</td>
 <td>Optional display name of the FlowMap.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of one minter of the IDs of the Regions and, when <em>id</em> is None, the FlowMap, in that order; None mints each from its content.</td>
 <td><code>None</code></td>
 </tr>
 </tbody>
@@ -4710,6 +4805,11 @@ parent.add_child(child, offset=offset)</code></pre>
 </tr>
 <tr class="even">
 <td></td>
+<td><code>TypeError</code></td>
+<td>If the flow :meth:<code>get_flow</code> returns holds a gap, which a flow played from flow control never does. Nothing has changed then.</td>
+</tr>
+<tr class="odd">
+<td></td>
 <td><a href="../reference/UnknownLengthError.html#timetoalign.timelines.UnknownLengthError">UnknownLengthError</a></td>
 <td>If the length is unknown.</td>
 </tr>
@@ -4724,13 +4824,13 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> score <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span><span class="dv">12</span>, uid<span class="op">=</span><span class="st">"score"</span>)</span>
 <span id="cb43-5"><a href="#cb43-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> _ <span class="op">=</span> score.add_measure_map(MeasureMap.from_rows(</span>
 <span id="cb43-6"><a href="#cb43-6" aria-hidden="true" tabindex="-1"></a>...     [{<span class="st">"count"</span>: <span class="dv">1</span>, <span class="st">"time_signature"</span>: <span class="st">"4/4"</span>}, {<span class="st">"count"</span>: <span class="dv">2</span>}, {<span class="st">"count"</span>: <span class="dv">3</span>}]))</span>
-<span id="cb43-7"><a href="#cb43-7" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> _ <span class="op">=</span> score.flow_control.add(</span>
-<span id="cb43-8"><a href="#cb43-8" aria-hidden="true" tabindex="-1"></a>...     Jump(Coordinate(<span class="dv">8</span>, <span class="st">"quarters"</span>), [JumpDestination(repeat_count<span class="op">=</span><span class="dv">1</span>)]))</span>
-<span id="cb43-9"><a href="#cb43-9" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> stated <span class="op">=</span> score.create_flow_map_from_measure_order([<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>])</span>
+<span id="cb43-7"><a href="#cb43-7" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> _ <span class="op">=</span> score.flow_control.add(Jump(</span>
+<span id="cb43-8"><a href="#cb43-8" aria-hidden="true" tabindex="-1"></a>...     Coordinate(<span class="dv">8</span>, <span class="st">"quarters"</span>), [JumpDestination(repeat_count<span class="op">=</span><span class="dv">1</span>)], <span class="bu">id</span><span class="op">=</span><span class="st">"repeat"</span>))</span>
+<span id="cb43-9"><a href="#cb43-9" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> stated <span class="op">=</span> score.create_flow_map_from_measure_order([<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>], seed<span class="op">=</span><span class="dv">7</span>)</span>
 <span id="cb43-10"><a href="#cb43-10" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> [<span class="bu">str</span>(region.as_interval) <span class="cf">for</span> region <span class="kw">in</span> stated.regions]</span>
 <span id="cb43-11"><a href="#cb43-11" aria-hidden="true" tabindex="-1"></a>[<span class="st">'[0, 8) quarters'</span>, <span class="st">'[0, 12) quarters'</span>]</span>
 <span id="cb43-12"><a href="#cb43-12" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> stated.flow_map.chunks, stated.differs_at</span>
-<span id="cb43-13"><a href="#cb43-13" aria-hidden="true" tabindex="-1"></a>((<span class="st">'region_1'</span>, <span class="st">'region_2'</span>), <span class="va">None</span>)</span>
+<span id="cb43-13"><a href="#cb43-13" aria-hidden="true" tabindex="-1"></a>((<span class="st">'region_1hvif5xc2r1fv'</span>, <span class="st">'region_0g2wfq87pa7jx'</span>), <span class="va">None</span>)</span>
 <span id="cb43-14"><a href="#cb43-14" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> score.create_flow_map_from_measure_order([<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>]).differs_at</span>
 <span id="cb43-15"><a href="#cb43-15" aria-hidden="true" tabindex="-1"></a>Coordinate(Fraction(<span class="dv">8</span>, <span class="dv">1</span>), quarters)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
@@ -4742,7 +4842,8 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a>    beliefs<span class="op">=</span>DEFAULT_BELIEFS,</span>
 <span id="cb44-4"><a href="#cb44-4" aria-hidden="true" tabindex="-1"></a>    actor<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb44-5"><a href="#cb44-5" aria-hidden="true" tabindex="-1"></a>    date<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb44-6"><a href="#cb44-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb44-6"><a href="#cb44-6" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb44-7"><a href="#cb44-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Write this timeline’s atomic sections and its computed FlowMaps.</p>
 <p>The flow control of the timeline and of its descendants of its unit (:attr:<code>tree_flow_control &lt;timetoalign.timelines.Timeline.tree_flow_control&gt;</code>) is played on the timeline’s axis with the three conventions (:func:<code>~timetoalign.timelines.flow.engine.play</code>): a root plays its whole tree, a child its own subtree. The atomic sections (:func:<code>~timetoalign.timelines.flow.engine.atomic_sections</code>) become Regions of the timeline, each named by its letter and stating the type <code>tts:AtomicSection</code> with the provenance method <code>inferred</code>. The <code>default</code> flow becomes a FlowMap listing those Regions in the order played; <code>single</code> and <code>printed</code> become FlowMaps only where their chunks differ from <code>default</code>’s. Each FlowMap names its <code>convention</code> and the provenance method <code>inferred</code>.</p>
 <p>A FlowMap names a root timeline. On a root, the Regions are the root’s, also where its flow control lies only in descendants. On a child, the Regions are the child’s and the FlowMaps are stored on the root of its tree, listing the child’s Regions; a FlowMap written there anew is named after the child and its convention (<code>"Allegro, default"</code>). The computed FlowMaps of a timeline are those of its root that list its Regions only, so the flows of several children of one root stand side by side, and a virtual timeline applying one to the root takes its new length when it is written again.</p>
@@ -4793,6 +4894,12 @@ parent.add_child(child, offset=offset)</code></pre>
 <td>date</td>
 <td><code>str</code> | <code>datetime</code>.<code>date</code> | None</td>
 <td>The day of that belief, <code>YYYY-MM-DD</code> or a :class:<code>datetime.date</code>; today when None.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of one minter of the IDs of the Regions and FlowMaps written anew, in that order; None mints each from its content.</td>
 <td><code>None</code></td>
 </tr>
 </tbody>
@@ -4873,36 +4980,44 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="im">from</span> timetoalign.timelines.flowcontrol <span class="im">import</span> (</span>
 <span id="cb45-4"><a href="#cb45-4" aria-hidden="true" tabindex="-1"></a>...     Jump, JumpDestination, JumpTarget)</span>
 <span id="cb45-5"><a href="#cb45-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> score <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span><span class="dv">12</span>, uid<span class="op">=</span><span class="st">"score"</span>)</span>
-<span id="cb45-6"><a href="#cb45-6" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> _ <span class="op">=</span> score.flow_control.add(</span>
-<span id="cb45-7"><a href="#cb45-7" aria-hidden="true" tabindex="-1"></a>...     Jump(Coordinate(<span class="dv">8</span>, <span class="st">"quarters"</span>), [JumpDestination(repeat_count<span class="op">=</span><span class="dv">1</span>)]))</span>
-<span id="cb45-8"><a href="#cb45-8" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> written <span class="op">=</span> score.create_flow_maps_from_flow_control()</span>
+<span id="cb45-6"><a href="#cb45-6" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> _ <span class="op">=</span> score.flow_control.add(Jump(</span>
+<span id="cb45-7"><a href="#cb45-7" aria-hidden="true" tabindex="-1"></a>...     Coordinate(<span class="dv">8</span>, <span class="st">"quarters"</span>), [JumpDestination(repeat_count<span class="op">=</span><span class="dv">1</span>)], <span class="bu">id</span><span class="op">=</span><span class="st">"repeat"</span>))</span>
+<span id="cb45-8"><a href="#cb45-8" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> written <span class="op">=</span> score.create_flow_maps_from_flow_control(seed<span class="op">=</span><span class="dv">7</span>)</span>
 <span id="cb45-9"><a href="#cb45-9" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> [(section.<span class="bu">id</span>, section.name, <span class="bu">str</span>(section.as_interval))</span>
 <span id="cb45-10"><a href="#cb45-10" aria-hidden="true" tabindex="-1"></a>...  <span class="cf">for</span> section <span class="kw">in</span> written.sections]</span>
-<span id="cb45-11"><a href="#cb45-11" aria-hidden="true" tabindex="-1"></a>[(<span class="st">'region_1'</span>, <span class="st">'A'</span>, <span class="st">'[0, 8) quarters'</span>), (<span class="st">'region_2'</span>, <span class="st">'B'</span>, <span class="st">'[8, 12) quarters'</span>)]</span>
+<span id="cb45-11"><a href="#cb45-11" aria-hidden="true" tabindex="-1"></a>[(<span class="st">'region_1hvif5xc2r1fv'</span>, <span class="st">'A'</span>, <span class="st">'[0, 8) quarters'</span>), (<span class="st">'region_0g2wfq87pa7jx'</span>, <span class="st">'B'</span>, <span class="st">'[8, 12) quarters'</span>)]</span>
 <span id="cb45-12"><a href="#cb45-12" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="cf">for</span> flow_map <span class="kw">in</span> written.flow_maps:</span>
 <span id="cb45-13"><a href="#cb45-13" aria-hidden="true" tabindex="-1"></a>...     <span class="bu">print</span>(flow_map.convention, flow_map.chunks)</span>
-<span id="cb45-14"><a href="#cb45-14" aria-hidden="true" tabindex="-1"></a>default (<span class="st">'region_1'</span>, <span class="st">'region_1'</span>, <span class="st">'region_2'</span>)</span>
-<span id="cb45-15"><a href="#cb45-15" aria-hidden="true" tabindex="-1"></a>single (<span class="st">'region_1'</span>, <span class="st">'region_2'</span>)</span>
-<span id="cb45-16"><a href="#cb45-16" aria-hidden="true" tabindex="-1"></a>printed (<span class="st">'region_1'</span>, <span class="st">'region_2'</span>)</span>
+<span id="cb45-14"><a href="#cb45-14" aria-hidden="true" tabindex="-1"></a>default (<span class="st">'region_1hvif5xc2r1fv'</span>, <span class="st">'region_1hvif5xc2r1fv'</span>, <span class="st">'region_0g2wfq87pa7jx'</span>)</span>
+<span id="cb45-15"><a href="#cb45-15" aria-hidden="true" tabindex="-1"></a>single (<span class="st">'region_1hvif5xc2r1fv'</span>, <span class="st">'region_0g2wfq87pa7jx'</span>)</span>
+<span id="cb45-16"><a href="#cb45-16" aria-hidden="true" tabindex="-1"></a>printed (<span class="st">'region_1hvif5xc2r1fv'</span>, <span class="st">'region_0g2wfq87pa7jx'</span>)</span>
 <span id="cb45-17"><a href="#cb45-17" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> written.findings</span>
 <span id="cb45-18"><a href="#cb45-18" aria-hidden="true" tabindex="-1"></a>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>A sign added at 4 divides the first section. Its Region stays and is rejected; the last section keeps its Region under a new letter:</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> _ <span class="op">=</span> score.flow_control.add(JumpTarget(Coordinate(<span class="dv">4</span>, <span class="st">"quarters"</span>)))</span>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb46"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> _ <span class="op">=</span> score.flow_control.add(JumpTarget(Coordinate(<span class="dv">4</span>, <span class="st">"quarters"</span>), <span class="bu">id</span><span class="op">=</span><span class="st">"sign"</span>))</span>
 <span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> again <span class="op">=</span> score.create_flow_maps_from_flow_control(</span>
-<span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a>...     actor<span class="op">=</span><span class="st">"https://orcid.org/0000-0002-1825-0097"</span>, date<span class="op">=</span><span class="st">"2026-11-25"</span>)</span>
+<span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a>...     actor<span class="op">=</span><span class="st">"https://orcid.org/0000-0002-1825-0097"</span>, date<span class="op">=</span><span class="st">"2026-11-25"</span>, seed<span class="op">=</span><span class="dv">8</span>)</span>
 <span id="cb46-4"><a href="#cb46-4" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> [(section.<span class="bu">id</span>, section.name, <span class="bu">str</span>(section.as_interval))</span>
 <span id="cb46-5"><a href="#cb46-5" aria-hidden="true" tabindex="-1"></a>...  <span class="cf">for</span> section <span class="kw">in</span> again.sections]</span>
-<span id="cb46-6"><a href="#cb46-6" aria-hidden="true" tabindex="-1"></a>[(<span class="st">'region_3'</span>, <span class="st">'A'</span>, <span class="st">'[0, 4) quarters'</span>), (<span class="st">'region_4'</span>, <span class="st">'B'</span>, <span class="st">'[4, 8) quarters'</span>), (<span class="st">'region_2'</span>, <span class="st">'C'</span>, <span class="st">'[8, 12) quarters'</span>)]</span>
-<span id="cb46-7"><a href="#cb46-7" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> first <span class="op">=</span> score.get_region(<span class="st">"region_1"</span>)</span>
+<span id="cb46-6"><a href="#cb46-6" aria-hidden="true" tabindex="-1"></a>[(<span class="st">'region_260an7vd22pgd'</span>, <span class="st">'A'</span>, <span class="st">'[0, 4) quarters'</span>), (<span class="st">'region_3bgc3pscka0re'</span>, <span class="st">'B'</span>, <span class="st">'[4, 8) quarters'</span>), (<span class="st">'region_0g2wfq87pa7jx'</span>, <span class="st">'C'</span>, <span class="st">'[8, 12) quarters'</span>)]</span>
+<span id="cb46-7"><a href="#cb46-7" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> first <span class="op">=</span> score.get_region(<span class="st">"region_1hvif5xc2r1fv"</span>)</span>
 <span id="cb46-8"><a href="#cb46-8" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="bu">str</span>(first.as_interval), first.is_atomic_section</span>
 <span id="cb46-9"><a href="#cb46-9" aria-hidden="true" tabindex="-1"></a>(<span class="st">'[0, 8) quarters'</span>, <span class="va">False</span>)</span>
-<span id="cb46-10"><a href="#cb46-10" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> again.flow_maps[<span class="dv">0</span>].<span class="bu">id</span>, again.flow_maps[<span class="dv">0</span>].chunks</span>
-<span id="cb46-11"><a href="#cb46-11" aria-hidden="true" tabindex="-1"></a>(<span class="st">'flow_map_1'</span>, (<span class="st">'region_3'</span>, <span class="st">'region_4'</span>, <span class="st">'region_3'</span>, <span class="st">'region_4'</span>, <span class="st">'region_2'</span>))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb46-10"><a href="#cb46-10" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> again.flow_maps[<span class="dv">0</span>].<span class="bu">id</span> <span class="op">==</span> written.flow_maps[<span class="dv">0</span>].<span class="bu">id</span></span>
+<span id="cb46-11"><a href="#cb46-11" aria-hidden="true" tabindex="-1"></a><span class="va">True</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 </section>
 <section id="timetoalign.timelines.Timeline.create_region" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.timelines.Timeline.create_region">create_region</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.create_region(start, end, <span class="op">*</span>, <span class="bu">id</span><span class="op">=</span><span class="va">None</span>, name<span class="op">=</span><span class="va">None</span>, meta<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb47"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.create_region(</span>
+<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>    start,</span>
+<span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>    end,</span>
+<span id="cb47-4"><a href="#cb47-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb47-5"><a href="#cb47-5" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span><span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb47-6"><a href="#cb47-6" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb47-7"><a href="#cb47-7" aria-hidden="true" tabindex="-1"></a>    meta<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb47-8"><a href="#cb47-8" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb47-9"><a href="#cb47-9" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Create a new Region and attach it to this timeline.</p>
 <p>Under the unified verb×noun API, <code>create</code> constructs a new object, attaches it, and returns it.</p>
 <section id="parameters-24" class="level4 doc-section doc-section-parameters">
@@ -4938,7 +5053,7 @@ parent.add_child(child, offset=offset)</code></pre>
 <tr class="odd">
 <td>id</td>
 <td><code>str</code> | None</td>
-<td>The region’s id, kept verbatim. When None, <code>region_{N}</code> is minted, unique in this timeline’s manifest.</td>
+<td>The region’s id, kept verbatim. When None, an id with the prefix <code>region</code> is minted (:class:<code>Region</code>).</td>
 <td><code>None</code></td>
 </tr>
 <tr class="even">
@@ -4951,6 +5066,12 @@ parent.add_child(child, offset=offset)</code></pre>
 <td>meta</td>
 <td><code>dict</code>[<code>str</code>, <code>Any</code>] | None</td>
 <td>Optional metadata dictionary.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of the minter of the id when <em>id</em> is None; not stored.</td>
 <td><code>None</code></td>
 </tr>
 </tbody>
@@ -5007,7 +5128,12 @@ parent.add_child(child, offset=offset)</code></pre>
 </section>
 <section id="timetoalign.timelines.Timeline.create_regions_by_grouping" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.timelines.Timeline.create_regions_by_grouping">create_regions_by_grouping</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.create_regions_by_grouping(field, <span class="op">*</span>, name_format<span class="op">=</span><span class="st">'</span><span class="sc">{value}</span><span class="st">'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb49"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.create_regions_by_grouping(</span>
+<span id="cb49-2"><a href="#cb49-2" aria-hidden="true" tabindex="-1"></a>    field,</span>
+<span id="cb49-3"><a href="#cb49-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb49-4"><a href="#cb49-4" aria-hidden="true" tabindex="-1"></a>    name_format<span class="op">=</span><span class="st">'</span><span class="sc">{value}</span><span class="st">'</span>,</span>
+<span id="cb49-5"><a href="#cb49-5" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb49-6"><a href="#cb49-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Create regions by grouping <em>adjacent</em> events on a field value.</p>
 <p>For each <em>run</em> of consecutive events that share the same value in the specified field, creates a region spanning the run’s coordinate extent <code>[min_start, max_end)</code>. Only adjacent events with the same value are grouped — non-adjacent occurrences of the same value produce separate regions, which may share a name; their ids are minted.</p>
 <p>This “run-length” semantics is essential for musical data where, e.g., the same time signature may recur after a change (4/4 → 3/4 → 4/4) and each occurrence should be its own region.</p>
@@ -5016,8 +5142,8 @@ parent.add_child(child, offset=offset)</code></pre>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 8%">
-<col style="width: 9%">
-<col style="width: 73%">
+<col style="width: 13%">
+<col style="width: 69%">
 <col style="width: 8%">
 </colgroup>
 <thead>
@@ -5040,6 +5166,12 @@ parent.add_child(child, offset=offset)</code></pre>
 <td><code>str</code></td>
 <td>Format string. Placeholders: {value}, {i} (0-based), {n} (1-based), {run} (1-based run index for this value).</td>
 <td><code>'{value}'</code></td>
+</tr>
+<tr class="odd">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of one minter of the regions’ ids, minted in order of start; None mints each from its content.</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -5090,10 +5222,9 @@ parent.add_child(child, offset=offset)</code></pre>
 <section id="examples-16" class="level4 doc-section doc-section-examples">
 <h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-16">Examples</h4>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb50"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="co"># Time-signature regions (adjacent grouping)</span></span>
-<span id="cb50-2"><a href="#cb50-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> tl.create_regions_by_grouping(<span class="st">"timesig"</span>)</span>
-<span id="cb50-3"><a href="#cb50-3" aria-hidden="true" tabindex="-1"></a>[Region(<span class="st">'region_1'</span>, name<span class="op">=</span><span class="st">'4/4'</span>, <span class="dv">0</span><span class="op">-</span><span class="dv">64</span> quarters),</span>
-<span id="cb50-4"><a href="#cb50-4" aria-hidden="true" tabindex="-1"></a> Region(<span class="st">'region_2'</span>, name<span class="op">=</span><span class="st">'3/4'</span>, <span class="dv">64</span><span class="op">-</span><span class="dv">88</span> quarters),</span>
-<span id="cb50-5"><a href="#cb50-5" aria-hidden="true" tabindex="-1"></a> Region(<span class="st">'region_3'</span>, name<span class="op">=</span><span class="st">'4/4'</span>, <span class="dv">88</span><span class="op">-</span><span class="dv">120</span> quarters)]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb50-2"><a href="#cb50-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> regions <span class="op">=</span> tl.create_regions_by_grouping(<span class="st">"timesig"</span>)</span>
+<span id="cb50-3"><a href="#cb50-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> [region.name <span class="cf">for</span> region <span class="kw">in</span> regions]</span>
+<span id="cb50-4"><a href="#cb50-4" aria-hidden="true" tabindex="-1"></a>[<span class="st">'4/4'</span>, <span class="st">'3/4'</span>, <span class="st">'4/4'</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 </section>
 <section id="timetoalign.timelines.Timeline.create_regions_by_splitting" class="level3">
@@ -5106,7 +5237,8 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb51-6"><a href="#cb51-6" aria-hidden="true" tabindex="-1"></a>    prefix<span class="op">=</span><span class="st">'section'</span>,</span>
 <span id="cb51-7"><a href="#cb51-7" aria-hidden="true" tabindex="-1"></a>    include_before_first<span class="op">=</span><span class="va">True</span>,</span>
 <span id="cb51-8"><a href="#cb51-8" aria-hidden="true" tabindex="-1"></a>    include_after_last<span class="op">=</span><span class="va">True</span>,</span>
-<span id="cb51-9"><a href="#cb51-9" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb51-9"><a href="#cb51-9" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb51-10"><a href="#cb51-10" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Create contiguous regions by splitting at events matching a predicate.</p>
 <p>Finds events matching the predicate, uses their coordinates as split points, creates contiguous regions between consecutive split points.</p>
 <p>The predicate can be: - A string: field name. Events where this field is truthy (non-null, non-empty, non-zero) are split points. - A dict: keyword filters in the same style as <code>EventData.filter()</code>. For example <code>{"breaks": "section"}</code> selects events whose <code>breaks</code> field equals <code>"section"</code>. - A callable: receives event dict, returns True for split points.</p>
@@ -5115,9 +5247,9 @@ parent.add_child(child, offset=offset)</code></pre>
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-26">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 8%">
-<col style="width: 57%">
-<col style="width: 27%">
+<col style="width: 7%">
+<col style="width: 50%">
+<col style="width: 36%">
 <col style="width: 6%">
 </colgroup>
 <thead>
@@ -5164,6 +5296,12 @@ parent.add_child(child, offset=offset)</code></pre>
 <td><code>bool</code></td>
 <td>Create a region from last split point to timeline end.</td>
 <td><code>True</code></td>
+</tr>
+<tr class="odd">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of one minter of the regions’ ids, minted in coordinate order; None mints each from its content.</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -5224,17 +5362,18 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb54-4"><a href="#cb54-4" aria-hidden="true" tabindex="-1"></a>    names<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb54-5"><a href="#cb54-5" aria-hidden="true" tabindex="-1"></a>    name_format<span class="op">=</span><span class="st">'</span><span class="sc">{prefix}</span><span class="st">_</span><span class="sc">{n}</span><span class="st">'</span>,</span>
 <span id="cb54-6"><a href="#cb54-6" aria-hidden="true" tabindex="-1"></a>    prefix<span class="op">=</span><span class="st">'section'</span>,</span>
-<span id="cb54-7"><a href="#cb54-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb54-7"><a href="#cb54-7" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb54-8"><a href="#cb54-8" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Create contiguous regions from boundary coordinates.</p>
 <p>Given k+1 sorted boundary coordinates, creates k regions where region_i spans [boundaries[i], boundaries[i+1]). The names label the regions; their ids are minted.</p>
 <section id="parameters-27" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-27">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 6%">
-<col style="width: 46%">
-<col style="width: 38%">
-<col style="width: 8%">
+<col style="width: 5%">
+<col style="width: 41%">
+<col style="width: 45%">
+<col style="width: 7%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -5268,6 +5407,12 @@ parent.add_child(child, offset=offset)</code></pre>
 <td><code>str</code></td>
 <td>Prefix for auto-generated names.</td>
 <td><code>'section'</code></td>
+</tr>
+<tr class="odd">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of one minter of the regions’ ids, minted in boundary order; None mints each from its content.</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -5317,18 +5462,22 @@ parent.add_child(child, offset=offset)</code></pre>
 </section>
 <section id="examples-18" class="level4 doc-section doc-section-examples">
 <h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-18">Examples</h4>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> tl.create_regions_from_boundaries(</span>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb55"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> regions <span class="op">=</span> tl.create_regions_from_boundaries(</span>
 <span id="cb55-2"><a href="#cb55-2" aria-hidden="true" tabindex="-1"></a>...     [<span class="dv">0</span>, <span class="dv">30</span>, <span class="dv">60</span>, <span class="dv">90</span>],</span>
 <span id="cb55-3"><a href="#cb55-3" aria-hidden="true" tabindex="-1"></a>...     prefix<span class="op">=</span><span class="st">"movement"</span>,</span>
 <span id="cb55-4"><a href="#cb55-4" aria-hidden="true" tabindex="-1"></a>... )</span>
-<span id="cb55-5"><a href="#cb55-5" aria-hidden="true" tabindex="-1"></a>[Region(<span class="st">'region_1'</span>, name<span class="op">=</span><span class="st">'movement_1'</span>, <span class="dv">0</span><span class="op">-</span><span class="dv">30</span> quarters),</span>
-<span id="cb55-6"><a href="#cb55-6" aria-hidden="true" tabindex="-1"></a> Region(<span class="st">'region_2'</span>, name<span class="op">=</span><span class="st">'movement_2'</span>, <span class="dv">30</span><span class="op">-</span><span class="dv">60</span> quarters),</span>
-<span id="cb55-7"><a href="#cb55-7" aria-hidden="true" tabindex="-1"></a> Region(<span class="st">'region_3'</span>, name<span class="op">=</span><span class="st">'movement_3'</span>, <span class="dv">60</span><span class="op">-</span><span class="dv">90</span> quarters)]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb55-5"><a href="#cb55-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> [region.name <span class="cf">for</span> region <span class="kw">in</span> regions]</span>
+<span id="cb55-6"><a href="#cb55-6" aria-hidden="true" tabindex="-1"></a>[<span class="st">'movement_1'</span>, <span class="st">'movement_2'</span>, <span class="st">'movement_3'</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 </section>
 <section id="timetoalign.timelines.Timeline.create_segment_line" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.timelines.Timeline.create_segment_line">create_segment_line</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb56"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.create_segment_line(boundaries, <span class="op">*</span>, copy_events<span class="op">=</span><span class="va">True</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb56"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.create_segment_line(</span>
+<span id="cb56-2"><a href="#cb56-2" aria-hidden="true" tabindex="-1"></a>    boundaries,</span>
+<span id="cb56-3"><a href="#cb56-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb56-4"><a href="#cb56-4" aria-hidden="true" tabindex="-1"></a>    copy_events<span class="op">=</span><span class="va">True</span>,</span>
+<span id="cb56-5"><a href="#cb56-5" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb56-6"><a href="#cb56-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Create a SegmentLine by segmenting at boundary coordinates.</p>
 <p>Given k+1 sorted coordinates, produces a new SegmentLine with k contiguous segments. Each segment’s class matches self’s class. Each segment takes the events starting in its span, whole (it grows to hold one running past its end), and, where this timeline holds Boxes, the part of its area of an image (<code>meta["box"]</code>, <code>meta["image"]</code>) over its span, as :meth:<code>~timetoalign.timelines.Timeline.get_slice</code> states it, so a Box keeps its shape and its start moves with the segment.</p>
 <p>Does NOT modify self. Returns a new independent SegmentLine.</p>
@@ -5336,10 +5485,10 @@ parent.add_child(child, offset=offset)</code></pre>
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-28">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 7%">
-<col style="width: 57%">
-<col style="width: 27%">
-<col style="width: 7%">
+<col style="width: 4%">
+<col style="width: 30%">
+<col style="width: 61%">
+<col style="width: 3%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -5361,6 +5510,12 @@ parent.add_child(child, offset=offset)</code></pre>
 <td><code>bool</code></td>
 <td>Copy events into their respective segments.</td>
 <td><code>True</code></td>
+</tr>
+<tr class="odd">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of one minter of every id the call mints, in the order built: the line, then each segment (:func:<code>~timetoalign.core.ids.minting_from</code>); without one, each from its content. Not stored.</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -5422,7 +5577,8 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb58-3"><a href="#cb58-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
 <span id="cb58-4"><a href="#cb58-4" aria-hidden="true" tabindex="-1"></a>    copy_events<span class="op">=</span><span class="va">True</span>,</span>
 <span id="cb58-5"><a href="#cb58-5" aria-hidden="true" tabindex="-1"></a>    name_format<span class="op">=</span><span class="st">'</span><span class="sc">{value}</span><span class="st">'</span>,</span>
-<span id="cb58-6"><a href="#cb58-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb58-6"><a href="#cb58-6" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb58-7"><a href="#cb58-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Create a SegmentLine by grouping adjacent events on a field value.</p>
 <p>Groups must form contiguous, non-overlapping spans. This is validated and raises if not satisfied.</p>
 <p>Does NOT modify self. Does NOT add intermediate regions to self.</p>
@@ -5430,10 +5586,10 @@ parent.add_child(child, offset=offset)</code></pre>
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-29">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 17%">
-<col style="width: 21%">
-<col style="width: 44%">
-<col style="width: 17%">
+<col style="width: 5%">
+<col style="width: 9%">
+<col style="width: 80%">
+<col style="width: 5%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -5461,6 +5617,12 @@ parent.add_child(child, offset=offset)</code></pre>
 <td><code>str</code></td>
 <td>Format string for segment names.</td>
 <td><code>'{value}'</code></td>
+</tr>
+<tr class="even">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of one minter of every id the call mints, in the order built: the line, then each segment (:func:<code>~timetoalign.core.ids.minting_from</code>); without one, each from its content. Not stored.</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -5519,7 +5681,8 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb60-7"><a href="#cb60-7" aria-hidden="true" tabindex="-1"></a>    prefix<span class="op">=</span><span class="st">'section'</span>,</span>
 <span id="cb60-8"><a href="#cb60-8" aria-hidden="true" tabindex="-1"></a>    include_before_first<span class="op">=</span><span class="va">True</span>,</span>
 <span id="cb60-9"><a href="#cb60-9" aria-hidden="true" tabindex="-1"></a>    include_after_last<span class="op">=</span><span class="va">True</span>,</span>
-<span id="cb60-10"><a href="#cb60-10" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb60-10"><a href="#cb60-10" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb60-11"><a href="#cb60-11" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Create a SegmentLine by splitting at events matching a predicate.</p>
 <p>Shortcut for finding split points and creating a SegmentLine directly. Does NOT modify self (no intermediate regions are created).</p>
 <p>The predicate follows the same semantics as :meth:<code>create_regions_by_splitting</code>.</p>
@@ -5527,10 +5690,10 @@ parent.add_child(child, offset=offset)</code></pre>
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-30">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 8%">
-<col style="width: 57%">
-<col style="width: 27%">
-<col style="width: 6%">
+<col style="width: 5%">
+<col style="width: 38%">
+<col style="width: 50%">
+<col style="width: 4%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -5582,6 +5745,12 @@ parent.add_child(child, offset=offset)</code></pre>
 <td><code>bool</code></td>
 <td>Include segment after last split point.</td>
 <td><code>True</code></td>
+</tr>
+<tr class="even">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of one minter of every id the call mints, in the order built: the line, then each segment (:func:<code>~timetoalign.core.ids.minting_from</code>); without one, each from its content. Not stored.</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -5637,7 +5806,8 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb62-2"><a href="#cb62-2" aria-hidden="true" tabindex="-1"></a>    region_ids<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb62-3"><a href="#cb62-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
 <span id="cb62-4"><a href="#cb62-4" aria-hidden="true" tabindex="-1"></a>    copy_events<span class="op">=</span><span class="va">True</span>,</span>
-<span id="cb62-5"><a href="#cb62-5" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb62-5"><a href="#cb62-5" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb62-6"><a href="#cb62-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Create a SegmentLine from contiguous regions.</p>
 <p>Validates that regions are contiguous and non-overlapping (each region’s end == next region’s start).</p>
 <p>Does NOT modify self.</p>
@@ -5645,10 +5815,10 @@ parent.add_child(child, offset=offset)</code></pre>
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-31">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 6%">
-<col style="width: 32%">
-<col style="width: 55%">
-<col style="width: 5%">
+<col style="width: 4%">
+<col style="width: 22%">
+<col style="width: 68%">
+<col style="width: 3%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -5670,6 +5840,12 @@ parent.add_child(child, offset=offset)</code></pre>
 <td><code>bool</code></td>
 <td>Copy events into segments.</td>
 <td><code>True</code></td>
+</tr>
+<tr class="odd">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of one minter of every id the call mints, in the order built: the line, then each segment (:func:<code>~timetoalign.core.ids.minting_from</code>); without one, each from its content. Not stored.</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -5725,17 +5901,23 @@ parent.add_child(child, offset=offset)</code></pre>
 </section>
 <section id="timetoalign.timelines.Timeline.create_virtual_timeline" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.timelines.Timeline.create_virtual_timeline">create_virtual_timeline</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb64"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.create_virtual_timeline(flow_map, <span class="op">*</span>, <span class="bu">id</span><span class="op">=</span><span class="va">None</span>, name<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb64"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.create_virtual_timeline(</span>
+<span id="cb64-2"><a href="#cb64-2" aria-hidden="true" tabindex="-1"></a>    flow_map,</span>
+<span id="cb64-3"><a href="#cb64-3" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb64-4"><a href="#cb64-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">id</span><span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb64-5"><a href="#cb64-5" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb64-6"><a href="#cb64-6" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb64-7"><a href="#cb64-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>State that a FlowMap of this root timeline was applied to it.</p>
 <p>Nothing but the statement is created: the virtual timeline has an ID, this timeline’s unit and number type and the FlowMap’s virtual length, and holds no events.</p>
 <section id="parameters-32" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-32">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 5%">
-<col style="width: 11%">
-<col style="width: 76%">
 <col style="width: 6%">
+<col style="width: 13%">
+<col style="width: 73%">
+<col style="width: 7%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -5755,13 +5937,19 @@ parent.add_child(child, offset=offset)</code></pre>
 <tr class="even">
 <td>id</td>
 <td><code>str</code> | None</td>
-<td>The virtual timeline’s ID, kept verbatim. When None, an ID of this timeline’s kind is minted (<code>clt_{N}</code> on quarters), unique in the manifest.</td>
+<td>The virtual timeline’s ID, kept verbatim. When None, an ID with this timeline’s prefix is minted (<code>clt</code> on quarters).</td>
 <td><code>None</code></td>
 </tr>
 <tr class="odd">
 <td>name</td>
 <td><code>str</code> | None</td>
 <td>Optional display name.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of the minter of the ID when <em>id</em> is None; not stored.</td>
 <td><code>None</code></td>
 </tr>
 </tbody>
@@ -5818,7 +6006,14 @@ parent.add_child(child, offset=offset)</code></pre>
 </section>
 <section id="timetoalign.timelines.Timeline.derive" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.timelines.Timeline.derive">derive</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb65"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.derive(target_unit, name<span class="op">=</span><span class="va">None</span>, copy_events<span class="op">=</span><span class="va">False</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb65"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.derive(</span>
+<span id="cb65-2"><a href="#cb65-2" aria-hidden="true" tabindex="-1"></a>    target_unit,</span>
+<span id="cb65-3"><a href="#cb65-3" aria-hidden="true" tabindex="-1"></a>    name<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb65-4"><a href="#cb65-4" aria-hidden="true" tabindex="-1"></a>    copy_events<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb65-5"><a href="#cb65-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb65-6"><a href="#cb65-6" aria-hidden="true" tabindex="-1"></a>    uid<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb65-7"><a href="#cb65-7" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb65-8"><a href="#cb65-8" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Create a derivative timeline in a different unit via C-Map conversion.</p>
 <p>A ConversionMap implies the presence of a derived timeline in the target unit. The derive() method makes this implicit timeline explicit.</p>
 <p>The derived timeline: - Has coordinates in the target unit - Has length equal to the converted source length - Automatically has an inverse C-Map back to the source unit - Optionally copies and converts events from the source</p>
@@ -5827,10 +6022,10 @@ parent.add_child(child, offset=offset)</code></pre>
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-33">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 9%">
-<col style="width: 40%">
-<col style="width: 41%">
-<col style="width: 8%">
+<col style="width: 3%">
+<col style="width: 17%">
+<col style="width: 75%">
+<col style="width: 3%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -5858,6 +6053,18 @@ parent.add_child(child, offset=offset)</code></pre>
 <td><code>bool</code></td>
 <td>If True, copy and convert events to the derived timeline.</td>
 <td><code>False</code></td>
+</tr>
+<tr class="even">
+<td>uid</td>
+<td><code>str</code> | None</td>
+<td>The derived timeline’s id; minted when None.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of one minter of every id the call mints, in the order built: the derived timeline (unless <em>uid</em> is given), the inverse C-Map, the copied events (:func:<code>~timetoalign.core.ids.minting_from</code>); without one, each from its content. Not stored.</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -7530,10 +7737,10 @@ parent.add_child(child, offset=offset)</code></pre>
 <h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-29">Examples</h4>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb93"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb93-1"><a href="#cb93-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="im">from</span> timetoalign <span class="im">import</span> Timeline, TimeUnit</span>
 <span id="cb93-2"><a href="#cb93-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> timeline <span class="op">=</span> Timeline(length<span class="op">=</span><span class="dv">4</span>, unit<span class="op">=</span>TimeUnit.quarters)</span>
-<span id="cb93-3"><a href="#cb93-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> timeline.add_events([{<span class="st">"event_type"</span>: <span class="st">"Note"</span>, <span class="st">"start"</span>: <span class="dv">0</span>, <span class="st">"end"</span>: <span class="dv">1</span>}])</span>
-<span id="cb93-4"><a href="#cb93-4" aria-hidden="true" tabindex="-1"></a>[<span class="st">'note_1'</span>]</span>
-<span id="cb93-5"><a href="#cb93-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> timeline.get_event(<span class="st">"note_1"</span>)[<span class="st">"id"</span>]</span>
-<span id="cb93-6"><a href="#cb93-6" aria-hidden="true" tabindex="-1"></a><span class="co">'note_1'</span></span>
+<span id="cb93-3"><a href="#cb93-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> timeline.add_events([{<span class="st">"id"</span>: <span class="st">"n1"</span>, <span class="st">"event_type"</span>: <span class="st">"Note"</span>, <span class="st">"start"</span>: <span class="dv">0</span>, <span class="st">"end"</span>: <span class="dv">1</span>}])</span>
+<span id="cb93-4"><a href="#cb93-4" aria-hidden="true" tabindex="-1"></a>[<span class="st">'n1'</span>]</span>
+<span id="cb93-5"><a href="#cb93-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> timeline.get_event(<span class="st">"n1"</span>)[<span class="st">"id"</span>]</span>
+<span id="cb93-6"><a href="#cb93-6" aria-hidden="true" tabindex="-1"></a><span class="co">'n1'</span></span>
 <span id="cb93-7"><a href="#cb93-7" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> timeline.get_event(<span class="st">"nonexistent"</span>) <span class="kw">is</span> <span class="va">None</span></span>
 <span id="cb93-8"><a href="#cb93-8" aria-hidden="true" tabindex="-1"></a><span class="va">True</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
@@ -8326,9 +8533,8 @@ parent.add_child(child, offset=offset)</code></pre>
 </section>
 <section id="examples-34" class="level4 doc-section doc-section-examples">
 <h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-34">Examples</h4>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb110"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb110-1"><a href="#cb110-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> tl.get_regions_at(<span class="fl">75.0</span>)</span>
-<span id="cb110-2"><a href="#cb110-2" aria-hidden="true" tabindex="-1"></a>[Region(<span class="st">'region_1'</span>, name<span class="op">=</span><span class="st">'verse'</span>, <span class="dv">30</span><span class="op">-</span><span class="dv">90</span> quarters),</span>
-<span id="cb110-3"><a href="#cb110-3" aria-hidden="true" tabindex="-1"></a> Region(<span class="st">'region_2'</span>, name<span class="op">=</span><span class="st">'chorus'</span>, <span class="dv">60</span><span class="op">-</span><span class="dv">120</span> quarters)]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb110"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb110-1"><a href="#cb110-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> [region.name <span class="cf">for</span> region <span class="kw">in</span> tl.get_regions_at(<span class="fl">75.0</span>)]</span>
+<span id="cb110-2"><a href="#cb110-2" aria-hidden="true" tabindex="-1"></a>[<span class="st">'verse'</span>, <span class="st">'chorus'</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 </section>
 <section id="timetoalign.timelines.Timeline.get_slice" class="level3">
@@ -8340,7 +8546,8 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb111-5"><a href="#cb111-5" aria-hidden="true" tabindex="-1"></a>    truncate_events<span class="op">=</span><span class="va">True</span>,</span>
 <span id="cb111-6"><a href="#cb111-6" aria-hidden="true" tabindex="-1"></a>    include_children<span class="op">=</span><span class="va">True</span>,</span>
 <span id="cb111-7"><a href="#cb111-7" aria-hidden="true" tabindex="-1"></a>    copy_cmaps<span class="op">=</span><span class="va">True</span>,</span>
-<span id="cb111-8"><a href="#cb111-8" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb111-8"><a href="#cb111-8" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb111-9"><a href="#cb111-9" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Extract a portion of this timeline as a new, independent timeline.</p>
 <p>Returns a new timeline containing all events within [start, end). The returned timeline has its coordinate origin at 0, with all coordinates shifted by -start.</p>
 <p>Slicing creates a new timeline that is a structural copy of the specified interval of the source.</p>
@@ -8350,10 +8557,10 @@ parent.add_child(child, offset=offset)</code></pre>
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-62">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 6%">
-<col style="width: 20%">
-<col style="width: 68%">
-<col style="width: 4%">
+<col style="width: 5%">
+<col style="width: 17%">
+<col style="width: 73%">
+<col style="width: 3%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -8393,6 +8600,12 @@ parent.add_child(child, offset=offset)</code></pre>
 <td><code>bool</code></td>
 <td>If True (default), ConversionMaps are bounded-copied for the slice range.</td>
 <td><code>True</code></td>
+</tr>
+<tr class="even">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of one minter of every id the slice mints, in the order built: the slice, then its children’s slices, then the copied maps (:func:<code>~timetoalign.core.ids.minting_from</code>); without one, each from its content. Not stored.</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -8784,14 +8997,16 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb118-2"><a href="#cb118-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> parent <span class="op">=</span> Timeline(length<span class="op">=</span><span class="dv">20</span>, unit<span class="op">=</span>TimeUnit.seconds, uid<span class="op">=</span><span class="st">"cpt_1"</span>)</span>
 <span id="cb118-3"><a href="#cb118-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> child <span class="op">=</span> Timeline(length<span class="op">=</span><span class="dv">10</span>, unit<span class="op">=</span>TimeUnit.seconds, uid<span class="op">=</span><span class="st">"cpt_2"</span>)</span>
 <span id="cb118-4"><a href="#cb118-4" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> parent.add_child(child, offset<span class="op">=</span><span class="dv">5</span>)</span>
-<span id="cb118-5"><a href="#cb118-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> parent.add_events([{<span class="st">"event_type"</span>: <span class="st">"Note"</span>, <span class="st">"instant"</span>: <span class="fl">5.0</span>}])</span>
-<span id="cb118-6"><a href="#cb118-6" aria-hidden="true" tabindex="-1"></a>[<span class="st">'note_1'</span>]</span>
-<span id="cb118-7"><a href="#cb118-7" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> child.add_events([{<span class="st">"event_type"</span>: <span class="st">"Chord"</span>, <span class="st">"start"</span>: <span class="fl">0.0</span>, <span class="st">"end"</span>: <span class="fl">2.5</span>}])</span>
-<span id="cb118-8"><a href="#cb118-8" aria-hidden="true" tabindex="-1"></a>[<span class="st">'chord_1'</span>]</span>
-<span id="cb118-9"><a href="#cb118-9" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> ts <span class="op">=</span> parent.get_timestamp_for(<span class="st">"note_1"</span>)</span>
-<span id="cb118-10"><a href="#cb118-10" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> ts.axis  <span class="co"># For instant events</span></span>
-<span id="cb118-11"><a href="#cb118-11" aria-hidden="true" tabindex="-1"></a>IdCoordinate(<span class="fl">5.0</span>, seconds, <span class="st">'cpt_1'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb119"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb119-1"><a href="#cb119-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> ts <span class="op">=</span> parent.get_timestamp_for(<span class="st">"chord_1"</span>)  <span class="co"># found on the child</span></span>
+<span id="cb118-5"><a href="#cb118-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> parent.add_events([{<span class="st">"id"</span>: <span class="st">"n1"</span>, <span class="st">"event_type"</span>: <span class="st">"Note"</span>, <span class="st">"instant"</span>: <span class="fl">5.0</span>}])</span>
+<span id="cb118-6"><a href="#cb118-6" aria-hidden="true" tabindex="-1"></a>[<span class="st">'n1'</span>]</span>
+<span id="cb118-7"><a href="#cb118-7" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> child.add_events(</span>
+<span id="cb118-8"><a href="#cb118-8" aria-hidden="true" tabindex="-1"></a>...     [{<span class="st">"id"</span>: <span class="st">"c1"</span>, <span class="st">"event_type"</span>: <span class="st">"Chord"</span>, <span class="st">"start"</span>: <span class="fl">0.0</span>, <span class="st">"end"</span>: <span class="fl">2.5</span>}]</span>
+<span id="cb118-9"><a href="#cb118-9" aria-hidden="true" tabindex="-1"></a>... )</span>
+<span id="cb118-10"><a href="#cb118-10" aria-hidden="true" tabindex="-1"></a>[<span class="st">'c1'</span>]</span>
+<span id="cb118-11"><a href="#cb118-11" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> ts <span class="op">=</span> parent.get_timestamp_for(<span class="st">"n1"</span>)</span>
+<span id="cb118-12"><a href="#cb118-12" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> ts.axis  <span class="co"># For instant events</span></span>
+<span id="cb118-13"><a href="#cb118-13" aria-hidden="true" tabindex="-1"></a>IdCoordinate(<span class="fl">5.0</span>, seconds, <span class="st">'cpt_1'</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb119"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb119-1"><a href="#cb119-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> ts <span class="op">=</span> parent.get_timestamp_for(<span class="st">"c1"</span>)  <span class="co"># found on the child</span></span>
 <span id="cb119-2"><a href="#cb119-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> ts.start.axis  <span class="co"># For interval events</span></span>
 <span id="cb119-3"><a href="#cb119-3" aria-hidden="true" tabindex="-1"></a>IdCoordinate(<span class="fl">5.0</span>, seconds, <span class="st">'cpt_1'</span>)</span>
 <span id="cb119-4"><a href="#cb119-4" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> ts.end.axis</span>

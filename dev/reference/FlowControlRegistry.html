@@ -77,7 +77,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -302,6 +302,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/CHUNK.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CHUNK</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ClaimFilter</span></a>
   </div>
@@ -482,6 +488,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/EventRegistry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventRegistry</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventStore</span></a>
   </div>
@@ -490,6 +502,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Extraction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Extraction</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -848,6 +866,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/NOMATCH.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NOMATCH</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/Note.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Note</span></a>
   </div>
@@ -880,6 +904,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/OutputNumberTypeError.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">OutputNumberTypeError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Package.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Package</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1040,6 +1070,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/resolve.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">resolve</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/resolve_coordinate_spec.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">resolve_coordinate_spec</span></a>
   </div>
@@ -1066,12 +1102,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ScalarMap</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">ScopedId</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1363,7 +1393,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h1>FlowControlRegistry</h1>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>timelines.FlowControlRegistry(elements<span class="op">=</span>(), <span class="op">*</span>, unit<span class="op">=</span><span class="va">None</span>, number_type<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>The flow control of one timeline: its elements in canonical order.</p>
-<p>One collection holds every :class:<code>FlowControlElement</code>, ordered by coordinate and then by ID; <code>jumps</code>, <code>jump_targets</code>, <code>breaks</code>, <code>section_breaks</code> and <code>barlines</code> are views of it by class. All of them are tuples: the collection changes through :meth:<code>add</code>, :meth:<code>add_all</code>, :meth:<code>with_belief</code> and :meth:<code>with_beliefs</code> alone, and no element ever leaves it. Every element carries an ID unique within the registry and, once the registry belongs to a timeline, within that timeline’s whole manifest: an element whose minted ID is taken is stored under a freshly minted ID, and one whose given ID is taken is refused. A manifest writes the registry as the timeline’s <code>flow_control</code> array.</p>
+<p>One collection holds every :class:<code>FlowControlElement</code>, ordered by coordinate and then by ID; <code>jumps</code>, <code>jump_targets</code>, <code>breaks</code>, <code>section_breaks</code> and <code>barlines</code> are views of it by class. All of them are tuples: the collection changes through :meth:<code>add</code>, :meth:<code>add_all</code>, :meth:<code>with_belief</code> and :meth:<code>with_beliefs</code> alone, and no element ever leaves it. Every element carries an ID unique within the registry and, once the registry belongs to a timeline, within that timeline’s whole manifest: an element whose ID, given or minted, is taken is refused. A manifest writes the registry as the timeline’s <code>flow_control</code> array.</p>
 <p>The registry refuses what cannot be played: a second Jump at a coordinate, or, once the registry belongs to a timeline, at a position of the root’s axis that a Jump of the root’s tree holds (the coordinate plus the offsets of the timeline and its ancestors, summed exactly), a <code>to</code> naming neither a :class:<code>JumpTarget</code> of the registry nor a place of its timeline, an <code>after</code> that does not name exactly one destination of another Jump of the registry, and an element or a destination’s place lying outside the axis, which runs from 0 to the timeline’s length (from 0 on while that length is unknown, and for a registry that belongs to no timeline).</p>
 <p>An element that some actor believes <code>"false"</code> is rejected (:attr:<code>FlowControlElement.is_rejected</code>, :meth:<code>with_belief</code>): it stays in the registry and is written, but it is out of every rule, as what is checked and as what is named. A rejected Jump and its replacement may therefore share a coordinate. An element that another element not rejected names (by <code>to</code> or <code>after</code>) is not rejected alone: the elements naming it are rejected in the same step (:meth:<code>with_beliefs</code>).</p>
 <section id="parameters" class="level2 doc-section doc-section-parameters">
@@ -1438,13 +1468,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>...     Jump(</span>
 <span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>...         Coordinate(<span class="dv">64</span>, <span class="st">"quarters"</span>),</span>
 <span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>...         [JumpDestination(to<span class="op">=</span><span class="st">"segno"</span>, repeat_count<span class="op">=</span><span class="dv">1</span>, reset<span class="op">=</span><span class="va">False</span>)],</span>
-<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>...     )</span>
-<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>... ).<span class="bu">id</span></span>
-<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="co">'jump_1'</span></span>
-<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> [element.role <span class="cf">for</span> element <span class="kw">in</span> registry.elements]</span>
-<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>[<span class="st">'jump_target'</span>, <span class="st">'jump'</span>]</span>
-<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> registry.place_of(registry.jumps[<span class="dv">0</span>].targets[<span class="dv">0</span>], registry.jumps[<span class="dv">0</span>])</span>
-<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>Coordinate(Fraction(<span class="dv">16</span>, <span class="dv">1</span>), quarters)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>...         <span class="bu">id</span><span class="op">=</span><span class="st">"ds"</span>,</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>...     )</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>... ).<span class="bu">id</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a><span class="co">'ds'</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> [element.role <span class="cf">for</span> element <span class="kw">in</span> registry.elements]</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>[<span class="st">'jump_target'</span>, <span class="st">'jump'</span>]</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> registry.place_of(registry.jumps[<span class="dv">0</span>].targets[<span class="dv">0</span>], registry.jumps[<span class="dv">0</span>])</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>Coordinate(Fraction(<span class="dv">16</span>, <span class="dv">1</span>), quarters)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 <section id="methods" class="level2">
 <h2 class="anchored" data-anchor-id="methods">Methods</h2>
@@ -1582,12 +1613,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-1">Examples</h4>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="im">from</span> timetoalign.core <span class="im">import</span> Coordinate</span>
 <span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> registry <span class="op">=</span> FlowControlRegistry(unit<span class="op">=</span><span class="st">"quarters"</span>)</span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> barline <span class="op">=</span> registry.add(Barline(Coordinate(<span class="dv">8</span>, <span class="st">"quarters"</span>)))</span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> barline <span class="op">=</span> registry.add(Barline(Coordinate(<span class="dv">8</span>, <span class="st">"quarters"</span>), <span class="bu">id</span><span class="op">=</span><span class="st">"bar 2"</span>))</span>
 <span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> _ <span class="op">=</span> registry.with_belief(barline.<span class="bu">id</span>, <span class="st">"ana"</span>, <span class="st">"false"</span>, date<span class="op">=</span><span class="st">"2026-11-25"</span>)</span>
 <span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> registry.elements, registry.active_elements()</span>
-<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>((Barline(<span class="st">'barline_1'</span> <span class="op">@</span> <span class="dv">8</span> quarters),), [])</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>((Barline(<span class="st">'bar 2'</span> <span class="op">@</span> <span class="dv">8</span> quarters),), [])</span>
 <span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> registry.active_elements(believer<span class="op">=</span><span class="st">"bea"</span>)</span>
-<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>[Barline(<span class="st">'barline_1'</span> <span class="op">@</span> <span class="dv">8</span> quarters)]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>[Barline(<span class="st">'bar 2'</span> <span class="op">@</span> <span class="dv">8</span> quarters)]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 </section>
 <section id="timetoalign.timelines.FlowControlRegistry.add" class="level3">
@@ -1630,12 +1661,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td></td>
 <td><a href="../reference/FlowControlElement.html#timetoalign.timelines.FlowControlElement">FlowControlElement</a></td>
-<td>The stored element, with its coordinate on the registry’s axis</td>
-</tr>
-<tr class="even">
-<td></td>
-<td><a href="../reference/FlowControlElement.html#timetoalign.timelines.FlowControlElement">FlowControlElement</a></td>
-<td>and its ID as admitted.</td>
+<td>The stored element, with its coordinate on the registry’s axis.</td>
 </tr>
 </tbody>
 </table>
@@ -1664,7 +1690,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h3 class="anchored" data-anchor-id="timetoalign.timelines.FlowControlRegistry.add_all">add_all</h3>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>timelines.FlowControlRegistry.add_all(elements)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Add several elements together, or none of them.</p>
-<p>The elements may name one another in any order. An element whose minted ID is taken is stored under a freshly minted ID, and the elements added with it name it by that ID.</p>
+<p>The elements may name one another in any order. Each keeps its ID.</p>
 <section id="parameters-3" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-3">Parameters</h4>
 <table class="caption-top table">
@@ -1705,7 +1731,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="even">
 <td></td>
 <td><code>list</code>[<a href="../reference/FlowControlElement.html#timetoalign.timelines.FlowControlElement">FlowControlElement</a>]</td>
-<td>coordinate on the registry’s axis and its ID as admitted.</td>
+<td>coordinate on the registry’s axis.</td>
 </tr>
 </tbody>
 </table>
@@ -1729,7 +1755,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td></td>
 <td><code>ValueError</code></td>
-<td>If an element’s given ID is already taken, its unit is not the registry’s, or an element that is not rejected cannot be played among those not rejected: a coordinate holds a second Jump, or a Jump lies at a position of the root’s axis where a Jump of another timeline of the root’s tree lies (:attr:<code>Timeline.tree_flow_control &lt;timetoalign.timelines.Timeline.tree_flow_control&gt;</code>), a <code>to</code> names neither a JumpTarget of the registry nor a place of its timeline, an <code>after</code> does not name exactly one destination of another Jump of the registry, or the element’s coordinate or the place of one of its destinations lies before 0 or beyond the known length of the registry’s timeline. Nothing has changed then.</td>
+<td>If an element’s ID is already taken, its unit is not the registry’s, or an element that is not rejected cannot be played among those not rejected: a coordinate holds a second Jump, or a Jump lies at a position of the root’s axis where a Jump of another timeline of the root’s tree lies (:attr:<code>Timeline.tree_flow_control &lt;timetoalign.timelines.Timeline.tree_flow_control&gt;</code>), a <code>to</code> names neither a JumpTarget of the registry nor a place of its timeline, an <code>after</code> does not name exactly one destination of another Jump of the registry, or the element’s coordinate or the place of one of its destinations lies before 0 or beyond the known length of the registry’s timeline. Nothing has changed then.</td>
 </tr>
 </tbody>
 </table>
@@ -2132,16 +2158,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h4 class="doc-section doc-section-examples anchored" data-anchor-id="examples-2">Examples</h4>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="im">from</span> timetoalign.core <span class="im">import</span> Coordinate</span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> registry <span class="op">=</span> FlowControlRegistry(unit<span class="op">=</span><span class="st">"quarters"</span>)</span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> wrong <span class="op">=</span> registry.add(</span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>...     Jump(Coordinate(<span class="dv">16</span>, <span class="st">"quarters"</span>), [JumpDestination(repeat_count<span class="op">=</span><span class="dv">1</span>)]))</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> wrong <span class="op">=</span> registry.add(Jump(</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>...     Coordinate(<span class="dv">16</span>, <span class="st">"quarters"</span>), [JumpDestination(repeat_count<span class="op">=</span><span class="dv">1</span>)], <span class="bu">id</span><span class="op">=</span><span class="st">"wrong"</span>))</span>
 <span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> registry.with_belief(wrong.<span class="bu">id</span>, <span class="st">"ana"</span>, <span class="st">"false"</span>).is_rejected</span>
 <span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a><span class="va">True</span></span>
-<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> registry.add(</span>
-<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>...     Jump(Coordinate(<span class="dv">16</span>, <span class="st">"quarters"</span>), [JumpDestination(by<span class="op">=-</span><span class="dv">8</span>, repeat_count<span class="op">=</span><span class="dv">1</span>)])</span>
-<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>... ).<span class="bu">id</span></span>
-<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a><span class="co">'jump_2'</span></span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> registry.add(Jump(</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>...     Coordinate(<span class="dv">16</span>, <span class="st">"quarters"</span>), [JumpDestination(by<span class="op">=-</span><span class="dv">8</span>, repeat_count<span class="op">=</span><span class="dv">1</span>)], <span class="bu">id</span><span class="op">=</span><span class="st">"right"</span></span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>... )).<span class="bu">id</span></span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a><span class="co">'right'</span></span>
 <span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> registry.jump_at(<span class="dv">16</span>).<span class="bu">id</span></span>
-<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a><span class="co">'jump_2'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a><span class="co">'right'</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </section>
 </section>
 <section id="timetoalign.timelines.FlowControlRegistry.with_beliefs" class="level3">

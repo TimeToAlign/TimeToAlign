@@ -78,7 +78,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <link href="../site_libs/quarto-contrib/glossary/glossary.css" rel="stylesheet">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
@@ -335,6 +335,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../howto/how03_mtd_themes.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load Musical Themes Aligned to Recordings (MTD)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../howto/how03_ieee1599.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">How to Load an IEEE 1599 Document</span></a>
   </div>
@@ -355,6 +361,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../howto/how03_match_claims_package.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">How to Keep MatchClaims, Projections and Beliefs in a Package</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_registry_and_packages.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Write the Registry and Share Tables in a Package</span></a>
   </div>
 </li>
       </ul>
@@ -452,7 +464,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <section id="how-to-load-an-mpm-toolbox-project-score-modelled-performance-observed-alignment" class="level1">
 <h1>How to Load an MPM-Toolbox Project (Score, Modelled Performance, Observed Alignment)</h1>
-<p>An MPM-Toolbox project is a triple of sibling XML files describing <strong>one</strong> musical work: a <code>.msm</code> notated score, a <code>.mpm</code> <em>modelled</em> performance overlay (tempo, dynamics, articulation, … as expressive markup), and a <code>.mpr</code> project file carrying an <em>observed</em> audio-to-score alignment. This guide loads such a project in a single call and arranges it as one multimodal <button class="glossary" title="">AlignmentBundle</button> spanning the logical (score), physical (performance), and graphical (spectrogram) domains.</p>
+<p>An MPM-Toolbox project is a triple of sibling XML files describing <strong>one</strong> musical work: a <code>.msm</code> notated score, a <code>.mpm</code> <em>modelled</em> performance overlay (tempo, dynamics, articulation, … as expressive markup), and a <code>.mpr</code> project file carrying an <em>observed</em> audio-to-score alignment. This guide loads such a project in a single call and arranges it as one multimodal <button class="glossary" title="A collection of TimelineGroups with inter-group MatchClaim connections; provides coordinate transfer via offset arithmetic, interpolation, and WarpMaps.">AlignmentBundle</button> spanning the logical (score), physical (performance), and graphical (spectrogram) domains.</p>
 <p>The work is Beethoven’s <em>Eroica</em> Variations, Op. 35 — Var. XIV — in a 1971 Curzon recording. By the end we will have, in one bundle: the notated score in two logical units, the performance markup carried as <button class="glossary" title="Anything associated with a timeline via Instants. An InstantEvent has zero duration; a TimeIntervalEvent has duration defined by start and end coordinates.">Event</button>s, a modelled tempo curve mapping score quarters to seconds, the observed onsets tied back to the score note by note, and the recording’s spectrogram as a graphical time axis.</p>
 <p>We <strong>load</strong> the modelled markup and the observed alignment exactly as they sit on disk. Nothing here runs an aligner, and the tempo model is read as written — we do not render a beat-accurate performance from it.</p>
 <p>The arc:</p>
@@ -461,12 +473,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li>Read the logical score in two units, linked by a <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>.</li>
 <li>Read the performance markup carried as <button class="glossary" title="Anything associated with a timeline via Instants. An InstantEvent has zero duration; a TimeIntervalEvent has duration defined by start and end coordinates.">Event</button>s on the score.</li>
 <li>Read the modelled quarters→seconds tempo map.</li>
-<li>Read the observed alignment — the physical performance and its cross-group <button class="glossary" title="A claim of equivalence between two events on different timelines, each coordinate on its own timeline’s axis, with its Provenance (how it was made and who believes it) and a certainty. A side without an event of its own is given a Projection. May be synchronous (producing AlignmentAnchors) or not: conceptual (structural equivalence without temporal commitment) or NOMATCH (an event on one side, the sentinel on the other). A MatchClaim is always stated: what a MatchGraph infers through groups is the graph’s own (its inferred edges), never a MatchClaim. A person stating claims is recorded as believing them “true” (create_match_claims(…, actor=)). A claim is never deleted: who disagrees records a belief “false” in it (AlignmentBundle.add_match_claim_belief()), and every reader of claims, the MatchStamp and coordinate getters included, takes the belief filter (believer=, beliefs=; see Provenance). Readers of claims take the same timeline filters: timeline_ids keeps a claim with any of the named timelines on either side, within a claim whose both timelines are in the set. Held individually, or in the bundle’s one MatchClaim table, a MatchClaimField. Its ID never changes: a claim given none is minted one when it is constructed (claim_ and 13 random characters, seeded from the claim’s content or by seed=), and joining an AlignmentBundle mints nothing. A MatchClaim is addressed by its ID alone: a bundle or field already holding an ID refuses a second claim under it, and merging bundles (from_bundles()) refuses, before anything is merged, two sources holding one ID.">MatchClaim</button>s.</li>
+<li>Read the observed alignment — the physical performance and its cross-group <button class="glossary" title="A claim of equivalence between two events on different timelines, each coordinate on its own timeline’s axis, with its Provenance (how it was made and who believes it) and a certainty. A side without an event of its own is given a Projection, or is the sentinel CHUNK on a synchronous claim stated from positions. May be synchronous (producing AlignmentAnchors) or not: conceptual (structural equivalence without temporal commitment) or NOMATCH (an event on one side, the sentinel on the other). A MatchClaim is always stated: what a MatchGraph infers through groups is the graph’s own (its inferred edges), never a MatchClaim. A person stating claims is recorded as believing them “true” (create_match_claims(…, actor=)). A claim is never deleted: who disagrees records a belief “false” in it (AlignmentBundle.add_match_claim_belief()), and every reader of claims, the MatchStamp and coordinate getters included, takes the belief filter (believer=, beliefs=; see Provenance). Readers of claims take the same timeline filters: timeline_ids keeps a claim with any of the named timelines on either side, within a claim whose both timelines are in the set. Held individually, or in the bundle’s one MatchClaim table, a MatchClaimField. Its ID never changes: a claim given none is minted one when it is constructed (claim_ and 13 random characters, seeded from the claim’s content or by seed=), and joining an AlignmentBundle mints nothing. A MatchClaim is addressed by its ID alone: a bundle or field already holding an ID refuses a second claim under it, and merging bundles (from_bundles()) refuses, before anything is merged, two sources holding one ID.">MatchClaim</button>s.</li>
 <li>Read the recording’s spectrogram as a graphical (pixels) time axis.</li>
 </ol>
 <section id="setup" class="level2">
 <h2 class="anchored" data-anchor-id="setup">Setup</h2>
-<div id="64903df4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:12.196314Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:12.195649Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.269265Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.268535Z&quot;}}" data-execution_count="1">
+<div id="0781d5c8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:10.106956Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:10.106344Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:12.549350Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:12.548613Z&quot;}}" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> __future__ <span class="im">import</span> annotations</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign.core <span class="im">import</span> TimeUnit</span>
@@ -483,8 +495,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="load-the-project-in-one-call" class="level2">
 <h2 class="anchored" data-anchor-id="load-the-project-in-one-call">1. Load the project in one call</h2>
-<p><button class="glossary" title="">MpmLoader</button> is given the <code>.mpr</code> project file; it resolves the sibling <code>.msm</code> and <code>.mpm</code> by the bare filenames the project names, parses the score, the selected performance’s markup, and the observed alignment, and binds the recording’s audio for its sample rate. <code>from_file()</code> is the one-line form of the standard two-phase loader pattern.</p>
-<div id="86200daf" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.270874Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.270586Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.325855Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.325234Z&quot;}}" data-execution_count="2">
+<p><button class="glossary" title="Loader for an MPM-Toolbox project: a sibling .msm score, .mpm modelled performance, and .mpr project file (carrying an observed audio-to-score alignment) for one work. Uses the standard two-step load() → create_*() pattern. Builds a shared logical “score” group holding the notes in two units — a ticks DiscreteLogicalTimeline (also carrying every MPM markup event: Tempo, Dynamics, Articulation, …) and a quarters ContinuousLogicalTimeline — with a TicksToQuarters map and a modelled quarters→seconds TableMap integrated from the performance’s tempo markup; and a physical “perf” group of observed onsets in seconds and samples. Emits one synchronous cross-group MatchClaim per score note (the MSM xml:id ↔ MPR ref join is a bijection). Reads the modelled performance and the observed alignment; never runs an aligner. Returns an AlignmentBundle via create_bundle().">MpmLoader</button> is given the <code>.mpr</code> project file; it resolves the sibling <code>.msm</code> and <code>.mpm</code> by the bare filenames the project names, parses the score, the selected performance’s markup, and the observed alignment, and binds the recording’s audio for its sample rate. <code>from_file()</code> is the one-line form of the standard two-phase loader pattern.</p>
+<div id="07f1058c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:12.551291Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:12.550975Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:12.704824Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:12.704270Z&quot;}}" data-execution_count="2">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>loader <span class="op">=</span> MpmLoader.from_file(MPR)</span>
 <span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>loader</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="2">
@@ -521,7 +533,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>The <code>.mpm</code> may hold several <code>&lt;performance&gt;</code> blocks; by default the first is selected. The pulses-per-quarter grid (720) and the chosen performance name are read straight from the files. To select a different performance, pass <code>MpmLoader().load(MPR, performance="...")</code>.</p>
-<div id="fd35e55b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.327549Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.327400Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.330746Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.330186Z&quot;}}" data-execution_count="3">
+<div id="048e2ba2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:12.706602Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:12.706463Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:12.709661Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:12.709103Z&quot;}}" data-execution_count="3">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"pulses per quarter"</span>: loader.ppq,</span>
 <span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"performance"</span>: loader.performance_name,</span>
@@ -530,38 +542,38 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <pre><code>{'pulses per quarter': 720, 'performance': 'MEI export performance'}</code></pre>
 </div>
 </div>
-<p><code>create_bundle()</code> assembles the <button class="glossary" title="">AlignmentBundle</button>: five timelines arranged in two groups — a logical group named <code>"score"</code> and a physical group named <code>"perf"</code>, which also holds the spectrogram’s pixel axis. A group’s name is not its ID: the bundle mints the group IDs <code>group_1</code> and <code>group_2</code>, while the timeline IDs carry the roles as prefixes, <code>score:</code> and <code>perf:</code>. Everything below reads from this single bundle.</p>
-<div id="142f1d32" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.332510Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.332372Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.354213Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.353568Z&quot;}}" data-execution_count="4">
+<p><code>create_bundle()</code> assembles the <button class="glossary" title="A collection of TimelineGroups with inter-group MatchClaim connections; provides coordinate transfer via offset arithmetic, interpolation, and WarpMaps.">AlignmentBundle</button>: five timelines arranged in two groups — a logical group named <code>"score"</code> and a physical group named <code>"perf"</code>, which also holds the spectrogram’s pixel axis. A group’s name is not its ID: the bundle mints the group IDs (<code>group_…</code>), while the timeline IDs carry the roles as prefixes, <code>score:</code> and <code>perf:</code>, before a minted ID seeded from the project’s files (<code>score:clt_…</code>). A regular expression matching whole IDs, such as <code>"score:clt_.*"</code>, therefore finds a timeline by its role and kind. Everything below reads from this single bundle.</p>
+<div id="d5e09c80" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:12.711188Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:12.711004Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:12.727509Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:12.726866Z&quot;}}" data-execution_count="4">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>bundle <span class="op">=</span> loader.create_bundle()</span>
 <span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>bundle</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="4">
-<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">AlignmentBundle[bundle_1]
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">AlignmentBundle[bundle_3sloi159atbx5]
 
-  TimelineGroup[group_1] (2 timelines)
+  TimelineGroup[group_2y6k5e4iios01] (2 timelines)
   ┌────────────────────────────────────────────────────────────────────────────┐
-  │ ContinuousLogicalTimeline[score:clt_1] (251 events, 1 cmaps)               │
+  │ ContinuousLogicalTimeline[score:clt_2kp3ykr72exzz] (251 events, 1 cmaps)   │
   │                       0 ____________________________________ 64.5 quarters │
   │                                                                            │
-  │ DiscreteLogicalTimeline[score:dlt_1] (499 events, 1 cmaps)                 │
+  │ DiscreteLogicalTimeline[score:dlt_07d0ljffegg8o] (499 events, 1 cmaps)     │
   │                       0 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,, 46440 ticks │
   └────────────────────────────────────────────────────────────────────────────┘
 
-  TimelineGroup[group_2] (3 timelines)
+  TimelineGroup[group_0nny3nwjgod7x] (3 timelines)
   ┌────────────────────────────────────────────────────────────────────────────┐
-  │ ContinuousPhysicalTimeline[perf:cpt_1] (251 events)                        │
+  │ ContinuousPhysicalTimeline[perf:cpt_2aru6cd86we5t] (251 events)            │
   │                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 75.4 seconds │
   │                                                                            │
-  │ DiscretePhysicalTimeline[perf:dpt_1] (251 events, 1 cmaps)                 │
+  │ DiscretePhysicalTimeline[perf:dpt_1mca7m9yj2hth] (251 events, 1 cmaps)     │
   │                         0 ⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅⋅ 3324081 samples │
   │                                                                            │
-  │ DiscreteGraphicalTimeline[perf:dgt_1] (1 cmaps)                            │
+  │ DiscreteGraphicalTimeline[perf:dgt_0j7uozpbs4288] (1 cmaps)                │
   │                       0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 26469 pixels │
   └────────────────────────────────────────────────────────────────────────────┘
 
   MatchClaims: 251</pre>
 </div>
 </div>
-<div id="670a9012" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.355700Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.355553Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.359100Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.358471Z&quot;}}" data-execution_count="5">
+<div id="c070eec5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:12.729536Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:12.729357Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:12.734329Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:12.733674Z&quot;}}" data-execution_count="5">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"timelines"</span>: bundle.n_timelines,</span>
 <span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"groups"</span>: bundle.n_groups,</span>
@@ -571,12 +583,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div class="cell-output cell-output-display" data-execution_count="5">
 <pre><code>{'timelines': 5,
  'groups': 2,
- 'groups_listed': ['group_1', 'group_2'],
- 'timelines_listed': ['score:clt_1',
-  'score:dlt_1',
-  'perf:cpt_1',
-  'perf:dpt_1',
-  'perf:dgt_1']}</code></pre>
+ 'groups_listed': ['group_2y6k5e4iios01', 'group_0nny3nwjgod7x'],
+ 'timelines_listed': ['score:clt_2kp3ykr72exzz',
+  'score:dlt_07d0ljffegg8o',
+  'perf:cpt_2aru6cd86we5t',
+  'perf:dpt_1mca7m9yj2hth',
+  'perf:dgt_0j7uozpbs4288']}</code></pre>
 </div>
 </div>
 <hr>
@@ -585,27 +597,27 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="the-logical-score-in-two-units">2. The logical score, in two units</h2>
 <p>The score lives in the <code>"score"</code> group, in <strong>two logical units</strong> — the same notes, measured two ways:</p>
 <ul>
-<li><code>score:dlt_1</code> carries integer <strong>tick</strong> onsets (the <code>pulsesPerQuarter</code> grid the score was notated on).</li>
-<li><code>score:clt_1</code> carries <strong>quarter-note</strong> onsets (an exact rational).</li>
+<li><code>score:dlt_…</code> carries integer <strong>tick</strong> onsets (the <code>pulsesPerQuarter</code> grid the score was notated on).</li>
+<li><code>score:clt_…</code> carries <strong>quarter-note</strong> onsets (an exact rational).</li>
 </ul>
-<div id="bbb789d9" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.360491Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.360348Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.365007Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.364316Z&quot;}}" data-execution_count="6">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>score_dlt <span class="op">=</span> bundle.get_timeline(<span class="st">"score:dlt_1"</span>)</span>
+<div id="3bfe5694" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:12.735972Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:12.735825Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:12.740043Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:12.739613Z&quot;}}" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>score_dlt <span class="op">=</span> bundle.get_timeline(<span class="st">"score:dlt_.*"</span>)</span>
 <span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>score_dlt</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="6">
-<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">DiscreteLogicalTimeline[score:dlt_1] (499 events, 1 cmaps)
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">DiscreteLogicalTimeline[score:dlt_07d0ljffegg8o] (499 events, 1 cmaps)
                       0 ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,, 46440 ticks</pre>
 </div>
 </div>
-<div id="a2aa9194" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.366559Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.366415Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.370413Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.369872Z&quot;}}" data-execution_count="7">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>score_clt <span class="op">=</span> bundle.get_timeline(<span class="st">"score:clt_1"</span>)</span>
+<div id="6de94242" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:12.741561Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:12.741430Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:12.745339Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:12.744744Z&quot;}}" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>score_clt <span class="op">=</span> bundle.get_timeline(<span class="st">"score:clt_.*"</span>)</span>
 <span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>score_clt</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="7">
-<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousLogicalTimeline[score:clt_1] (251 events, 1 cmaps)
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousLogicalTimeline[score:clt_2kp3ykr72exzz] (251 events, 1 cmaps)
                       0 ________________________________ 64.5 quarters</pre>
 </div>
 </div>
-<p>Both hold the same 251 notes. The <code>.msm</code> records each note’s MIDI pitch together with the spelling it was notated with (<code>pitchname</code> / <code>octave</code>); a look at the first few notes of <code>score:clt_1</code> shows what the score carried:</p>
-<div id="8c88200b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.372016Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.371873Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.383042Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.382371Z&quot;}}" data-execution_count="8">
+<p>Both hold the same 251 notes. The <code>.msm</code> records each note’s MIDI pitch together with the spelling it was notated with (<code>pitchname</code> / <code>octave</code>); a look at the first few notes of <code>score:clt_…</code> shows what the score carried:</p>
+<div id="48924b02" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:12.747192Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:12.746919Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:12.758764Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:12.758187Z&quot;}}" data-execution_count="8">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>score_clt.get_events().table.<span class="bu">slice</span>(<span class="dv">0</span>, <span class="dv">5</span>).to_pandas()[</span>
 <span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    [<span class="st">"id"</span>, <span class="st">"pitch"</span>, <span class="st">"pitchname"</span>, <span class="st">"octave"</span>]</span>
 <span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
@@ -667,17 +679,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 <section id="the-tick-grid-and-the-quarter-grid-are-one-conversion-apart" class="level3">
 <h3 class="anchored" data-anchor-id="the-tick-grid-and-the-quarter-grid-are-one-conversion-apart">The tick grid and the quarter grid are one conversion apart</h3>
-<p>The two logical timelines are not independent: a <code>TicksToQuarters</code> <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button> on <code>score:dlt_1</code> carries the tick grid to quarters — 720 ticks to the quarter. A <button class="glossary" title="A cross-section through a timeline or group at a given coordinate, capturing positions in all connected systems plus values converted by all attached C-maps. It stores one Coordinate per timeline ID, so each entry carries its own unit and number type. TimeStamp implements the Stamp interface it shares with MatchStamp: a typed axis, get_coordinate_for() and get_coordinates_for() returning IdCoordinates by default, get_unit() for unit conversion, get_conversion_for() for label and structured map values, present_timelines, and is_interpolated. A bare number is an explicit format=“float”/“int”/“fraction” request; there is no ambient float view. Which children answer follows the containment rule of Child.">TimeStamp</button> on <code>score:dlt_1</code> exposes the conversion at any coordinate, so asking for the quarter reading at a tick is the continuous↔︎discrete link of the logical domain made visible. The reading comes back typed: an <code>IdCoordinate</code> in <code>quarters</code>, still tagged with the tick timeline it converted from, because a unit conversion changes the representation and not which timeline you are standing on. Quarters are exact, so 360 ticks reads as <code>1/2</code> rather than <code>0.5</code>:</p>
-<div id="73bf6fd5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.384537Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.384391Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.388394Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.387760Z&quot;}}" data-execution_count="9">
+<p>The two logical timelines are not independent: a <code>TicksToQuarters</code> <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button> on <code>score:dlt_…</code> carries the tick grid to quarters — 720 ticks to the quarter. A <button class="glossary" title="A cross-section through a timeline or group at a given coordinate, capturing positions in all connected systems plus values converted by all attached C-maps. It stores one Coordinate per timeline ID, so each entry carries its own unit and number type. TimeStamp implements the Stamp interface it shares with MatchStamp: a typed axis, get_coordinate_for() and get_coordinates_for() returning IdCoordinates by default, get_unit() for unit conversion, get_conversion_for() for label and structured map values, present_timelines, and is_interpolated. A bare number is an explicit format=“float”/“int”/“fraction” request; there is no ambient float view. Which children answer follows the containment rule of Child.">TimeStamp</button> on <code>score:dlt_…</code> exposes the conversion at any coordinate, so asking for the quarter reading at a tick is the continuous↔︎discrete link of the logical domain made visible. The reading comes back typed: an <code>IdCoordinate</code> in <code>quarters</code>, still tagged with the tick timeline it converted from, because a unit conversion changes the representation and not which timeline you are standing on. Quarters are exact, so 360 ticks reads as <code>1/2</code> rather than <code>0.5</code>:</p>
+<div id="ced22e0a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:12.760280Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:12.760085Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:12.764784Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:12.763695Z&quot;}}" data-execution_count="9">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"tick 360 -&gt; quarters"</span>: score_dlt.get_timestamp(<span class="dv">360</span>).get_unit(TimeUnit.quarters),</span>
 <span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"tick 720 -&gt; quarters"</span>: score_dlt.get_timestamp(<span class="dv">720</span>).get_unit(TimeUnit.quarters),</span>
 <span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"tick 1440 -&gt; quarters"</span>: score_dlt.get_timestamp(<span class="dv">1440</span>).get_unit(TimeUnit.quarters),</span>
 <span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="9">
-<pre><code>{'tick 360 -&gt; quarters': IdCoordinate(Fraction(1, 2), quarters, 'score:dlt_1'),
- 'tick 720 -&gt; quarters': IdCoordinate(Fraction(1, 1), quarters, 'score:dlt_1'),
- 'tick 1440 -&gt; quarters': IdCoordinate(Fraction(2, 1), quarters, 'score:dlt_1')}</code></pre>
+<pre><code>{'tick 360 -&gt; quarters': IdCoordinate(Fraction(1, 2), quarters, 'score:dlt_07d0ljffegg8o'),
+ 'tick 720 -&gt; quarters': IdCoordinate(Fraction(1, 1), quarters, 'score:dlt_07d0ljffegg8o'),
+ 'tick 1440 -&gt; quarters': IdCoordinate(Fraction(2, 1), quarters, 'score:dlt_07d0ljffegg8o')}</code></pre>
 </div>
 </div>
 <hr>
@@ -685,12 +697,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="the-performance-markup-as-events-on-the-score" class="level2">
 <h2 class="anchored" data-anchor-id="the-performance-markup-as-events-on-the-score">3. The performance markup, as events on the score</h2>
-<p>A <code>.mpm</code> overlays the score with expressive markup — tempo, dynamics, articulation, asynchrony, and any other map type the project carries. The loader places every markup entry on <code>score:dlt_1</code> as an <button class="glossary" title="Anything associated with a timeline via Instants. An InstantEvent has zero duration; a TimeIntervalEvent has duration defined by start and end coordinates.">Event</button> at its tick onset, sitting alongside the <code>Note</code> events. A single logical timeline therefore carries both the notes and the modelled performance markup, read with the same event query used everywhere else — filter by <code>event_type</code>.</p>
+<p>A <code>.mpm</code> overlays the score with expressive markup — tempo, dynamics, articulation, asynchrony, and any other map type the project carries. The loader places every markup entry on <code>score:dlt_…</code> as an <button class="glossary" title="Anything associated with a timeline via Instants. An InstantEvent has zero duration; a TimeIntervalEvent has duration defined by start and end coordinates.">Event</button> at its tick onset, sitting alongside the <code>Note</code> events. A single logical timeline therefore carries both the notes and the modelled performance markup, read with the same event query used everywhere else — filter by <code>event_type</code>.</p>
 <p>The coordinate (<code>start</code>) comes back as a number; the remaining markup columns currently round-trip as strings, so we cast them as we read.</p>
 <section id="tempo" class="level3">
 <h3 class="anchored" data-anchor-id="tempo">Tempo</h3>
 <p>Each <code>Tempo</code> event carries a beats-per-minute reading. The MPM value may be an inline number or a <strong>style name</strong> declared in the performance’s style block; either way the loader resolves it to a number, keeping the original token in a <code>*_label</code> column. Here the style name <code>"Meno mosso."</code> resolves to 100 BPM:</p>
-<div id="f36e18b2" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.389883Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.389744Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.402371Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.401596Z&quot;}}" data-execution_count="10">
+<div id="e96aecca" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:12.767319Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:12.767151Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:12.778863Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:12.778123Z&quot;}}" data-execution_count="10">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>tempo_events <span class="op">=</span> score_dlt.get_events().<span class="bu">filter</span>(event_type<span class="op">=</span><span class="st">"Tempo"</span>).to_dataframe()</span>
 <span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>tempo_table <span class="op">=</span> tempo_events[[<span class="st">"start"</span>, <span class="st">"bpm_label"</span>, <span class="st">"bpm"</span>]].copy()</span>
@@ -764,7 +776,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="dynamics" class="level3">
 <h3 class="anchored" data-anchor-id="dynamics">Dynamics</h3>
 <p><code>Dynamics</code> events resolve the same way: the dynamic mark <code>"p"</code> is a style name that resolves to a MIDI volume of 48, with the mark preserved in <code>volume_label</code>:</p>
-<div id="bb499ddb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.404254Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.404078Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.417171Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.416544Z&quot;}}" data-execution_count="11">
+<div id="dada8a04" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:12.780715Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:12.780490Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:12.793878Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:12.793051Z&quot;}}" data-execution_count="11">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>dynamics_events <span class="op">=</span> score_dlt.get_events().<span class="bu">filter</span>(event_type<span class="op">=</span><span class="st">"Dynamics"</span>).to_dataframe()</span>
 <span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>dynamics_table <span class="op">=</span> dynamics_events[[<span class="st">"start"</span>, <span class="st">"volume_label"</span>, <span class="st">"volume"</span>]].copy()</span>
@@ -832,7 +844,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="articulation" class="level3">
 <h3 class="anchored" data-anchor-id="articulation">Articulation</h3>
 <p><code>Articulation</code> events name an articulation (<code>staccato</code>, <code>tenuto</code>, …) and, where the performance declares a definition for it, resolve its numeric attributes. A <code>staccato</code> here resolves to an absolute played duration of 160 ms; the <code>noteid</code> it applies to is carried alongside (its leading <code>#</code> stripped):</p>
-<div id="a8733722" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.418587Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.418450Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.432233Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.431731Z&quot;}}" data-execution_count="12">
+<div id="9e141e2f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:12.795580Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:12.795378Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:12.810774Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:12.809973Z&quot;}}" data-execution_count="12">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>articulation_events <span class="op">=</span> (</span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    score_dlt.get_events().<span class="bu">filter</span>(event_type<span class="op">=</span><span class="st">"Articulation"</span>).to_dataframe()</span>
 <span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>)</span>
@@ -905,7 +917,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <section id="the-modelled-tempo-as-quarters-seconds" class="level2">
 <h2 class="anchored" data-anchor-id="the-modelled-tempo-as-quarters-seconds">4. The modelled tempo, as quarters → seconds</h2>
 <p>The performance’s tempo markup also defines, segment by segment, how fast the score is taken. The loader integrates it into a modelled quarters→seconds <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button> — a <code>TableMap</code> it exposes directly:</p>
-<div id="1f51a019" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.433805Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.433662Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.436818Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.436218Z&quot;}}" data-execution_count="13">
+<div id="1bb0bc41" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:12.812388Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:12.812239Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:12.815950Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:12.815030Z&quot;}}" data-execution_count="13">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>tempo_map <span class="op">=</span> loader.tempo_map</span>
 <span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>tempo_map</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="13">
@@ -913,7 +925,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>It is anchored at the score’s start (<code>0</code> quarters → <code>0</code> seconds) and walks forward at each tempo segment’s pace. Converting a couple of quarter positions reads the modelled clock-time at which the score reaches them:</p>
-<div id="980b082b" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.438235Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.438047Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.441409Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.440756Z&quot;}}" data-execution_count="14">
+<div id="dec30e60" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:12.817930Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:12.817761Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:12.821762Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:12.820907Z&quot;}}" data-execution_count="14">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"quarter 0 -&gt; seconds"</span>: tempo_map(<span class="dv">0</span>),</span>
 <span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"quarter 39.5 -&gt; seconds"</span>: tempo_map(<span class="fl">39.5</span>),</span>
@@ -930,17 +942,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="the-observed-alignment" class="level2">
 <h2 class="anchored" data-anchor-id="the-observed-alignment">5. The observed alignment</h2>
-<p>The model above is one account of the performance. The <code>.mpr</code> carries another: an <strong>observed</strong> alignment, recording for every score note the moment it was actually played in the recording. The loader places these onsets in the physical <code>"perf"</code> group, in <strong>two units</strong> — <code>perf:cpt_1</code> in seconds and <code>perf:dpt_1</code> in samples, linked (as in any physical timeline) by a <code>SamplesToSeconds</code> <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button> carrying the recording’s sample rate.</p>
-<div id="61c8db73" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.442757Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.442623Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.446847Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.446209Z&quot;}}" data-execution_count="15">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>perf_cpt <span class="op">=</span> bundle.get_timeline(<span class="st">"perf:cpt_1"</span>)</span>
+<p>The model above is one account of the performance. The <code>.mpr</code> carries another: an <strong>observed</strong> alignment, recording for every score note the moment it was actually played in the recording. The loader places these onsets in the physical <code>"perf"</code> group, in <strong>two units</strong> — <code>perf:cpt_…</code> in seconds and <code>perf:dpt_…</code> in samples, linked (as in any physical timeline) by a <code>SamplesToSeconds</code> <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button> carrying the recording’s sample rate.</p>
+<div id="8e277254" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:12.823545Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:12.823392Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:12.827849Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:12.827072Z&quot;}}" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a>perf_cpt <span class="op">=</span> bundle.get_timeline(<span class="st">"perf:cpt_.*"</span>)</span>
 <span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>perf_cpt</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="15">
-<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousPhysicalTimeline[perf:cpt_1] (251 events)
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">ContinuousPhysicalTimeline[perf:cpt_2aru6cd86we5t] (251 events)
                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 75.4 seconds</pre>
 </div>
 </div>
-<p>The score group and the performance group are tied together by cross-group <button class="glossary" title="A claim of equivalence between two events on different timelines, each coordinate on its own timeline’s axis, with its Provenance (how it was made and who believes it) and a certainty. A side without an event of its own is given a Projection. May be synchronous (producing AlignmentAnchors) or not: conceptual (structural equivalence without temporal commitment) or NOMATCH (an event on one side, the sentinel on the other). A MatchClaim is always stated: what a MatchGraph infers through groups is the graph’s own (its inferred edges), never a MatchClaim. A person stating claims is recorded as believing them “true” (create_match_claims(…, actor=)). A claim is never deleted: who disagrees records a belief “false” in it (AlignmentBundle.add_match_claim_belief()), and every reader of claims, the MatchStamp and coordinate getters included, takes the belief filter (believer=, beliefs=; see Provenance). Readers of claims take the same timeline filters: timeline_ids keeps a claim with any of the named timelines on either side, within a claim whose both timelines are in the set. Held individually, or in the bundle’s one MatchClaim table, a MatchClaimField. Its ID never changes: a claim given none is minted one when it is constructed (claim_ and 13 random characters, seeded from the claim’s content or by seed=), and joining an AlignmentBundle mints nothing. A MatchClaim is addressed by its ID alone: a bundle or field already holding an ID refuses a second claim under it, and merging bundles (from_bundles()) refuses, before anything is merged, two sources holding one ID.">MatchClaim</button>s — one per score note. The <code>.mpr</code> alignment is a perfect bijection (every score note has exactly one observed onset and vice versa), so every claim is <strong>synchronous</strong>: there are no <button class="glossary" title="A sentinel value in a MatchClaim explicitly encoding the absence of a corresponding event on the other timeline. The MatchClaim records both timeline IDs and names the event of the timeline that has it, but has no AlignmentAnchors; is_synchronous is always False.">NOMATCH</button> gaps.</p>
-<div id="5f5fb727" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.448402Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.448257Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.494145Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.493500Z&quot;}}" data-execution_count="16">
+<p>The score group and the performance group are tied together by cross-group <button class="glossary" title="A claim of equivalence between two events on different timelines, each coordinate on its own timeline’s axis, with its Provenance (how it was made and who believes it) and a certainty. A side without an event of its own is given a Projection, or is the sentinel CHUNK on a synchronous claim stated from positions. May be synchronous (producing AlignmentAnchors) or not: conceptual (structural equivalence without temporal commitment) or NOMATCH (an event on one side, the sentinel on the other). A MatchClaim is always stated: what a MatchGraph infers through groups is the graph’s own (its inferred edges), never a MatchClaim. A person stating claims is recorded as believing them “true” (create_match_claims(…, actor=)). A claim is never deleted: who disagrees records a belief “false” in it (AlignmentBundle.add_match_claim_belief()), and every reader of claims, the MatchStamp and coordinate getters included, takes the belief filter (believer=, beliefs=; see Provenance). Readers of claims take the same timeline filters: timeline_ids keeps a claim with any of the named timelines on either side, within a claim whose both timelines are in the set. Held individually, or in the bundle’s one MatchClaim table, a MatchClaimField. Its ID never changes: a claim given none is minted one when it is constructed (claim_ and 13 random characters, seeded from the claim’s content or by seed=), and joining an AlignmentBundle mints nothing. A MatchClaim is addressed by its ID alone: a bundle or field already holding an ID refuses a second claim under it, and merging bundles (from_bundles()) refuses, before anything is merged, two sources holding one ID.">MatchClaim</button>s — one per score note. The <code>.mpr</code> alignment is a perfect bijection (every score note has exactly one observed onset and vice versa), so every claim is <strong>synchronous</strong>: there are no <button class="glossary" title="A sentinel value in a MatchClaim explicitly encoding the absence of a corresponding event on the other timeline. The MatchClaim records both timeline IDs and names the event of the timeline that has it, but has no AlignmentAnchors; is_synchronous is always False. Written NOMATCH_SENTINEL in the event ID column of the MatchClaim table; in code, the constant NOMATCH, which create_match_claims() takes as the side without an event.">NOMATCH</button> gaps.</p>
+<div id="6712a512" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:12.829516Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:12.829359Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:12.882827Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:12.882166Z&quot;}}" data-execution_count="16">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>claims <span class="op">=</span> bundle.get_match_claims()</span>
 <span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>{</span>
@@ -953,7 +965,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 </div>
 <p>A single claim relates a score quarter to an observed performed second. This one anchors the note at score quarter 0.5 to the moment it was played, 0.8 seconds into the recording:</p>
-<div id="f46286eb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.495674Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.495531Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.499203Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.498738Z&quot;}}" data-execution_count="17">
+<div id="039986e1" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:12.884428Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:12.884272Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:12.888163Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:12.887607Z&quot;}}" data-execution_count="17">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>quarter_half_claims <span class="op">=</span> [</span>
 <span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>    c</span>
 <span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> c <span class="kw">in</span> claims</span>
@@ -968,7 +980,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>Timeline A</td>
-<td><strong>score:clt_1</strong></td>
+<td><strong>score:clt_2kp3ykr72exzz</strong></td>
 <td>@1/2 quarters</td>
 </tr>
 <tr class="even" style="color: #555; font-size: 0.9em;">
@@ -977,7 +989,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="odd">
 <td>Timeline B</td>
-<td><strong>perf:cpt_1</strong></td>
+<td><strong>perf:cpt_2aru6cd86we5t</strong></td>
 <td>@0.8280190259247194 seconds</td>
 </tr>
 <tr class="even" style="color: #555; font-size: 0.9em;">
@@ -995,9 +1007,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </div>
 <section id="one-score-position-read-across-the-domains" class="level3">
 <h3 class="anchored" data-anchor-id="one-score-position-read-across-the-domains">One score position, read across the domains</h3>
-<p>Because the performance is anchored back to the score, a single score coordinate resolves across the whole bundle. <code>get_matchstamp_at</code> takes a coordinate on <code>score:clt_1</code> (quarters) and returns the corresponding coordinate on every connected timeline — here score quarter 2.0 mapped to the second at which it was observed:</p>
-<div id="3c88a13a" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.500895Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.500759Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.633192Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.632645Z&quot;}}" data-execution_count="18">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>stamp <span class="op">=</span> bundle.get_matchstamp_at(<span class="fl">2.0</span>, <span class="st">"score:clt_1"</span>)</span>
+<p>Because the performance is anchored back to the score, a single score coordinate resolves across the whole bundle. <code>get_matchstamp_at</code> takes a coordinate on <code>score:clt_…</code> (quarters) and returns the corresponding coordinate on every connected timeline — here score quarter 2.0 mapped to the second at which it was observed:</p>
+<div id="fa6104da" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:12.889531Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:12.889400Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:13.031917Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:13.030927Z&quot;}}" data-execution_count="18">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>stamp <span class="op">=</span> bundle.get_matchstamp_at(<span class="fl">2.0</span>, score_clt.<span class="bu">id</span>)</span>
 <span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>stamp</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="18">
 <div style="font-family: monospace;"><strong>MatchStamp</strong> <span style="background: #e3f2fd; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">5 timelines, 4 edges</span>
@@ -1011,27 +1023,27 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>score:clt_1</strong></td>
+<td><strong>score:clt_2kp3ykr72exzz</strong></td>
 <td style="text-align: right;">2 quarters</td>
 <td><em>stated</em></td>
 </tr>
 <tr class="even">
-<td style="color: #666">score:dlt_1</td>
+<td style="color: #666">score:dlt_07d0ljffegg8o</td>
 <td style="text-align: right;">1440 ticks</td>
 <td><em>inferred</em></td>
 </tr>
 <tr class="odd">
-<td><strong>perf:cpt_1</strong></td>
+<td><strong>perf:cpt_2aru6cd86we5t</strong></td>
 <td style="text-align: right;">2.1771958619535554 seconds</td>
 <td><em>stated</em></td>
 </tr>
 <tr class="even">
-<td style="color: #666">perf:dpt_1</td>
+<td style="color: #666">perf:dpt_1mca7m9yj2hth</td>
 <td style="text-align: right;">96014 samples</td>
 <td><em>inferred</em></td>
 </tr>
 <tr class="odd">
-<td style="color: #666">perf:dgt_1</td>
+<td style="color: #666">perf:dgt_0j7uozpbs4288</td>
 <td style="text-align: right;">765 pixels</td>
 <td><em>inferred</em></td>
 </tr>
@@ -1046,17 +1058,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="the-spectrogram-a-graphical-axis" class="level2">
 <h2 class="anchored" data-anchor-id="the-spectrogram-a-graphical-axis">6. The spectrogram, a graphical axis</h2>
-<p>The project also ships a rendered <strong>spectrogram</strong> of the recording — a <code>.png</code> whose horizontal axis is time. The loader reads that axis as a third performance-group <button class="glossary" title="A positive coordinate axis defined by an origin and a measuring unit; continuous (real) or discrete (integer). Accommodates events and potentially Child timelines.">Timeline</button>, <code>perf:dgt_1</code>, measured in <strong>pixels</strong> (frame columns): one position per column of the image. This is the graphical domain — the same work, now reached visually.</p>
+<p>The project also ships a rendered <strong>spectrogram</strong> of the recording — a <code>.png</code> whose horizontal axis is time. The loader reads that axis as a third performance-group <button class="glossary" title="">Timeline</button>, <code>perf:dgt_…</code>, measured in <strong>pixels</strong> (frame columns): one position per column of the image. This is the graphical domain — the same work, now reached visually.</p>
 <p>Unlike the other timelines, this one carries <strong>no</strong> <button class="glossary" title="Anything associated with a timeline via Instants. An InstantEvent has zero duration; a TimeIntervalEvent has duration defined by start and end coordinates.">Event</button>s. A spectrogram column is not a note; it is a tick mark on a picture’s time axis. The timeline’s job is to <em>be</em> that axis — its length is the image’s width in frame columns:</p>
-<div id="0209f30c" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.634829Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.634684Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.638606Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.637908Z&quot;}}" data-execution_count="19">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>perf_dgt <span class="op">=</span> bundle.get_timeline(<span class="st">"perf:dgt_1"</span>)</span>
+<div id="f7bfccc0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:13.033684Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:13.033526Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:13.037623Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:13.037053Z&quot;}}" data-execution_count="19">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>perf_dgt <span class="op">=</span> bundle.get_timeline(<span class="st">"perf:dgt_.*"</span>)</span>
 <span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>perf_dgt</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="19">
-<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">DiscreteGraphicalTimeline[perf:dgt_1] (1 cmaps)
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">DiscreteGraphicalTimeline[perf:dgt_0j7uozpbs4288] (1 cmaps)
                       0 ∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶∶ 26469 pixels</pre>
 </div>
 </div>
-<div id="d30fdab8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.640079Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.639939Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.643688Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.642988Z&quot;}}" data-execution_count="20">
+<div id="bcbc3d6e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:13.039068Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:13.038929Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:13.042176Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:13.041648Z&quot;}}" data-execution_count="20">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb26"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>{</span>
 <span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"unit"</span>: perf_dgt.unit.name,</span>
 <span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"length (frame columns)"</span>: perf_dgt.length.value,</span>
@@ -1068,8 +1080,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
  'events (it is an axis, not events)': 0}</code></pre>
 </div>
 </div>
-<p>A pixel column is only meaningful once tied to clock time. Each column advances the recording by a fixed hop of audio samples, so <code>perf:dgt_1</code> carries a px→seconds <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button> — a <code>ScalarMap</code> whose scalar is <code>hopSize / sample_rate</code>. Pulling it off the timeline and reading a couple of columns places the picture on the same seconds clock as the performance:</p>
-<div id="ec6cc3ad" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-25T08:52:14.645278Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-25T08:52:14.645143Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-25T08:52:14.649047Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-25T08:52:14.648513Z&quot;}}" data-execution_count="21">
+<p>A pixel column is only meaningful once tied to clock time. Each column advances the recording by a fixed hop of audio samples, so <code>perf:dgt_…</code> carries a px→seconds <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button> — a <code>ScalarMap</code> whose scalar is <code>hopSize / sample_rate</code>. Pulling it off the timeline and reading a couple of columns places the picture on the same seconds clock as the performance:</p>
+<div id="8f61a78e" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:13.043671Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:13.043538Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:13.047571Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:13.046864Z&quot;}}" data-execution_count="21">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>px_to_seconds <span class="op">=</span> perf_dgt.get_conversion_map(TimeUnit.seconds)</span>
 <span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a></span>
 <span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>last_column <span class="op">=</span> perf_dgt.length.value</span>
@@ -1082,8 +1094,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb28-10"><a href="#cb28-10" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="21">
 <pre><code>{'scalar (seconds per column)': Fraction(32, 11025),
- 'column 0 -&gt; seconds': IdCoordinate(0.0, seconds, 'perf:dgt_1'),
- 'column 26469 -&gt; seconds': IdCoordinate(76.82612244897959, seconds, 'perf:dgt_1')}</code></pre>
+ 'column 0 -&gt; seconds': IdCoordinate(0.0, seconds, 'perf:dgt_0j7uozpbs4288'),
+ 'column 26469 -&gt; seconds': IdCoordinate(76.82612244897959, seconds, 'perf:dgt_0j7uozpbs4288')}</code></pre>
 </div>
 </div>
 <p>Column 0 sits at the start of the recording; the rightmost column lands at the spectrogram’s full time span — the audio duration. The picture’s x-axis and the performance’s seconds are now one conversion apart, exactly as ticks and quarters were on the score.</p>
@@ -1104,11 +1116,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>Score, two logical units</td>
-<td><code>score:dlt_1</code> (ticks) + <code>score:clt_1</code> (quarters), one <code>TicksToQuarters</code> map</td>
+<td><code>score:dlt_…</code> (ticks) + <code>score:clt_…</code> (quarters), one <code>TicksToQuarters</code> map</td>
 </tr>
 <tr class="even">
 <td>Performance markup</td>
-<td><code>Tempo</code> / <code>Dynamics</code> / <code>Articulation</code> events on <code>score:dlt_1</code>, via <code>filter(event_type=...)</code></td>
+<td><code>Tempo</code> / <code>Dynamics</code> / <code>Articulation</code> events on <code>score:dlt_…</code>, via <code>filter(event_type=...)</code></td>
 </tr>
 <tr class="odd">
 <td>Modelled tempo</td>
@@ -1116,23 +1128,23 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </tr>
 <tr class="even">
 <td>Observed performance, two physical units</td>
-<td><code>perf:cpt_1</code> (s) + <code>perf:dpt_1</code> (samples), one <code>SamplesToSeconds</code></td>
+<td><code>perf:cpt_…</code> (s) + <code>perf:dpt_…</code> (samples), one <code>SamplesToSeconds</code></td>
 </tr>
 <tr class="odd">
 <td>Spectrogram, a graphical axis</td>
-<td><code>perf:dgt_1</code> (pixels), no events, one px→seconds <code>ScalarMap</code></td>
+<td><code>perf:dgt_…</code> (pixels), no events, one px→seconds <code>ScalarMap</code></td>
 </tr>
 <tr class="even">
 <td>Score ↔︎ performance</td>
-<td>one synchronous <button class="glossary" title="A claim of equivalence between two events on different timelines, each coordinate on its own timeline’s axis, with its Provenance (how it was made and who believes it) and a certainty. A side without an event of its own is given a Projection. May be synchronous (producing AlignmentAnchors) or not: conceptual (structural equivalence without temporal commitment) or NOMATCH (an event on one side, the sentinel on the other). A MatchClaim is always stated: what a MatchGraph infers through groups is the graph’s own (its inferred edges), never a MatchClaim. A person stating claims is recorded as believing them “true” (create_match_claims(…, actor=)). A claim is never deleted: who disagrees records a belief “false” in it (AlignmentBundle.add_match_claim_belief()), and every reader of claims, the MatchStamp and coordinate getters included, takes the belief filter (believer=, beliefs=; see Provenance). Readers of claims take the same timeline filters: timeline_ids keeps a claim with any of the named timelines on either side, within a claim whose both timelines are in the set. Held individually, or in the bundle’s one MatchClaim table, a MatchClaimField. Its ID never changes: a claim given none is minted one when it is constructed (claim_ and 13 random characters, seeded from the claim’s content or by seed=), and joining an AlignmentBundle mints nothing. A MatchClaim is addressed by its ID alone: a bundle or field already holding an ID refuses a second claim under it, and merging bundles (from_bundles()) refuses, before anything is merged, two sources holding one ID.">MatchClaim</button> per note (a perfect bijection)</td>
+<td>one synchronous <button class="glossary" title="A claim of equivalence between two events on different timelines, each coordinate on its own timeline’s axis, with its Provenance (how it was made and who believes it) and a certainty. A side without an event of its own is given a Projection, or is the sentinel CHUNK on a synchronous claim stated from positions. May be synchronous (producing AlignmentAnchors) or not: conceptual (structural equivalence without temporal commitment) or NOMATCH (an event on one side, the sentinel on the other). A MatchClaim is always stated: what a MatchGraph infers through groups is the graph’s own (its inferred edges), never a MatchClaim. A person stating claims is recorded as believing them “true” (create_match_claims(…, actor=)). A claim is never deleted: who disagrees records a belief “false” in it (AlignmentBundle.add_match_claim_belief()), and every reader of claims, the MatchStamp and coordinate getters included, takes the belief filter (believer=, beliefs=; see Provenance). Readers of claims take the same timeline filters: timeline_ids keeps a claim with any of the named timelines on either side, within a claim whose both timelines are in the set. Held individually, or in the bundle’s one MatchClaim table, a MatchClaimField. Its ID never changes: a claim given none is minted one when it is constructed (claim_ and 13 random characters, seeded from the claim’s content or by seed=), and joining an AlignmentBundle mints nothing. A MatchClaim is addressed by its ID alone: a bundle or field already holding an ID refuses a second claim under it, and merging bundles (from_bundles()) refuses, before anything is merged, two sources holding one ID.">MatchClaim</button> per note (a perfect bijection)</td>
 </tr>
 <tr class="odd">
 <td>A score position read across domains</td>
-<td><code>bundle.get_matchstamp_at(coord, "score:clt_1")</code></td>
+<td><code>bundle.get_matchstamp_at(coord, score_clt.id)</code></td>
 </tr>
 </tbody>
 </table>
-<p>One <button class="glossary" title="">AlignmentBundle</button> now expresses this single work across all three domains — logical (score ticks and quarters), physical (performance seconds and samples), and graphical (spectrogram pixels). Within each group the units are tied by <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>s; across the groups the score and performance are tied note by note by <button class="glossary" title="A claim of equivalence between two events on different timelines, each coordinate on its own timeline’s axis, with its Provenance (how it was made and who believes it) and a certainty. A side without an event of its own is given a Projection. May be synchronous (producing AlignmentAnchors) or not: conceptual (structural equivalence without temporal commitment) or NOMATCH (an event on one side, the sentinel on the other). A MatchClaim is always stated: what a MatchGraph infers through groups is the graph’s own (its inferred edges), never a MatchClaim. A person stating claims is recorded as believing them “true” (create_match_claims(…, actor=)). A claim is never deleted: who disagrees records a belief “false” in it (AlignmentBundle.add_match_claim_belief()), and every reader of claims, the MatchStamp and coordinate getters included, takes the belief filter (believer=, beliefs=; see Provenance). Readers of claims take the same timeline filters: timeline_ids keeps a claim with any of the named timelines on either side, within a claim whose both timelines are in the set. Held individually, or in the bundle’s one MatchClaim table, a MatchClaimField. Its ID never changes: a claim given none is minted one when it is constructed (claim_ and 13 random characters, seeded from the claim’s content or by seed=), and joining an AlignmentBundle mints nothing. A MatchClaim is addressed by its ID alone: a bundle or field already holding an ID refuses a second claim under it, and merging bundles (from_bundles()) refuses, before anything is merged, two sources holding one ID.">MatchClaim</button>s. A single object holds what was notated, how it was modelled, how it was actually played, and how it looks — the score, the model, the recording, and its picture, all on one set of linked clocks.</p>
+<p>One <button class="glossary" title="A collection of TimelineGroups with inter-group MatchClaim connections; provides coordinate transfer via offset arithmetic, interpolation, and WarpMaps.">AlignmentBundle</button> now expresses this single work across all three domains — logical (score ticks and quarters), physical (performance seconds and samples), and graphical (spectrogram pixels). Within each group the units are tied by <button class="glossary" title="A typed function attached to a timeline that maps each coordinate to exactly one value (coordinate, label, or filename); also permits inverse conversion back to the timeline’s own unit. Also called C-map.">ConversionMap</button>s; across the groups the score and performance are tied note by note by <button class="glossary" title="A claim of equivalence between two events on different timelines, each coordinate on its own timeline’s axis, with its Provenance (how it was made and who believes it) and a certainty. A side without an event of its own is given a Projection, or is the sentinel CHUNK on a synchronous claim stated from positions. May be synchronous (producing AlignmentAnchors) or not: conceptual (structural equivalence without temporal commitment) or NOMATCH (an event on one side, the sentinel on the other). A MatchClaim is always stated: what a MatchGraph infers through groups is the graph’s own (its inferred edges), never a MatchClaim. A person stating claims is recorded as believing them “true” (create_match_claims(…, actor=)). A claim is never deleted: who disagrees records a belief “false” in it (AlignmentBundle.add_match_claim_belief()), and every reader of claims, the MatchStamp and coordinate getters included, takes the belief filter (believer=, beliefs=; see Provenance). Readers of claims take the same timeline filters: timeline_ids keeps a claim with any of the named timelines on either side, within a claim whose both timelines are in the set. Held individually, or in the bundle’s one MatchClaim table, a MatchClaimField. Its ID never changes: a claim given none is minted one when it is constructed (claim_ and 13 random characters, seeded from the claim’s content or by seed=), and joining an AlignmentBundle mints nothing. A MatchClaim is addressed by its ID alone: a bundle or field already holding an ID refuses a second claim under it, and merging bundles (from_bundles()) refuses, before anything is merged, two sources holding one ID.">MatchClaim</button>s. A single object holds what was notated, how it was modelled, how it was actually played, and how it looks — the score, the model, the recording, and its picture, all on one set of linked clocks.</p>
 
 
 </section>

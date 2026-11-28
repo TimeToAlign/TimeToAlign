@@ -77,7 +77,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -302,6 +302,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/CHUNK.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CHUNK</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ClaimFilter</span></a>
   </div>
@@ -482,6 +488,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/EventRegistry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventRegistry</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventStore</span></a>
   </div>
@@ -490,6 +502,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Extraction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Extraction</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -848,6 +866,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/NOMATCH.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NOMATCH</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/Note.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Note</span></a>
   </div>
@@ -880,6 +904,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/OutputNumberTypeError.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">OutputNumberTypeError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Package.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Package</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1040,6 +1070,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/resolve.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">resolve</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/resolve_coordinate_spec.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">resolve_coordinate_spec</span></a>
   </div>
@@ -1066,12 +1102,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ScalarMap</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">ScopedId</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1320,7 +1350,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <section id="timetoalign.loader.graphical.DmosLoader" class="level1">
 <h1>DmosLoader</h1>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>loader.graphical.DmosLoader()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>loader.graphical.DmosLoader(seed<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Load the pages, systems and measures of a DMOS JSON file.</p>
 <p>A page’s time path is its systems read one after the other (:meth:<code>create_paths</code>), and the timelines mirror it, all in <code>pixels</code> (<code>int</code>):</p>
 <ul>
@@ -1329,7 +1359,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li>the <strong>volume</strong> (:meth:<code>create_timeline</code>) is the segment line of the pages.</li>
 </ul>
 <p>Each measure is a :class:<code>~timetoalign.core.Box</code> event of its system’s accolade, holding the measure’s quadrilateral in the page image’s pixels: <code>start</code> is the measure’s least x minus the system’s least x and <code>duration</code> the measure’s x extent, so the accolade’s <code>meta["box"]</code> and the Box’s shape, both in image space, agree with the interval.</p>
-<p>Known limits: measures have no id and no number in DMOS, so their Boxes are minted <code>box_N</code> per system unless <code>box_ids</code> names them; DMOS system ids repeat on some pages, so an accolade’s name (its DMOS id) need not be unique, while its timeline id is. A measure whose x extent leaves its system’s region, on the left or on the right, cannot be a Box of that system’s accolade and refuses the file (the accolade spans exactly its region’s x extent; neither is widened to hold the measure). A system whose region has no x extent (a vertical line) and which holds no measures, as DMOS output holds some, is no part of the time path: it is left out of :meth:<code>create_paths</code>, :meth:<code>create_timelines</code> and :meth:<code>create_timeline</code> alike, and :meth:<code>load</code> logs one warning per file naming each such system by its page and its position on it. A system without x extent that holds measures loads, but creating paths or timelines from the file is refused, naming the page and the system’s position. A page without systems, or all of whose systems are left out, has no time path and is left out.</p>
+<p>Known limits: measures have no id and no number in DMOS, so their Boxes are minted <code>box_…</code> unless <code>box_ids</code> names them; DMOS system ids repeat on some pages, so an accolade’s name (its DMOS id) need not be unique, while its timeline id is. A measure whose x extent leaves its system’s region, on the left or on the right, cannot be a Box of that system’s accolade and refuses the file (the accolade spans exactly its region’s x extent; neither is widened to hold the measure). A system whose region has no x extent (a vertical line) and which holds no measures, as DMOS output holds some, is no part of the time path: it is left out of :meth:<code>create_paths</code>, :meth:<code>create_timelines</code> and :meth:<code>create_timeline</code> alike, and :meth:<code>load</code> logs one warning per file naming each such system by its page and its position on it. A system without x extent that holds measures loads, but creating paths or timelines from the file is refused, naming the page and the system’s position. A page without systems, or all of whose systems are left out, has no time path and is left out.</p>
 <section id="examples" class="level2 doc-section doc-section-examples">
 <h2 class="doc-section doc-section-examples anchored" data-anchor-id="examples">Examples</h2>
 <p>The pages of a DMOS file as one timeline, its measures numbered through the score::</p>
@@ -1437,7 +1467,7 @@ boxes = accolade.get_events().table.to_pylist()</code></pre>
 <span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Create the volume: one timeline of all pages, in document order.</p>
 <p>The volume is a locked segment line of the pages, its length the sum of theirs; each page is a segment line of its systems’ accolades, as :meth:<code>create_timelines</code> builds it. The volume states the file’s <code>score_image_url</code> in <code>meta["image"]</code> where the file has one.</p>
-<p>Each of <em>page_ids</em>, <em>accolade_ids</em> and <em>box_ids</em> names every element of its kind: a sequence of ids in document order, or a template filled with :meth:<code>str.format</code> from <code>page</code> (the page’s position among the pages created, from 1), <code>accolade</code> (its position on its page), <code>box</code> (its position in its accolade) and <code>n</code> (the running count of the kind over the call). <code>box_ids="m{n}"</code> numbers the measures through the score. Left out, timelines are minted <code>dgt_N</code> (the volume, then each page followed by its accolades) and Boxes <code>box_N</code> per accolade.</p>
+<p>Each of <em>page_ids</em>, <em>accolade_ids</em> and <em>box_ids</em> names every element of its kind: a sequence of ids in document order, or a template filled with :meth:<code>str.format</code> from <code>page</code> (the page’s position among the pages created, from 1), <code>accolade</code> (its position on its page), <code>box</code> (its position in its accolade) and <code>n</code> (the running count of the kind over the call). <code>box_ids="m{n}"</code> numbers the measures through the score. Left out, timelines are minted <code>dgt_…</code> (the volume, then each page followed by its accolades) and Boxes <code>box_…</code>.</p>
 <section id="parameters" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h4>
 <table class="caption-top table">
@@ -1459,7 +1489,7 @@ boxes = accolade.get_events().table.to_pylist()</code></pre>
 <tr class="odd">
 <td>uid</td>
 <td><code>str</code> | None</td>
-<td>The volume’s id; minted <code>dgt_N</code> when None.</td>
+<td>The volume’s id; minted <code>dgt_…</code> when None.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="even">
@@ -1568,19 +1598,19 @@ boxes = accolade.get_events().table.to_pylist()</code></pre>
 <tr class="odd">
 <td>page_ids</td>
 <td><code>Ids</code></td>
-<td>The pages’ ids (see :meth:<code>create_timeline</code>); minted <code>dgt_N</code> when None.</td>
+<td>The pages’ ids (see :meth:<code>create_timeline</code>); minted <code>dgt_…</code> when None.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="even">
 <td>accolade_ids</td>
 <td><code>Ids</code></td>
-<td>The accolades’ ids; minted <code>dgt_N</code> when None.</td>
+<td>The accolades’ ids; minted <code>dgt_…</code> when None.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="odd">
 <td>box_ids</td>
 <td><code>Ids</code></td>
-<td>The Boxes’ ids; minted <code>box_N</code> per accolade when None.</td>
+<td>The Boxes’ ids; minted <code>box_…</code> when None.</td>
 <td><code>None</code></td>
 </tr>
 </tbody>
@@ -1599,12 +1629,12 @@ boxes = accolade.get_events().table.to_pylist()</code></pre>
 <tbody>
 <tr class="odd">
 <td></td>
-<td><code>list</code>[<a href="../reference/DiscreteGraphicalTimeline.html#timetoalign.timelines.DiscreteGraphicalTimeline">DiscreteGraphicalTimeline</a>]</td>
+<td><code>list</code>[<a href="../reference/DiscreteGraphicalTimeline.html#timetoalign.timelines.DiscreteGraphicalTimeline">DiscreteGraphicalTimeline</a> | <a href="../reference/SegmentLine.html#timetoalign.timelines.SegmentLine">SegmentLine</a>[<a href="../reference/DiscreteGraphicalTimeline.html#timetoalign.timelines.DiscreteGraphicalTimeline">DiscreteGraphicalTimeline</a>]]</td>
 <td>The pages’ timelines, each a</td>
 </tr>
 <tr class="even">
 <td></td>
-<td><code>list</code>[<a href="../reference/DiscreteGraphicalTimeline.html#timetoalign.timelines.DiscreteGraphicalTimeline">DiscreteGraphicalTimeline</a>]</td>
+<td><code>list</code>[<a href="../reference/DiscreteGraphicalTimeline.html#timetoalign.timelines.DiscreteGraphicalTimeline">DiscreteGraphicalTimeline</a> | <a href="../reference/SegmentLine.html#timetoalign.timelines.SegmentLine">SegmentLine</a>[<a href="../reference/DiscreteGraphicalTimeline.html#timetoalign.timelines.DiscreteGraphicalTimeline">DiscreteGraphicalTimeline</a>]]</td>
 <td><code>SegmentLine[DiscreteGraphicalTimeline]</code>.</td>
 </tr>
 </tbody>

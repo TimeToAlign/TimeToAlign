@@ -77,7 +77,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -302,6 +302,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/CHUNK.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CHUNK</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ClaimFilter</span></a>
   </div>
@@ -482,6 +488,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/EventRegistry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventRegistry</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventStore</span></a>
   </div>
@@ -490,6 +502,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Extraction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Extraction</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -848,6 +866,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/NOMATCH.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NOMATCH</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/Note.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Note</span></a>
   </div>
@@ -880,6 +904,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/OutputNumberTypeError.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">OutputNumberTypeError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Package.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Package</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1040,6 +1070,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/resolve.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">resolve</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/resolve_coordinate_spec.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">resolve_coordinate_spec</span></a>
   </div>
@@ -1066,12 +1102,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ScalarMap</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">ScopedId</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1326,14 +1356,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>loader.alignment.performance_precision.PerformancePrecisionLoader(</span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    score_unit<span class="op">=</span>TimeUnit.quarters,</span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    media_unit<span class="op">=</span>TimeUnit.seconds,</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Load a Performance Precision specimen directory as an AlignmentBundle.</p>
 <p>The loader composes :class:<code>SoloLoader</code> internally for the <code>.solo</code> score and :meth:<code>MetricMap.from_verovio_timemap</code> for the measure structure, then resolves every <code>"&lt;measure&gt;+&lt;offset&gt;"</code> label — both the score notes and the per-performer alignment rows — into absolute quarter-note positions.</p>
 <p><strong>Usage follows the standard loader two-phase pattern:</strong></p>
 <ol type="1">
 <li><code>loader.load(specimen_dir)</code> — ingests the whole directory: the score and performance timelines with their notes, and every alignment row resolved to its two sides.</li>
-<li><code>loader.create_bundle()</code> — assembles the AlignmentBundle and states every row as a MatchClaim in it, adding the Projections the claims stand on.</li>
-<li><code>loader.create_timeline(uid)</code> / <code>create_timelines()</code> — retrieve individual timelines (holding Projections once <code>create_bundle</code> has stated the claims).</li>
+<li><code>loader.create_bundle()</code> — assembles the AlignmentBundle and states every row as a MatchClaim in it, adding the Projections the note and dangling rows’ claims stand on.</li>
+<li><code>loader.create_timeline(uid)</code> / <code>create_timelines()</code> — retrieve individual timelines (the score holding its Projections once <code>create_bundle</code> has stated the claims).</li>
 </ol>
 <section id="parameters" class="level2 doc-section doc-section-parameters">
 <h2 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters">Parameters</h2>
@@ -1364,6 +1395,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><code>TimeUnit</code></td>
 <td>Unit for the performance timelines. Default <code>TimeUnit.seconds</code>.</td>
 <td><code>TimeUnit.seconds</code></td>
+</tr>
+<tr class="odd">
+<td>seed</td>
+<td><code>int</code> | None</td>
+<td>The seed of the loader’s ID minter (see <code>Loader.load</code>).</td>
+<td><code>None</code></td>
 </tr>
 </tbody>
 </table>
@@ -1425,10 +1462,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>The timelines join the bundle first; then every row is stated as a MatchClaim between events (:meth:<code>AlignmentBundle.create_match_claims &lt;timetoalign.alignment.bundle.AlignmentBundle.create_match_claims&gt;</code>), one call per performer and granularity, in file order:</p>
 <ul>
 <li>an aligned note-level row: a Projection on the score at its LABEL’s position stands for the performed Note event (<code>projection_of</code> naming it), and the claim joins the two;</li>
-<li>an aligned bar- or beat-level row: both sides are positions only, so each gets a Projection standing for no event, and the claim joins the two Projections;</li>
-<li>a dangling row: a NOMATCH claim from its score Projection.</li>
+<li>an aligned bar- or beat-level row: both sides are positions where neither timeline holds an event, so the claim is CHUNK on both sides (:data:<code>~timetoalign.core.ids.CHUNK</code>), its anchor holding the two positions, and no Projection is added;</li>
+<li>a dangling row: a NOMATCH claim from a score Projection standing for no event.</li>
 </ul>
-<p>A timeline keeps one Projection per position and event it stands for, so the bar and beat positions every performer shares stand once on the score timeline, and a second call adds no Projection. Every Projection is added while its timeline is in the bundle, so its ID is minted unique among all Projections of the bundle and the bundle’s package can be written.</p>
+<p>A timeline keeps one Projection per position and event it stands for, so the dangling positions every performer shares stand once on the score timeline, and a second call adds no Projection. Every Projection is added while its timeline is in the bundle, so its ID is minted unique among all Projections of the bundle and the bundle’s package can be written.</p>
 <section id="returns" class="level4 doc-section doc-section-returns">
 <h4 class="doc-section doc-section-returns anchored" data-anchor-id="returns">Returns</h4>
 <table class="caption-top table">
@@ -1500,9 +1537,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <table class="caption-top table">
 <colgroup>
 <col style="width: 3%">
-<col style="width: 10%">
-<col style="width: 80%">
-<col style="width: 5%">
+<col style="width: 9%">
+<col style="width: 82%">
+<col style="width: 4%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -1516,7 +1553,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td>uid</td>
 <td><code>str</code> | None</td>
-<td><code>"score"</code> (or the score uid) for the score timeline; a performer key (<code>"Chopin_Ashkenazy"</code>) or its uid (<code>"perf:Chopin_Ashkenazy:cpt_1"</code>) for a performance timeline.</td>
+<td><code>"score"</code> (or the score uid, <code>score:clt_…</code>) for the score timeline; a performer key (<code>"Chopin_Ashkenazy"</code>, the timeline’s name) or its uid (<code>perf:cpt_…</code>) for a performance timeline.</td>
 <td><code>None</code></td>
 </tr>
 </tbody>
@@ -1596,10 +1633,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-3">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 7%">
-<col style="width: 21%">
-<col style="width: 65%">
-<col style="width: 6%">
+<col style="width: 5%">
+<col style="width: 20%">
+<col style="width: 69%">
+<col style="width: 4%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -1612,8 +1649,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tbody>
 <tr class="odd">
 <td>specimen_dir</td>
-<td><code>str</code> | <code>Path</code></td>
-<td>Path to the directory containing the <code>.solo</code> file, the Verovio timemap <code>.json</code>, and the <code>Alignments/</code> subdirectory.</td>
+<td><code>SourceLike</code></td>
+<td>Source to the directory containing the <code>.solo</code> file, the Verovio timemap <code>.json</code>, and the <code>Alignments/</code> subdirectory, or that directory as a member of a ZIP archive, read in place.</td>
 <td><em>required</em></td>
 </tr>
 </tbody>

@@ -77,7 +77,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="../site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="../site_libs/bootstrap/bootstrap-3fd19db53dfddd25a3a141f7851eaf79.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -302,6 +302,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/CHUNK.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">CHUNK</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/ClaimFilter.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ClaimFilter</span></a>
   </div>
@@ -482,6 +488,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/EventRegistry.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">EventRegistry</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/EventStore.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventStore</span></a>
   </div>
@@ -490,6 +502,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/EventType.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">EventType</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Extraction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Extraction</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -848,6 +866,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/NOMATCH.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">NOMATCH</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/Note.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">Note</span></a>
   </div>
@@ -880,6 +904,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/OutputNumberTypeError.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">OutputNumberTypeError</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../reference/Package.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">Package</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1040,6 +1070,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </li>
           <li class="sidebar-item">
   <div class="sidebar-item-container"> 
+  <a href="../reference/resolve.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">resolve</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
   <a href="../reference/resolve_coordinate_spec.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">resolve_coordinate_spec</span></a>
   </div>
@@ -1066,12 +1102,6 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <div class="sidebar-item-container"> 
   <a href="../reference/ScalarMap.html" class="sidebar-item-text sidebar-link">
  <span class="menu-text">ScalarMap</span></a>
-  </div>
-</li>
-          <li class="sidebar-item">
-  <div class="sidebar-item-container"> 
-  <a href="../reference/ScopedId.html" class="sidebar-item-text sidebar-link">
- <span class="menu-text">ScopedId</span></a>
   </div>
 </li>
           <li class="sidebar-item">
@@ -1359,7 +1389,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <section id="timetoalign.loader.RepoVizzLoader" class="level1">
 <h1>RepoVizzLoader</h1>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>loader.RepoVizzLoader()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>loader.RepoVizzLoader(seed<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Load RepoVizz XML manifests or single CSV files for creating physical timelines.</p>
 <p>RepoVizzLoader supports two modes:</p>
 <p><strong>XML Manifest Mode</strong> (when loading a <code>.xml</code> file): Parses the RepoVizz XML manifest and builds a catalogue of all data files in the recording directory. Provides lazy access to: - Audio recordings (ambient + pickup) - Essentia audio descriptors - Bowing gesture descriptors - MoCap position data - Score alignment files (.notes)</p>
@@ -1546,7 +1576,7 @@ Coordinate(11753638, samples)</code></pre>
 <tr class="odd">
 <td>id</td>
 <td><code>str</code> | None</td>
-<td>Custom ID for the TimelineGroup. Defaults to <code>"repovizz:{category or 'all'}"</code>.</td>
+<td>Custom ID for the TimelineGroup; minted <code>group_…</code> from the loader’s minter when None.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="even">
@@ -2014,10 +2044,10 @@ Coordinate(11753638, samples)</code></pre>
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-7">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
+<col style="width: 6%">
+<col style="width: 11%">
+<col style="width: 71%">
 <col style="width: 10%">
-<col style="width: 18%">
-<col style="width: 55%">
-<col style="width: 15%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -2031,7 +2061,7 @@ Coordinate(11753638, samples)</code></pre>
 <tr class="odd">
 <td>id</td>
 <td><code>str</code></td>
-<td>Entry identifier, name, or partial match.</td>
+<td>Entry identifier, name, shorthand, or a regular expression matching a whole xml_id.</td>
 <td><em>required</em></td>
 </tr>
 </tbody>
@@ -2136,15 +2166,15 @@ Coordinate(11753638, samples)</code></pre>
 <h3 class="anchored" data-anchor-id="timetoalign.loader.RepoVizzLoader.load">load</h3>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>loader.RepoVizzLoader.load(<span class="op">*</span>sources)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Load one or more source files.</p>
-<p>If the source is an <code>.xml</code> file, uses XML manifest mode. Otherwise, falls back to legacy CSV mode.</p>
+<p>If the source is an <code>.xml</code> file, uses XML manifest mode. Otherwise, falls back to legacy CSV mode. A manifest that is a member of a ZIP archive finds its data files among the members beside it.</p>
 <section id="parameters-9" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-9">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 10%">
-<col style="width: 40%">
-<col style="width: 37%">
-<col style="width: 11%">
+<col style="width: 7%">
+<col style="width: 39%">
+<col style="width: 45%">
+<col style="width: 7%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -2157,8 +2187,8 @@ Coordinate(11753638, samples)</code></pre>
 <tbody>
 <tr class="odd">
 <td>*sources</td>
-<td><code>Path</code> | <code>str</code></td>
-<td>Paths to XML manifest or CSV files.</td>
+<td><code>SourceLike</code></td>
+<td>Paths to XML manifest or CSV files, or members of ZIP archives.</td>
 <td><code>()</code></td>
 </tr>
 </tbody>

@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.9.37">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="description" content="A bundle’s events in the registry and pre-parsed tables beside its manifest (to_file with events=True), IDs resolved through a manifest or a package root (resolve), a package of two bundles sharing its tables (Package, write_bundle, to_file), one manifest opened from package.yaml, the package check (package_problems), IDs held once in a package, and one bundle written into the package again">
+
+<title>How to Write the Registry and Share Tables in a Package – TimeToAlign!</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../">
+<script src="../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../site_libs/quarto-html/popper.min.js"></script>
+<script src="../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../site_libs/quarto-html/quarto-syntax-highlighting-7f8f88aac4f3542376d5c11b86a4c14d.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../site_libs/bootstrap/bootstrap-078b1a7e4c03c8fac7886304e7163184.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="light">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 50,
+  "keyboard-shortcut": [
+    "f",
+    "/",
+    "s"
+  ],
+  "show-item-context": false,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+
+
+<link rel="stylesheet" href="../styles.css">
+<link rel="stylesheet" href="../reference/_styles-quartodoc.css">
+</head>
+
+<body class="nav-sidebar floating nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../index.html">
+    <span class="navbar-title">TimeToAlign!</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../index.html"> 
+<span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../tutorials.html"> 
+<span class="menu-text">Tutorials</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link active" href="../howto.html" aria-current="page"> 
+<span class="menu-text">How-To Guides</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../concepts.html"> 
+<span class="menu-text">Explanation</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../reference.html"> 
+<span class="menu-text">API Reference</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+  <nav class="quarto-secondary-nav">
+    <div class="container-fluid d-flex">
+      <button type="button" class="quarto-btn-toggle btn" data-bs-toggle="collapse" role="button" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+        <i class="bi bi-layout-text-sidebar-reverse"></i>
+      </button>
+        <nav class="quarto-page-breadcrumbs" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../howto/how03_create_note_alignment.html">AlignmentBundles</a></li><li class="breadcrumb-item"><a href="../howto/how03_registry_and_packages.html">How to Write the Registry and Share Tables in a Package</a></li></ol></nav>
+        <a class="flex-grow-1" role="navigation" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item" aria-controls="quarto-sidebar" aria-expanded="false" aria-label="Toggle sidebar navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">      
+        </a>
+    </div>
+  </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+  <nav id="quarto-sidebar" class="sidebar collapse collapse-horizontal quarto-sidebar-collapse-item sidebar-navigation floating overflow-auto">
+    <div class="sidebar-menu-container"> 
+    <ul class="list-unstyled mt-1">
+        <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How-To Guides</span></a>
+  </div>
+</li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true">
+ <span class="menu-text">Timelines, Events &amp; Maps</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-1" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-1" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_coordinate_math.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Do Coordinate Math</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_advanced_cmaps.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Use Advanced Conversion Maps</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_advanced_timestamps.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Query Timestamps</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_manual_timeline_construction.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Construct Timelines Manually</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_loading_data.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load Data</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_tabular_loaders.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load Tabular Data</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_graphical_timelines.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Work with Graphical Timelines</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_thoresen_annotation_transfer.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Transfer Annotations Between Graphical Analyses</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_graphical_boxes.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Represent Areas of Page Images as Boxes</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_beat_grids.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Build Beat Grids</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how01_flow_control.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Encode and Play Flow Control</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true">
+ <span class="menu-text">TimelineGroups</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-2" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-2" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how02_supra_piano_roll.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Align a Piano Roll (SUPRA)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how02_group_and_bundle_files.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Save and Load Timelines, Groups and Bundles</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true">
+ <span class="menu-text">AlignmentBundles</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-3" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-3" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_create_note_alignment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Create a Note Alignment</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_beethoven_multimodal.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Align Multimodal Data (Beethoven)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_loading_vienna_corpus.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load the Vienna 4x22 Corpus</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_performance_precision.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an Audio-to-Score Alignment Corpus and Compare Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_parangonada.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load a parangonada Note Alignment Across Several Performances</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_mpm_toolbox.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an MPM-Toolbox Project (Score, Modelled Performance, Observed Alignment)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_listen_here.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an Audio-to-Audio Alignment (Listen Here!)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_mtd_themes.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load Musical Themes Aligned to Recordings (MTD)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_ieee1599.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load an IEEE 1599 Document</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_engraved_score_alignment.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Align an Engraved Score with a Recording and a Drawn Time Axis</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_describe_the_work.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Describe What a Bundle and Its Timelines Stand For</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_match_claims_package.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Keep MatchClaims, Projections and Beliefs in a Package</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how03_registry_and_packages.html" class="sidebar-item-text sidebar-link active">
+ <span class="menu-text">How to Write the Registry and Share Tables in a Package</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+        <li class="sidebar-item sidebar-item-section">
+      <div class="sidebar-item-container"> 
+            <a class="sidebar-item-text sidebar-link text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="true">
+ <span class="menu-text">In-depth Topics</span></a>
+          <a class="sidebar-item-toggle text-start" data-bs-toggle="collapse" data-bs-target="#quarto-sidebar-section-4" role="navigation" aria-expanded="true" aria-label="Toggle section">
+            <i class="bi bi-chevron-right ms-2"></i>
+          </a> 
+      </div>
+      <ul id="quarto-sidebar-section-4" class="collapse list-unstyled sidebar-section depth1 show">  
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how04_hendrix_song_genesis.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Encode Song Genesis (Hendrix)</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how04_loading_csv.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load CSV/TSV with column_specs and field_specs</span></a>
+  </div>
+</li>
+          <li class="sidebar-item">
+  <div class="sidebar-item-container"> 
+  <a href="../howto/how04_load_anything.html" class="sidebar-item-text sidebar-link">
+ <span class="menu-text">How to Load Anything</span></a>
+  </div>
+</li>
+      </ul>
+  </li>
+    </ul>
+    </div>
+</nav>
+<div id="quarto-sidebar-glass" class="quarto-sidebar-collapse-item" data-bs-toggle="collapse" data-bs-target=".quarto-sidebar-collapse-item"></div>
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#how-to-write-the-registry-and-share-tables-in-a-package" id="toc-how-to-write-the-registry-and-share-tables-in-a-package" class="nav-link active" data-scroll-target="#how-to-write-the-registry-and-share-tables-in-a-package">How to Write the Registry and Share Tables in a Package</a>
+  <ul>
+  <li><a href="#setup" id="toc-setup" class="nav-link" data-scroll-target="#setup">Setup</a></li>
+  <li><a href="#two-bundles" id="toc-two-bundles" class="nav-link" data-scroll-target="#two-bundles">Two bundles</a></li>
+  <li><a href="#write-a-bundle-with-its-tables" id="toc-write-a-bundle-with-its-tables" class="nav-link" data-scroll-target="#write-a-bundle-with-its-tables">Write a bundle with its tables</a></li>
+  <li><a href="#resolve-an-id" id="toc-resolve-an-id" class="nav-link" data-scroll-target="#resolve-an-id">Resolve an ID</a></li>
+  <li><a href="#build-a-package-of-two-bundles" id="toc-build-a-package-of-two-bundles" class="nav-link" data-scroll-target="#build-a-package-of-two-bundles">Build a package of two bundles</a></li>
+  <li><a href="#open-one-manifest-from-the-package" id="toc-open-one-manifest-from-the-package" class="nav-link" data-scroll-target="#open-one-manifest-from-the-package">Open one manifest from the package</a></li>
+  <li><a href="#check-the-package" id="toc-check-the-package" class="nav-link" data-scroll-target="#check-the-package">Check the package</a></li>
+  <li><a href="#ids-are-the-packages" id="toc-ids-are-the-packages" class="nav-link" data-scroll-target="#ids-are-the-packages">IDs are the package’s</a></li>
+  <li><a href="#write-one-bundle-again" id="toc-write-one-bundle-again" class="nav-link" data-scroll-target="#write-one-bundle-again">Write one bundle again</a></li>
+  <li><a href="#next" id="toc-next" class="nav-link" data-scroll-target="#next">Next</a></li>
+  </ul></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default"><nav class="quarto-page-breadcrumbs quarto-title-breadcrumbs d-none d-lg-block" aria-label="breadcrumb"><ol class="breadcrumb"><li class="breadcrumb-item"><a href="../howto/how03_create_note_alignment.html">AlignmentBundles</a></li><li class="breadcrumb-item"><a href="../howto/how03_registry_and_packages.html">How to Write the Registry and Share Tables in a Package</a></li></ol></nav>
+<div class="quarto-title">
+<h1 class="title">How to Write the Registry and Share Tables in a Package</h1>
+</div>
+
+<div>
+  <div class="description">
+    A bundle’s events in the registry and pre-parsed tables beside its manifest (to_file with events=True), IDs resolved through a manifest or a package root (resolve), a package of two bundles sharing its tables (Package, write_bundle, to_file), one manifest opened from package.yaml, the package check (package_problems), IDs held once in a package, and one bundle written into the package again
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<section id="how-to-write-the-registry-and-share-tables-in-a-package" class="level1">
+<h1>How to Write the Registry and Share Tables in a Package</h1>
+<p>A TimeToShare manifest holds the structure of its timelines and names no event. What lies on the timelines lies in Parquet tables beside it:</p>
+<ul>
+<li>the <strong>registry</strong>, one row per ID the package can resolve: for every event its ID, its type, its timeline, its position on the axis of its timeline’s root and the extraction that made it; and a non-event row for every element of the manifest, every MatchClaim and every extraction;</li>
+<li>the <strong>Extraction table</strong>, one row per run of a parser over a source file, or of a tool that made events without one (here the library, since the events are made in code);</li>
+<li>one <strong>pre-parsed table</strong> per event type, holding what is particular to events of that type, keyed by their IDs and without positions (the Projection table, a Note table); an event whose content can be read again from its source file is <strong>re-parsed</strong> instead and has no row there;</li>
+<li>the <strong>MatchClaim table</strong>.</li>
+</ul>
+<p>The manifest names the registry and the MatchClaim table in its <code>resources</code>. Several manifests can share their tables in a <strong>package</strong>: a folder whose <code>package.yaml</code> lists the manifests and the tables: the registry a folder of parts (one part of the non-event rows and one part per extraction), the Extraction table one file, and the MatchClaim table and every pre-parsed table a folder <code>tables/&lt;Type&gt;/</code> of the rows of every manifest. An ID combined with the location of a manifest, or of the package, resolves to what it names.</p>
+<p>This guide writes a bundle with its tables, resolves IDs through its manifest, builds a package of two bundles with <code>Package</code>, opens one of its manifests, checks the package with TimeToShare’s package check, and writes one bundle into the package again.</p>
+<section id="setup" class="level2">
+<h2 class="anchored" data-anchor-id="setup">Setup</h2>
+<p>Install the library with <code>pip install timetoalign</code>; the TimeToShare package, which defines the format and checks it, comes with it. Every file is written to a temporary directory.</p>
+<p>The helper <code>piece</code> builds the bundle of one piece: a score of four notes, a recording with an onset for each note but the last, a MatchClaim for each note and onset, and one claim giving the last note a position on the recording, where it gets a Projection. Every ID starts with the piece’s key, so that the IDs of two pieces differ. <code>files</code> lists a directory’s files and folders, <code>show</code> prints one key of a YAML file as the file holds it, <code>values_per_file</code> names the values of one column in each file of a table folder, and <code>event_rows</code> reads the event rows of a registry file.</p>
+<div id="d8e006c6" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:43.423160Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:43.423001Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.414782Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.414100Z&quot;}}" data-execution_count="1">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> tempfile</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> fractions <span class="im">import</span> Fraction</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> pathlib <span class="im">import</span> Path</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pyarrow.compute <span class="im">as</span> pc</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pyarrow.parquet <span class="im">as</span> pq</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoshare <span class="im">import</span> dumps, loads</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoshare.tables <span class="im">import</span> package_problems</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> timetoalign <span class="im">import</span> (</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>    AlignmentBundle,</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>    ContinuousLogicalTimeline,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    ContinuousPhysicalTimeline,</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    Package,</span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    Provenance,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    resolve,</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>FILES <span class="op">=</span> Path(tempfile.mkdtemp())</span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>EDITOR <span class="op">=</span> <span class="st">"https://example.org/people/editor"</span></span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>STATED <span class="op">=</span> Provenance(stated_by<span class="op">=</span>(EDITOR,), method<span class="op">=</span><span class="st">"manual"</span>, date<span class="op">=</span><span class="st">"2026-11-27"</span>)</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> piece(key, onsets):</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""The bundle of one piece: a score, a recording, and their MatchClaims."""</span></span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>    score <span class="op">=</span> ContinuousLogicalTimeline(</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>        length<span class="op">=</span>Fraction(<span class="dv">4</span>), uid<span class="op">=</span><span class="ss">f"</span><span class="sc">{</span>key<span class="sc">}</span><span class="ss">_score"</span>, name<span class="op">=</span><span class="st">"Score"</span></span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>    score.add_events(</span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>        [</span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>            {</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>                <span class="st">"id"</span>: <span class="ss">f"</span><span class="sc">{</span>key<span class="sc">}</span><span class="ss">_n</span><span class="sc">{</span>number<span class="sc">}</span><span class="ss">"</span>,</span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>                <span class="st">"event_type"</span>: <span class="st">"Note"</span>,</span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>                <span class="st">"start"</span>: Fraction(number <span class="op">-</span> <span class="dv">1</span>),</span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>                <span class="st">"duration"</span>: Fraction(<span class="dv">1</span>),</span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>            }</span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> number <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">1</span>, <span class="dv">5</span>)</span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>        ]</span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>    recording <span class="op">=</span> ContinuousPhysicalTimeline(</span>
+<span id="cb1-41"><a href="#cb1-41" aria-hidden="true" tabindex="-1"></a>        length<span class="op">=</span><span class="fl">4.0</span>, uid<span class="op">=</span><span class="ss">f"</span><span class="sc">{</span>key<span class="sc">}</span><span class="ss">_recording"</span>, name<span class="op">=</span><span class="st">"Recording"</span></span>
+<span id="cb1-42"><a href="#cb1-42" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-43"><a href="#cb1-43" aria-hidden="true" tabindex="-1"></a>    recording.add_events(</span>
+<span id="cb1-44"><a href="#cb1-44" aria-hidden="true" tabindex="-1"></a>        [</span>
+<span id="cb1-45"><a href="#cb1-45" aria-hidden="true" tabindex="-1"></a>            {<span class="st">"id"</span>: <span class="ss">f"</span><span class="sc">{</span>key<span class="sc">}</span><span class="ss">_o</span><span class="sc">{</span>number<span class="sc">}</span><span class="ss">"</span>, <span class="st">"event_type"</span>: <span class="st">"Onset"</span>, <span class="st">"instant"</span>: seconds}</span>
+<span id="cb1-46"><a href="#cb1-46" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> number, seconds <span class="kw">in</span> <span class="bu">enumerate</span>(onsets, start<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb1-47"><a href="#cb1-47" aria-hidden="true" tabindex="-1"></a>        ]</span>
+<span id="cb1-48"><a href="#cb1-48" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-49"><a href="#cb1-49" aria-hidden="true" tabindex="-1"></a>    bundle <span class="op">=</span> AlignmentBundle(<span class="bu">id</span><span class="op">=</span>key, name<span class="op">=</span>key.title())</span>
+<span id="cb1-50"><a href="#cb1-50" aria-hidden="true" tabindex="-1"></a>    bundle.add_timeline(score, as_group<span class="op">=</span><span class="ss">f"</span><span class="sc">{</span>key<span class="sc">}</span><span class="ss">_score"</span>)</span>
+<span id="cb1-51"><a href="#cb1-51" aria-hidden="true" tabindex="-1"></a>    bundle.add_timeline(recording, as_group<span class="op">=</span><span class="ss">f"</span><span class="sc">{</span>key<span class="sc">}</span><span class="ss">_recording"</span>)</span>
+<span id="cb1-52"><a href="#cb1-52" aria-hidden="true" tabindex="-1"></a>    pairs <span class="op">=</span> [</span>
+<span id="cb1-53"><a href="#cb1-53" aria-hidden="true" tabindex="-1"></a>        (<span class="ss">f"</span><span class="sc">{</span>key<span class="sc">}</span><span class="ss">_n</span><span class="sc">{</span>number<span class="sc">}</span><span class="ss">"</span>, score.<span class="bu">id</span>, <span class="ss">f"</span><span class="sc">{</span>key<span class="sc">}</span><span class="ss">_o</span><span class="sc">{</span>number<span class="sc">}</span><span class="ss">"</span>, recording.<span class="bu">id</span>)</span>
+<span id="cb1-54"><a href="#cb1-54" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> number <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">1</span>, <span class="bu">len</span>(onsets) <span class="op">+</span> <span class="dv">1</span>)</span>
+<span id="cb1-55"><a href="#cb1-55" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb1-56"><a href="#cb1-56" aria-hidden="true" tabindex="-1"></a>    pairs.append((<span class="ss">f"</span><span class="sc">{</span>key<span class="sc">}</span><span class="ss">_n4"</span>, score.<span class="bu">id</span>, {<span class="st">"start"</span>: <span class="fl">3.5</span>}, recording.<span class="bu">id</span>))</span>
+<span id="cb1-57"><a href="#cb1-57" aria-hidden="true" tabindex="-1"></a>    bundle.create_match_claims(pairs, provenance<span class="op">=</span>STATED)</span>
+<span id="cb1-58"><a href="#cb1-58" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> bundle</span>
+<span id="cb1-59"><a href="#cb1-59" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-60"><a href="#cb1-60" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-61"><a href="#cb1-61" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> files(directory):</span>
+<span id="cb1-62"><a href="#cb1-62" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Every file and folder under a directory, folders ending in '/', sorted."""</span></span>
+<span id="cb1-63"><a href="#cb1-63" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> <span class="bu">sorted</span>(</span>
+<span id="cb1-64"><a href="#cb1-64" aria-hidden="true" tabindex="-1"></a>        <span class="bu">str</span>(path.relative_to(directory)) <span class="op">+</span> (<span class="st">"/"</span> <span class="cf">if</span> path.is_dir() <span class="cf">else</span> <span class="st">""</span>)</span>
+<span id="cb1-65"><a href="#cb1-65" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> path <span class="kw">in</span> directory.rglob(<span class="st">"*"</span>)</span>
+<span id="cb1-66"><a href="#cb1-66" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-67"><a href="#cb1-67" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-68"><a href="#cb1-68" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-69"><a href="#cb1-69" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> show(path, key):</span>
+<span id="cb1-70"><a href="#cb1-70" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Print one key of a YAML file as canonical YAML."""</span></span>
+<span id="cb1-71"><a href="#cb1-71" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(dumps({key: loads(path.read_text(encoding<span class="op">=</span><span class="st">"utf-8"</span>))[key]}), end<span class="op">=</span><span class="st">""</span>)</span>
+<span id="cb1-72"><a href="#cb1-72" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-73"><a href="#cb1-73" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-74"><a href="#cb1-74" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> values_per_file(folder, column):</span>
+<span id="cb1-75"><a href="#cb1-75" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""For each Parquet file of a table folder, the values of one column."""</span></span>
+<span id="cb1-76"><a href="#cb1-76" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> {</span>
+<span id="cb1-77"><a href="#cb1-77" aria-hidden="true" tabindex="-1"></a>        <span class="bu">file</span>.name: <span class="bu">sorted</span>(</span>
+<span id="cb1-78"><a href="#cb1-78" aria-hidden="true" tabindex="-1"></a>            value</span>
+<span id="cb1-79"><a href="#cb1-79" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> value <span class="kw">in</span> pc.unique(</span>
+<span id="cb1-80"><a href="#cb1-80" aria-hidden="true" tabindex="-1"></a>                pq.read_table(<span class="bu">file</span>, columns<span class="op">=</span>[column])[column]</span>
+<span id="cb1-81"><a href="#cb1-81" aria-hidden="true" tabindex="-1"></a>            ).to_pylist()</span>
+<span id="cb1-82"><a href="#cb1-82" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> value <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb1-83"><a href="#cb1-83" aria-hidden="true" tabindex="-1"></a>        )</span>
+<span id="cb1-84"><a href="#cb1-84" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> <span class="bu">file</span> <span class="kw">in</span> <span class="bu">sorted</span>(folder.glob(<span class="st">"*.parquet"</span>))</span>
+<span id="cb1-85"><a href="#cb1-85" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb1-86"><a href="#cb1-86" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-87"><a href="#cb1-87" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-88"><a href="#cb1-88" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> event_rows(path, columns<span class="op">=</span>(<span class="st">"id"</span>, <span class="st">"kind"</span>, <span class="st">"timeline_id"</span>, <span class="st">"start"</span>, <span class="st">"location"</span>)):</span>
+<span id="cb1-89"><a href="#cb1-89" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""The event rows of a registry file: the rows with a position."""</span></span>
+<span id="cb1-90"><a href="#cb1-90" aria-hidden="true" tabindex="-1"></a>    table <span class="op">=</span> pq.read_table(path)</span>
+<span id="cb1-91"><a href="#cb1-91" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> [</span>
+<span id="cb1-92"><a href="#cb1-92" aria-hidden="true" tabindex="-1"></a>        {name: row[name] <span class="cf">for</span> name <span class="kw">in</span> columns}</span>
+<span id="cb1-93"><a href="#cb1-93" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> row <span class="kw">in</span> table.to_pylist()</span>
+<span id="cb1-94"><a href="#cb1-94" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> row[<span class="st">"start"</span>] <span class="kw">is</span> <span class="kw">not</span> <span class="va">None</span></span>
+<span id="cb1-95"><a href="#cb1-95" aria-hidden="true" tabindex="-1"></a>    ]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="two-bundles" class="level2">
+<h2 class="anchored" data-anchor-id="two-bundles">Two bundles</h2>
+<p>Two pieces, each with its score and recording. Their onsets were detected at slightly different times.</p>
+<div id="75833771" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.416437Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.416202Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.475687Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.474997Z&quot;}}" data-execution_count="2">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>bach <span class="op">=</span> piece(<span class="st">"bach"</span>, [<span class="fl">0.0</span>, <span class="fl">0.9</span>, <span class="fl">1.8</span>])</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>handel <span class="op">=</span> piece(<span class="st">"handel"</span>, [<span class="fl">0.1</span>, <span class="fl">1.1</span>, <span class="fl">2.0</span>])</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>bach</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="2">
+<pre style="font-family: 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.2; white-space: pre;">AlignmentBundle[bach]
+
+  TimelineGroup[group_3ve1s6b0vvk0k] (1 timelines)
+  ┌────────────────────────────────────────────────────────────────────────────┐
+  │ ContinuousLogicalTimeline[bach_score] (4 events)                           │
+  │                       0 _______________________________________ 4 quarters │
+  └────────────────────────────────────────────────────────────────────────────┘
+
+  TimelineGroup[group_0gwys8t6tvmqm] (1 timelines)
+  ┌────────────────────────────────────────────────────────────────────────────┐
+  │ ContinuousPhysicalTimeline[bach_recording] (4 events)                      │
+  │                       0 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ 4 seconds │
+  └────────────────────────────────────────────────────────────────────────────┘
+
+  MatchClaims: 4</pre>
+</div>
+</div>
+</section>
+<section id="write-a-bundle-with-its-tables" class="level2">
+<h2 class="anchored" data-anchor-id="write-a-bundle-with-its-tables">Write a bundle with its tables</h2>
+<p><code>to_file()</code> always writes the Projections and Boxes the bundle holds, with the MatchClaim table. With <code>events=True</code> it also writes every other event type its timelines hold: the registry gets a row for each note and onset, and each type its pre-parsed table, <code>Note.parquet</code> and <code>Onset.parquet</code>. The manifest itself still names no event.</p>
+<div id="4b2f5ad5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.477269Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.477119Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.711102Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.710447Z&quot;}}" data-execution_count="3">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>single <span class="op">=</span> FILES <span class="op">/</span> <span class="st">"bach"</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>single.mkdir()</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>manifest_path <span class="op">=</span> bach.to_file(single <span class="op">/</span> <span class="st">"bach.yaml"</span>, events<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>files(single)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="3">
+<pre><code>['Note.parquet',
+ 'Onset.parquet',
+ 'bach.yaml',
+ 'extractions.parquet',
+ 'match_claims.parquet',
+ 'projections.parquet',
+ 'registry.parquet']</code></pre>
+</div>
+</div>
+<p>The manifest names the registry and the MatchClaim table in its <code>resources</code>: their <code>type</code>, the timelines whose rows they hold for it, and their location relative to the manifest, here files beside it, with their size and SHA-256 digest. The pre-parsed tables and the Extraction table are not named: the registry’s rows point to them.</p>
+<div id="9ad598d0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.712788Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.712645Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.721591Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.720601Z&quot;}}" data-execution_count="4">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb5"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>show(manifest_path, <span class="st">"resources"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>resources:
+  -
+    id: "#resource_1di61dsi9g6ed"
+    integrity:
+      algorithm: SHA-256
+      digest: "73bd513b022bc3bb7de41f05c9d947da6b72111fdfe2731ad4b379de926fa1d5"
+    media_type: application/vnd.apache.parquet
+    size: 5833
+    timelines: ["#bach_recording", "#bach_score"]
+    type: Registry
+    url: registry.parquet
+  -
+    id: "#resource_269fb67rqwojs"
+    integrity:
+      algorithm: SHA-256
+      digest: "56702a53d8e50f28ad41b42e13dc6dcc5e71a3a6d97bfaff24d9f588b4087a27"
+    media_type: application/vnd.apache.parquet
+    size: 11442
+    timelines: ["#bach_recording", "#bach_score"]
+    type: MatchClaim
+    url: match_claims.parquet</code></pre>
+</div>
+</div>
+<p>Each event row states the event’s ID, its type (<code>kind</code>), its timeline and its position, each number written once in the member its number type names (the score’s quarters as a fraction’s numerator and denominator, the recording’s seconds as a float’s <code>value</code>), and the <code>location</code> of the pre-parsed table holding its content. The rows are sorted by extraction, timeline, exact start and ID.</p>
+<div id="412f64e5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.723229Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.723017Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.732066Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.731544Z&quot;}}" data-execution_count="5">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>event_rows(single <span class="op">/</span> <span class="st">"registry.parquet"</span>)[:<span class="dv">6</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="5">
+<pre><code>[{'id': 'bach_n1',
+  'kind': 'Note',
+  'timeline_id': 'bach_score',
+  'start': {'numerator': 0, 'denominator': 1, 'value': None},
+  'location': 'Note.parquet'},
+ {'id': 'bach_n2',
+  'kind': 'Note',
+  'timeline_id': 'bach_score',
+  'start': {'numerator': 1, 'denominator': 1, 'value': None},
+  'location': 'Note.parquet'},
+ {'id': 'bach_n3',
+  'kind': 'Note',
+  'timeline_id': 'bach_score',
+  'start': {'numerator': 2, 'denominator': 1, 'value': None},
+  'location': 'Note.parquet'},
+ {'id': 'bach_n4',
+  'kind': 'Note',
+  'timeline_id': 'bach_score',
+  'start': {'numerator': 3, 'denominator': 1, 'value': None},
+  'location': 'Note.parquet'},
+ {'id': 'bach_o1',
+  'kind': 'Onset',
+  'timeline_id': 'bach_recording',
+  'start': {'numerator': None, 'denominator': None, 'value': 0.0},
+  'location': 'Onset.parquet'},
+ {'id': 'bach_o2',
+  'kind': 'Onset',
+  'timeline_id': 'bach_recording',
+  'start': {'numerator': None, 'denominator': None, 'value': 0.9},
+  'location': 'Onset.parquet'}]</code></pre>
+</div>
+</div>
+<p>The other rows of the registry are its non-event rows: one per element of the manifest (its timelines, groups and resources, the manifest itself), per MatchClaim and per extraction, each with its kind and its location, so that an ID found in the registry leads to the file holding it.</p>
+<div id="946e2efd" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.734330Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.734082Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.740641Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.739808Z&quot;}}" data-execution_count="6">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="bu">sorted</span>(</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    (row[<span class="st">"kind"</span>], row[<span class="st">"location"</span>])</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> row <span class="kw">in</span> pq.read_table(single <span class="op">/</span> <span class="st">"registry.parquet"</span>).to_pylist()</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> row[<span class="st">"start"</span>] <span class="kw">is</span> <span class="va">None</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>)[:<span class="dv">8</span>]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="6">
+<pre><code>[('Extraction', 'extractions.parquet'),
+ ('Extraction', 'extractions.parquet'),
+ ('Group', 'bach.yaml'),
+ ('Group', 'bach.yaml'),
+ ('Manifest', 'bach.yaml'),
+ ('MatchClaim', 'match_claims.parquet'),
+ ('MatchClaim', 'match_claims.parquet'),
+ ('MatchClaim', 'match_claims.parquet')]</code></pre>
+</div>
+</div>
+<p>Every event names the extraction that made it. These events were made in code, so each timeline family (a root and its children) names one extraction of the library itself: no source file, the parser <code>timetoalign</code> and its version, and the ID minter. A loader records the source file it read and its digest instead.</p>
+<div id="0eae2fa5" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.742479Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.742341Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.747223Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.746630Z&quot;}}" data-execution_count="7">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>pq.read_table(single <span class="op">/</span> <span class="st">"extractions.parquet"</span>).select(</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    [<span class="st">"id"</span>, <span class="st">"source"</span>, <span class="st">"parser"</span>, <span class="st">"minter"</span>, <span class="st">"id_length"</span>]</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>).to_pylist()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="7">
+<pre><code>[{'id': 'extraction_21lz9g19no776',
+  'source': None,
+  'parser': 'timetoalign',
+  'minter': 'splitmix64-base36-1',
+  'id_length': 13},
+ {'id': 'extraction_3l4t1d05fl0yw',
+  'source': None,
+  'parser': 'timetoalign',
+  'minter': 'splitmix64-base36-1',
+  'id_length': 13}]</code></pre>
+</div>
+</div>
+<p>A pre-parsed table holds the content of each event, keyed by ID, without its position: the Projection table states which event each Projection stands for, here the last note, whose position on the recording the claim states.</p>
+<div id="8fce5f75" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.748789Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.748644Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.753154Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.752535Z&quot;}}" data-execution_count="8">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>pq.read_table(single <span class="op">/</span> <span class="st">"projections.parquet"</span>).to_pylist()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="8">
+<pre><code>[{'id': 'projection_2yts5090yg7wv',
+  'projection_of': {'timeline_id': 'bach_score', 'event_id': 'bach_n4'}}]</code></pre>
+</div>
+</div>
+<p><code>from_file()</code> reads the manifest and its tables, so the bundle read holds the notes and onsets again, beside the recording’s Projection and the MatchClaims; each event’s content is read from its pre-parsed table when its timeline’s events are first read. Written again, without <code>events=</code> (a manifest read with notes and onsets is written with them), it gives the same bytes, file by file.</p>
+<div id="8dcaf0f7" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.755739Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.755570Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.826909Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.826239Z&quot;}}" data-execution_count="9">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>read <span class="op">=</span> AlignmentBundle.from_file(manifest_path)</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>copy <span class="op">=</span> FILES <span class="op">/</span> <span class="st">"copy"</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>copy.mkdir()</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>read.to_file(copy <span class="op">/</span> <span class="st">"bach.yaml"</span>)</span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"events per timeline"</span>: {</span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>        timeline_id: <span class="bu">len</span>(read.get_timeline(timeline_id).get_events())</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> timeline_id <span class="kw">in</span> read.timeline_ids</span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"same MatchClaim table"</span>: read.match_claim_table <span class="op">==</span> bach.match_claim_table,</span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"same manifest"</span>: read.to_dict() <span class="op">==</span> bach.to_dict(),</span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"same bytes"</span>: <span class="bu">all</span>(</span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>        (single <span class="op">/</span> name).read_bytes() <span class="op">==</span> (copy <span class="op">/</span> name).read_bytes()</span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> name <span class="kw">in</span> files(single)</span>
+<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a>    ),</span>
+<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="9">
+<pre><code>{'events per timeline': {'bach_recording': 4, 'bach_score': 4},
+ 'same MatchClaim table': True,
+ 'same manifest': True,
+ 'same bytes': True}</code></pre>
+</div>
+</div>
+</section>
+<section id="resolve-an-id" class="level2">
+<h2 class="anchored" data-anchor-id="resolve-an-id">Resolve an ID</h2>
+<p><code>resolve(target, id)</code> answers what an ID names, through a manifest (a path or a <code>file:</code> URL) or a package root, always as a list: a timeline, an event as its scalar, a MatchClaim, an extraction. An event’s position is the registry’s, on the axis of its timeline’s root. An ID nothing holds gives the empty list.</p>
+<div id="61986348" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.828520Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.828376Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:44.908957Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:44.908222Z&quot;}}" data-execution_count="10">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"bach_n3"</span>: resolve(manifest_path, <span class="st">"bach_n3"</span>),</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"bach_recording"</span>: resolve(manifest_path.as_uri(), <span class="st">"bach_recording"</span>),</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"nothing"</span>: resolve(manifest_path, <span class="st">"bach_n9"</span>),</span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="10">
+<pre><code>{'bach_n3': [Event(id='bach_n3', start=Coordinate(Fraction(2, 1), quarters), duration=Duration(Fraction(1, 1), quarters))],
+ 'bach_recording': [ContinuousPhysicalTimeline(id='bach_recording', length=4.0, unit=seconds, events=4, children=0)],
+ 'nothing': []}</code></pre>
+</div>
+</div>
+</section>
+<section id="build-a-package-of-two-bundles" class="level2">
+<h2 class="anchored" data-anchor-id="build-a-package-of-two-bundles">Build a package of two bundles</h2>
+<p>A <code>Package</code> takes a <code>name</code> (and an <code>id</code>, its IRI where it is published). <code>write_bundle(bundle, url)</code> adds a bundle as the manifest at <code>url</code>, relative to the package’s root. A new package only stages the bundles; <code>to_file()</code> writes them all at once, then <code>package.yaml</code>, then the registry’s part of the non-event rows, into a folder that holds no package yet.</p>
+<div id="dfccfd85" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:44.910614Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:44.910469Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.046180Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.045357Z&quot;}}" data-execution_count="11">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>package <span class="op">=</span> Package(name<span class="op">=</span><span class="st">"Two pieces"</span>)</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>package.write_bundle(bach, <span class="st">"bach/manifest.yaml"</span>)</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>package.write_bundle(handel, <span class="st">"handel/manifest.yaml"</span>)</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>root <span class="op">=</span> FILES <span class="op">/</span> <span class="st">"pieces"</span></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>root.mkdir()</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>package_path <span class="op">=</span> package.to_file(root <span class="op">/</span> <span class="st">"package.yaml"</span>)</span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>files(root)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="11">
+<pre><code>['bach/',
+ 'bach/manifest.yaml',
+ 'handel/',
+ 'handel/manifest.yaml',
+ 'package.yaml',
+ 'registry/',
+ 'registry/extraction_0zaknjsysrccl.parquet',
+ 'registry/extraction_21lz9g19no776.parquet',
+ 'registry/extraction_3hp5e1xsjnl1c.parquet',
+ 'registry/extraction_3l4t1d05fl0yw.parquet',
+ 'registry/non_events.parquet',
+ 'tables/',
+ 'tables/MatchClaim/',
+ 'tables/MatchClaim/part_0qaonzeg62tmx.parquet',
+ 'tables/Note/',
+ 'tables/Note/part_03lal801h6anl.parquet',
+ 'tables/Onset/',
+ 'tables/Onset/part_3ksc8tkgrzj3e.parquet',
+ 'tables/Projection/',
+ 'tables/Projection/part_149gon1oz3pbu.parquet',
+ 'tables/extractions.parquet']</code></pre>
+</div>
+</div>
+<p>A package writes every event type of its bundles, with no <code>events=</code> needed. The registry is the folder <code>registry/</code>: <code>non_events.parquet</code>, the non-event rows, and one part per extraction, named after it. Every other table has one folder under <code>tables/</code> but the Extraction table, one file; each write adds one file per pre-parsed type and one of MatchClaims, named from its content, holding the rows of every bundle it writes. <code>package.yaml</code> lists the manifests and the tables.</p>
+<div id="5ca25ac0" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.047609Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.047469Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.050143Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.049578Z&quot;}}" data-execution_count="12">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(package_path.read_text(encoding<span class="op">=</span><span class="st">"utf-8"</span>), end<span class="op">=</span><span class="st">""</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>manifests:
+  -
+    media_type: application/yaml
+    url: bach/manifest.yaml
+  -
+    media_type: application/yaml
+    url: handel/manifest.yaml
+name: "Two pieces"
+tables:
+  -
+    media_type: application/vnd.apache.parquet
+    type: Registry
+    url: registry/
+  -
+    media_type: application/vnd.apache.parquet
+    type: Extraction
+    url: tables/extractions.parquet
+  -
+    media_type: application/vnd.apache.parquet
+    type: Note
+    url: tables/Note/
+  -
+    media_type: application/vnd.apache.parquet
+    type: Onset
+    url: tables/Onset/
+  -
+    media_type: application/vnd.apache.parquet
+    type: Projection
+    url: tables/Projection/
+  -
+    media_type: application/vnd.apache.parquet
+    type: MatchClaim
+    url: tables/MatchClaim/
+timetoshare: "0.2.0"</code></pre>
+</div>
+</div>
+<p>Each manifest names the registry and the MatchClaim folder, relative to itself, with the timelines whose rows it keeps. A folder has no size and no digest: the rows of other manifests share its files.</p>
+<div id="feb3fe57" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.051811Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.051651Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.060099Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.059497Z&quot;}}" data-execution_count="13">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>show(root <span class="op">/</span> <span class="st">"bach"</span> <span class="op">/</span> <span class="st">"manifest.yaml"</span>, <span class="st">"resources"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>resources:
+  -
+    id: "#resource_1di61dsi9g6ed"
+    media_type: application/vnd.apache.parquet
+    timelines: ["#bach_recording", "#bach_score"]
+    type: Registry
+    url: "../registry/"
+  -
+    id: "#resource_269fb67rqwojs"
+    media_type: application/vnd.apache.parquet
+    timelines: ["#bach_recording", "#bach_score"]
+    type: MatchClaim
+    url: "../tables/MatchClaim/"</code></pre>
+</div>
+</div>
+<p>Each registry part holds the rows of one extraction, here one per score and recording; the one file of notes holds the notes of both scores, and the one file of MatchClaims the claims of both pieces.</p>
+<div id="5888a9a4" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.061458Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.061319Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.071139Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.070530Z&quot;}}" data-execution_count="14">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"registry"</span>: values_per_file(root <span class="op">/</span> <span class="st">"registry"</span>, <span class="st">"timeline_id"</span>),</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Note"</span>: values_per_file(root <span class="op">/</span> <span class="st">"tables"</span> <span class="op">/</span> <span class="st">"Note"</span>, <span class="st">"id"</span>),</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"MatchClaim"</span>: values_per_file(root <span class="op">/</span> <span class="st">"tables"</span> <span class="op">/</span> <span class="st">"MatchClaim"</span>, <span class="st">"timeline_a_id"</span>),</span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="14">
+<pre><code>{'registry': {'extraction_0zaknjsysrccl.parquet': ['handel_score'],
+  'extraction_21lz9g19no776.parquet': ['bach_score'],
+  'extraction_3hp5e1xsjnl1c.parquet': ['handel_recording'],
+  'extraction_3l4t1d05fl0yw.parquet': ['bach_recording'],
+  'non_events.parquet': []},
+ 'Note': {'part_03lal801h6anl.parquet': ['bach_n1',
+   'bach_n2',
+   'bach_n3',
+   'bach_n4',
+   'handel_n1',
+   'handel_n2',
+   'handel_n3',
+   'handel_n4']},
+ 'MatchClaim': {'part_0qaonzeg62tmx.parquet': ['bach_score', 'handel_score']}}</code></pre>
+</div>
+</div>
+</section>
+<section id="open-one-manifest-from-the-package" class="level2">
+<h2 class="anchored" data-anchor-id="open-one-manifest-from-the-package">Open one manifest from the package</h2>
+<p><code>Package.from_file()</code> opens the package at its <code>package.yaml</code>; <code>manifests</code> lists the manifests’ URLs and <code>tables</code> the table entries. <code>bundle(url)</code> reads one manifest as an <code>AlignmentBundle</code>, every table filtered to the timelines its resources list, so the Bach bundle holds its own events and claims and none of Handel’s. Its MatchClaims are the ones written; the package’s file orders them by timeline and ID and states each claim’s provenance in its own row, so compare the claims, not the tables.</p>
+<div id="c0090f77" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.072458Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.072317Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.139754Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.139158Z&quot;}}" data-execution_count="15">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>opened <span class="op">=</span> Package.from_file(package_path)</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>from_package <span class="op">=</span> opened.bundle(<span class="st">"bach/manifest.yaml"</span>)</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"manifests"</span>: opened.manifests,</span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"table types"</span>: [table[<span class="st">"type"</span>] <span class="cf">for</span> table <span class="kw">in</span> opened.tables],</span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"timelines read"</span>: from_package.timeline_ids,</span>
+<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"events per timeline"</span>: {</span>
+<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a>        timeline_id: <span class="bu">len</span>(from_package.get_timeline(timeline_id).get_events())</span>
+<span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> timeline_id <span class="kw">in</span> from_package.timeline_ids</span>
+<span id="cb27-10"><a href="#cb27-10" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb27-11"><a href="#cb27-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"same MatchClaims"</span>: <span class="bu">set</span>(from_package.get_match_claims())</span>
+<span id="cb27-12"><a href="#cb27-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">==</span> <span class="bu">set</span>(bach.get_match_claims()),</span>
+<span id="cb27-13"><a href="#cb27-13" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
+<pre><code>{'manifests': ['bach/manifest.yaml', 'handel/manifest.yaml'],
+ 'table types': ['Registry',
+  'Extraction',
+  'Note',
+  'Onset',
+  'Projection',
+  'MatchClaim'],
+ 'timelines read': ['bach_recording', 'bach_score'],
+ 'events per timeline': {'bach_recording': 4, 'bach_score': 4},
+ 'same MatchClaims': True}</code></pre>
+</div>
+</div>
+<p>The claims read answer as before: the third note, at quarter 2, lies at 1.8 seconds on the Bach recording.</p>
+<div id="c0f04dca" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.141083Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.140947Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.151783Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.151170Z&quot;}}" data-execution_count="16">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>from_package.get_matchstamp_at(Fraction(<span class="dv">2</span>), <span class="st">"bach_score"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="16">
+<div style="font-family: monospace;"><strong>MatchStamp</strong> <span style="background: #e3f2fd; padding: 0 4px; border-radius: 3px; font-size: 0.8em;">2 timelines, 1 edges</span>
+<table class="caption-top table table-sm table-striped small">
+<thead>
+<tr class="header" style="border-bottom: 1px solid #ccc;">
+<th data-quarto-table-cell-role="th" style="text-align: left; padding: 2px 8px;">ID</th>
+<th data-quarto-table-cell-role="th" style="text-align: right; padding: 2px 8px;">Coordinate</th>
+<th data-quarto-table-cell-role="th" style="text-align: left; padding: 2px 8px;">Type</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>bach_score</strong></td>
+<td style="text-align: right;">2 quarters</td>
+<td><em>stated</em></td>
+</tr>
+<tr class="even">
+<td><strong>bach_recording</strong></td>
+<td style="text-align: right;">1.8 seconds</td>
+<td><em>stated</em></td>
+</tr>
+</tbody>
+</table>
+<div style="margin-top: 4px; color: #666; font-size: 0.85em;">Try: <code>stamp.get_coordinate_for(&lt;tl_id&gt;)</code>, <code>stamp.get_coordinates_for(&lt;tl_ids&gt;)</code>, <code>stamp.get_unit(&lt;unit&gt;)</code>, <code>stamp.get_conversion_for(&lt;key&gt;)</code></div></div>
+</div>
+</div>
+<p>Through the package root, <code>resolve</code> finds every row of an ID in the registry: Handel’s first onset, and the manifest itself, with no manifest named.</p>
+<div id="177d5d9f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.154019Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.153771Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.228943Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.228186Z&quot;}}" data-execution_count="17">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"handel_o1"</span>: resolve(root, <span class="st">"handel_o1"</span>),</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"bach"</span>: resolve(root, <span class="st">"bach"</span>),</span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="17">
+<pre><code>{'handel_o1': [Event(id='handel_o1', start=Coordinate(0.1, seconds), duration=None)],
+ 'bach': [AlignmentBundle(id='bach', name='Bach', timelines=2, groups=2)]}</code></pre>
+</div>
+</div>
+</section>
+<section id="check-the-package" class="level2">
+<h2 class="anchored" data-anchor-id="check-the-package">Check the package</h2>
+<p><code>timetoshare.tables.package_problems()</code> checks a package whole from its <code>package.yaml</code>: every manifest valid, every table file of its type and version, every resource naming a table of the package, every ID held once, every event row naming an extraction and a table holding its content, the non-event rows agreeing with the manifests and tables, and the rows of each manifest checked against it. It returns the list of problems, here none. <code>Package</code> runs the same check after every write and raises its first problem, with every file restored.</p>
+<div id="b2ca4d3f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.230456Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.230311Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.296422Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.295722Z&quot;}}" data-execution_count="18">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb32"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>package_problems(package_path)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="18">
+<pre><code>[]</code></pre>
+</div>
+</div>
+</section>
+<section id="ids-are-the-packages" class="level2">
+<h2 class="anchored" data-anchor-id="ids-are-the-packages">IDs are the package’s</h2>
+<p>Within a package, an event ID is held once among all events of every type, and a MatchClaim ID once among its MatchClaims; as <code>Package</code> writes a package, a timeline ID is held by one manifest. A bundle colliding with what the package holds is refused before anything is written, naming the ID and both holders. Writing the Bach piece a second time, under another URL, collides at its timelines.</p>
+<div id="8f7a5fd8" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.298046Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.297856Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.341126Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.340466Z&quot;}}" data-execution_count="19">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb34"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>    opened.write_bundle(piece(<span class="st">"bach"</span>, [<span class="fl">0.0</span>, <span class="fl">0.9</span>, <span class="fl">1.8</span>]), <span class="st">"bach_again/manifest.yaml"</span>)</span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">ValueError</span> <span class="im">as</span> refusal:</span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(refusal)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>timeline 'bach_recording' of the manifest 'bach_again/manifest.yaml' cannot join the package: its id 'bach_recording' is already held by a timeline of the manifest 'bach/manifest.yaml'</code></pre>
+</div>
+</div>
+</section>
+<section id="write-one-bundle-again" class="level2">
+<h2 class="anchored" data-anchor-id="write-one-bundle-again">Write one bundle again</h2>
+<p>The editor adds a conceptual claim to the Bach bundle read from the package: the last note, which the detector missed, relates to the third onset. <code>write_bundle()</code> on a package lying on disk writes at once and replaces the manifest at that URL. The rows of its timelines leave the files holding them: its registry parts are rewritten with its rows, the pre-parsed and MatchClaim files keep the other manifests’ rows alone, and one new file per type holds the bundle’s rows. As with a single MatchClaim table, every claim the package held for the manifest must still be in the bundle, and the bundle may add claims.</p>
+<div id="09cc885f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.342677Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.342536Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.508710Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.508110Z&quot;}}" data-execution_count="20">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb36"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>from_package.create_match_claims(</span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>    [(<span class="st">"bach_n4"</span>, <span class="st">"bach_score"</span>, <span class="st">"bach_o3"</span>, <span class="st">"bach_recording"</span>)],</span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a>    synchronous<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a>    provenance<span class="op">=</span>STATED,</span>
+<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a>opened.write_bundle(from_package, <span class="st">"bach/manifest.yaml"</span>)</span>
+<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"Note"</span>: values_per_file(root <span class="op">/</span> <span class="st">"tables"</span> <span class="op">/</span> <span class="st">"Note"</span>, <span class="st">"id"</span>),</span>
+<span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"MatchClaim"</span>: values_per_file(root <span class="op">/</span> <span class="st">"tables"</span> <span class="op">/</span> <span class="st">"MatchClaim"</span>, <span class="st">"timeline_a_id"</span>),</span>
+<span id="cb36-10"><a href="#cb36-10" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="20">
+<pre><code>{'Note': {'part_03lal801h6anl.parquet': ['handel_n1',
+   'handel_n2',
+   'handel_n3',
+   'handel_n4'],
+  'part_0bvl4zzpk9ten.parquet': ['bach_n1', 'bach_n2', 'bach_n3', 'bach_n4']},
+ 'MatchClaim': {'part_0qaonzeg62tmx.parquet': ['handel_score'],
+  'part_3ahmqoav5ekgj.parquet': ['bach_score']}}</code></pre>
+</div>
+</div>
+<p>The package still checks clean, and each manifest reads its own claims: five for Bach now, four for Handel as before.</p>
+<div id="d748d56f" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.510242Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.510096Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.800798Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.799873Z&quot;}}" data-execution_count="21">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb38"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"problems"</span>: package_problems(package_path),</span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"MatchClaims"</span>: {</span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a>        url: <span class="bu">len</span>(opened.bundle(url).get_match_claims()) <span class="cf">for</span> url <span class="kw">in</span> opened.manifests</span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a>    },</span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display" data-execution_count="21">
+<pre><code>{'problems': [],
+ 'MatchClaims': {'bach/manifest.yaml': 5, 'handel/manifest.yaml': 4}}</code></pre>
+</div>
+</div>
+<p>A bundle read from a package names the package’s folders. <code>to_file()</code> writes a manifest’s tables as single files and refuses to write rows into a folder, which other manifests share; it names <code>Package.write_bundle</code> instead.</p>
+<div id="0b333bfb" class="cell" data-quarto-private-1="{&quot;key&quot;:&quot;execution&quot;,&quot;value&quot;:{&quot;iopub.execute_input&quot;:&quot;2026-11-28T03:37:45.802694Z&quot;,&quot;iopub.status.busy&quot;:&quot;2026-11-28T03:37:45.802528Z&quot;,&quot;iopub.status.idle&quot;:&quot;2026-11-28T03:37:45.811983Z&quot;,&quot;shell.execute_reply&quot;:&quot;2026-11-28T03:37:45.811357Z&quot;}}" data-execution_count="22">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb40"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>elsewhere <span class="op">=</span> FILES <span class="op">/</span> <span class="st">"elsewhere"</span></span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>elsewhere.mkdir()</span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a><span class="cf">try</span>:</span>
+<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a>    from_package.to_file(elsewhere <span class="op">/</span> <span class="st">"bach.yaml"</span>)</span>
+<span id="cb40-5"><a href="#cb40-5" aria-hidden="true" tabindex="-1"></a><span class="cf">except</span> <span class="pp">NotImplementedError</span> <span class="im">as</span> refusal:</span>
+<span id="cb40-6"><a href="#cb40-6" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(refusal)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>The resource 'resource_1di61dsi9g6ed' names the folder '../registry/' for its Registry rows: AlignmentBundle.to_file writes a manifest's tables as single files beside it and does not write into a folder, whose files other manifests may share; write the bundle into its package with Package.write_bundle.</code></pre>
+</div>
+</div>
+</section>
+<section id="next" class="level2">
+<h2 class="anchored" data-anchor-id="next">Next</h2>
+<ul>
+<li>MatchClaims, Projections and beliefs, written as a single manifest with its tables: <a href="../howto/how03_match_claims_package.html">How to Keep MatchClaims, Projections and Beliefs in a Package</a>.</li>
+<li>Manifests in depth (minimal and complete form, serializations, editing a file): <a href="../howto/how02_group_and_bundle_files.html">How to Save and Load Timelines, Groups and Bundles</a>.</li>
+<li>The format of the registry, the Extraction table, pre-parsed tables and packages, and every rule the package check applies: <a href="https://github.com/TimeToAlign/TimeToShare#resources-and-tables">TimeToShare’s README, “Resources and tables”</a>.</li>
+</ul>
+
+
+</section>
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+
+
+
+
+<script src="/TimeToAlign/versions.js" defer></script>
+</body></html>

@@ -1003,8 +1003,9 @@ class _Copy:
         folder: Whether it is a folder.
         copied: Whether the write copies it there; otherwise it lies there
             already (the bundle was read from it, or equal content lies at
-            its name).
-        entry: The ``tables`` entry ``package.yaml`` lists for it.
+            its name, or the write moves it there, :class:`_Move`).
+        entry: The ``tables`` entry ``package.yaml`` lists for it: its
+            type's one local entry, which holds it, a part or a subfolder.
     """
 
     type: str
@@ -1013,6 +1014,38 @@ class _Copy:
     folder: bool
     copied: bool
     entry: dict[str, Any]
+
+    @property
+    def entry_path(self) -> str:
+        """The path from the package's root of the entry holding it, a
+        folder's with its closing ``/``."""
+        return unquote(urlsplit(self.entry["url"]).path)
+
+    def location(self, folder: str) -> str:
+        """The URL of the entry holding it, relative to *folder* (a path
+        from the package's root): what a manifest lying there names."""
+        path = self.entry_path
+        relative = posixpath.relpath(path.rstrip("/"), folder)
+        return quote(relative + ("/" if path.endswith("/") else ""), safe="/.")
+
+
+@dataclass(frozen=True)
+class _Move:
+    """A type's table listed as a single local file that a write moves into
+    the type's folder, a second table of the type joining it.
+
+    Attributes:
+        type: The type.
+        url: The file's entry URL as ``package.yaml`` lists it.
+        old: The file's path from the package's root.
+        copy: The file as the package holds it once moved (its ``target``
+            in the type's folder, its ``entry`` the folder's).
+    """
+
+    type: str
+    url: str
+    old: str
+    copy: _Copy
 
 
 @dataclass(frozen=True)
@@ -1030,6 +1063,8 @@ class _Written:
             on disk: the manifest's and the one it replaces; none for a
             package not written yet.
         carried: Each table the bundle carries, by its resource ID.
+        moved: The single files listed for a type that the write moves into
+            the type's folder.
     """
 
     url: str
@@ -1044,6 +1079,7 @@ class _Written:
     timelines: frozenset[str]
     removed: frozenset[str]
     carried: dict[str, _Copy]
+    moved: tuple[_Move, ...] = ()
 
 
 def _collision(
@@ -1571,14 +1607,24 @@ class Package:
         with the timelines its MatchClaims name; a resource that is no table
         (a recording) is kept. A table the bundle carries (a table resource
         of a type it does not read, or a MatchClaim table it holds no rows
-        of) is copied into the package with its bytes, at
-        ``tables/<Type>/`` under its own name (a name holding other content:
-        one seeded from the table's content), listed in ``package.yaml``,
-        and its resource names the copy; one lying in the package already
-        stays where it lies, and equal content lying at its name is that
-        copy. The format reads such a table as the pre-parsed table of its
-        type, keyed by ``id``: a Parquet table without an ``id`` column of
-        strings is the package check's ``foreign_table``, so writing the
+        of) is copied into the package with its bytes, inside the one local
+        table the package lists of its type (the folder ``package.yaml``
+        lists for the type, else ``tables/<Type>/``): a file as a part of
+        it, a folder as a subfolder, under its own name (a name holding
+        other content: one seeded from the type and the table's content);
+        its resource names that one table, with the timelines it lists, and
+        no size or digest. One lying in the package already stays where it
+        lies, and equal content lying at its name is that copy. A type the
+        package lists as a single file, of which the bundle carries another
+        table, moves into the type's folder: the file is renamed into it,
+        its entry replaced by the folder's, and every manifest naming it
+        rewritten to name the folder. A folder holding Parquet files
+        directly inside, which the format would not read as a subfolder,
+        is a table of its own in ``tables/<Type>/``, which the package check
+        refuses beside another local table of its type. The format reads
+        such a table as the pre-parsed table of its type, keyed by
+        ``id``: a Parquet table without an ``id`` column of strings is the
+        package check's ``foreign_table``, so writing the
         package raises it and restores the package, while a folder holding
         no Parquet file (scans, recordings) is carried. A table resource of
         a type the bundle holds no rows of and does not carry is refused:
@@ -1781,14 +1827,19 @@ class Package:
         claim_table = _claim_file_table(claims) if len(claims) else None
         written_types = {"Registry", *(("MatchClaim",) if len(claims) else ())}
         folder = posixpath.dirname(url) or "."
-        carried = self._carried(bundle, written_types, url)
+        carried, moved = self._carried(bundle, written_types, url)
         resources: list[Resource] = []
         for resource in bundle.resources:
             placed = carried.get(resource.id)
             if placed is not None:
-                relative = posixpath.relpath(placed.target, folder)
-                location = quote(relative + ("/" if placed.folder else ""), safe="/.")
-                resources.append(replace(resource, url=location))
+                location = placed.location(folder)
+                if location.endswith("/"):
+                    # A folder states no size and no digest.
+                    resources.append(
+                        replace(resource, url=location, size=None, integrity=None)
+                    )
+                else:
+                    resources.append(replace(resource, url=location))
             elif not resource.is_table:
                 resources.append(resource)
         held: dict[str, str] = {}
@@ -1853,6 +1904,7 @@ class Package:
             timelines=timelines,
             removed=timelines | before if self._path is not None else frozenset(),
             carried=carried,
+            moved=moved,
         )
         self._refuse_held(written)
         if before:
@@ -1882,13 +1934,18 @@ class Package:
 
     def _carried(
         self, bundle: AlignmentBundle, written: set[str], url: str
-    ) -> dict[str, _Copy]:
-        """Where the package holds each table *bundle* carries, by resource ID.
+    ) -> tuple[dict[str, _Copy], tuple[_Move, ...]]:
+        """Where the package holds each table *bundle* carries, by resource
+        ID, and the single files listed for a type that writing it moves
+        into the type's folder.
 
         Every table resource of a type the bundle writes no rows of
         (*written*), and every table the bundle carries
         (``_carried_tables``), is carried: placed by :meth:`_placed`, beside
-        the copies of the bundles staged at other URLs.
+        the copies of the bundles staged at other URLs, inside its type's
+        one local entry. A type ``package.yaml`` lists as a single local
+        file, of which the bundle carries another table, moves into the
+        type's folder: that file is placed there first, under its own name.
 
         Raises:
             ValueError: If such a resource is not carried by the bundle (it
@@ -1899,9 +1956,18 @@ class Package:
             placed.target: placed
             for staged in self._pending.values()
             if staged.url != url
-            for placed in staged.carried.values()
+            for placed in (
+                *staged.carried.values(),
+                *(move.copy for move in staged.moved),
+            )
         }
-        found: dict[str, _Copy] = {}
+        moves = {
+            move.type: move
+            for staged in self._pending.values()
+            if staged.url != url
+            for move in staged.moved
+        }
+        sources: list[tuple[Resource, Path]] = []
         for resource in bundle.resources:
             if not resource.is_table:
                 continue
@@ -1928,66 +1994,138 @@ class Package:
                     f"more: the package writer has nothing to copy into the "
                     f"package; nothing is written."
                 )
-            placed = self._placed(resource, source, reserved)
+            sources.append((resource, source))
+        own: list[_Move] = []
+        for resource, source in sources:
+            held = self._local_entry(resource.type)
+            if resource.type in moves or held is None:
+                continue
+            entry, old = held
+            if entry["url"].endswith("/") or self._inside(source) == old:
+                continue
+            assert self._path is not None
+            moved = self._named(
+                resource.type,
+                self._path.parent / old,
+                False,
+                f"{_TABLES_FOLDER}/{resource.type}",
+                reserved,
+            )
+            move = _Move(resource.type, entry["url"], old, replace(moved, copied=False))
+            moves[resource.type] = move
+            own.append(move)
+            reserved[move.copy.target] = move.copy
+        found: dict[str, _Copy] = {}
+        for resource, source in sources:
+            placed = self._placed(resource, source, reserved, moves)
             reserved[placed.target] = placed
             found[resource.id] = placed
-        return found
+        return found, tuple(own)
+
+    def _local_entry(self, kind: str) -> tuple[dict[str, Any], str] | None:
+        """The local table entry ``package.yaml`` lists for *kind* (the first,
+        should it list several) and its path from the package's root (a
+        folder's without its closing ``/``), None where it lists none."""
+        for entry in self._document["tables"]:
+            if entry["type"] == kind:
+                path = _entry_path(entry)
+                if path is not None:
+                    return entry, path
+        return None
+
+    def _inside(self, source: Path) -> str | None:
+        """The path of *source* from the package's root, None where it lies
+        outside or the package is not written yet."""
+        if self._path is None:
+            return None
+        try:
+            return source.resolve().relative_to(self._path.parent.resolve()).as_posix()
+        except ValueError:
+            return None
 
     def _placed(
-        self, resource: Resource, source: Path, reserved: Mapping[str, _Copy]
+        self,
+        resource: Resource,
+        source: Path,
+        reserved: Mapping[str, _Copy],
+        moves: Mapping[str, _Move],
     ) -> _Copy:
         """Where the package holds the table of *resource* the bundle carries
-        from *source*: where it lies, if the package lists it there; else at
-        ``tables/<Type>/`` under its own name, or, where that name holds
-        other content on disk or in *reserved* (the copies staged), under a
-        name seeded from its content; equal content lying at a name is that
-        copy."""
-        folder = resource.names_folder
-        entry: dict[str, Any] = {"type": resource.type}
-        for key in ("media_type", "size"):
-            if getattr(resource, key) is not None:
-                entry[key] = getattr(resource, key)
-        if resource.integrity is not None:
-            entry["integrity"] = resource.integrity.to_dict()
+        from *source*: where it lies, if the package lists it there (the
+        file moved where *moves* moves it); else inside its type's one local
+        entry (the folder ``package.yaml`` lists for the type, else
+        ``tables/<Type>/``), a file as a part of it, a folder as a subfolder
+        of it, by :meth:`_named`. A folder holding Parquet files directly
+        inside is no subfolder, whose Parquet files the format does not
+        read: it is an entry of its own in ``tables/<Type>/``."""
+        inside = self._inside(source)
+        move = moves.get(resource.type)
+        if move is not None and inside == move.old:
+            return move.copy
+        held = self._local_entry(resource.type)
+        base = f"{_TABLES_FOLDER}/{resource.type}"
+        if held is not None:
+            entry, path = held
+            if inside == path:
+                return _Copy(
+                    resource.type,
+                    source,
+                    path,
+                    resource.names_folder,
+                    False,
+                    {
+                        key: value
+                        for key, value in entry.items()
+                        if key in ("type", "url", "media_type", "size", "integrity")
+                    },
+                )
+            if entry["url"].endswith("/"):
+                base = path
+        if resource.names_folder and table_files(source):
+            return self._named(resource.type, source, True, base, reserved, own=True)
+        return self._named(resource.type, source, resource.names_folder, base, reserved)
 
-        def placed(target: str, copied: bool) -> _Copy:
-            url = quote(target + ("/" if folder else ""), safe="/.")
-            return _Copy(
-                resource.type, source, target, folder, copied, {**entry, "url": url}
-            )
-
-        root = None if self._path is None else self._path.parent
-        if root is not None:
-            try:
-                inside = source.resolve().relative_to(root.resolve()).as_posix()
-            except ValueError:
-                inside = None
-            if inside is not None and any(
-                table["type"] == resource.type
-                and posixpath.normpath(unquote(urlsplit(table["url"]).path)) == inside
-                for table in self._document["tables"]
-            ):
-                return placed(inside, copied=False)
+    def _named(
+        self,
+        kind: str,
+        source: Path,
+        folder: bool,
+        base: str,
+        reserved: Mapping[str, _Copy],
+        *,
+        own: bool = False,
+    ) -> _Copy:
+        """The copy of *source* (a file, or a *folder*) in the folder *base*
+        (a path from the package's root): under its own name, or, where that
+        name holds other content on disk or in *reserved* (the copies
+        staged), under a name seeded from *kind* and its content; equal
+        content lying at a name is that copy. Its entry is the folder
+        *base*, or, *own*, the copy itself."""
         name = source.name
         stem = name if folder else Path(name).stem
         suffix = "" if folder else Path(name).suffix
+        root = None if self._path is None else self._path.parent
         digest: str | None = None
         minter: IdMinter | None = None
         while True:
-            target = f"{_TABLES_FOLDER}/{resource.type}/{name}"
+            target = f"{base}/{name}"
+            url = target + "/" if own else base + "/"
+            copy = _Copy(
+                kind, source, target, folder, True, {"type": kind, "url": quote(url)}
+            )
             staged = reserved.get(target)
             lying = None if root is None else root / target
             if staged is None and (lying is None or not lying.exists()):
-                return placed(target, copied=True)
+                return copy
             if digest is None:
                 digest = _content_digest(source)
             if staged is not None:
                 if _content_digest(staged.source) == digest:
                     return staged
             elif lying is not None and _content_digest(lying) == digest:
-                return placed(target, copied=False)
+                return replace(copy, copied=False)
             if minter is None:
-                minter = IdMinter(seed_from(resource.type, digest))
+                minter = IdMinter(seed_from(kind, digest))
             name = f"{minter.mint(stem)}{suffix}"
 
     def _disk_manifest_timelines(self, url: str) -> frozenset[str]:
@@ -2203,6 +2341,12 @@ class Package:
                 self._remove_rows(removed, removed_ids, undo)
             for hidden, final in placed:
                 os.replace(hidden, final)
+            moved: set[str] = set()
+            for written in pending:
+                for move in written.moved:
+                    if move.old not in moved:
+                        moved.add(move.old)
+                        self._move(move, document, pending, undo)
             copied: set[str] = set()
             for written in pending:
                 for carried in written.carried.values():
@@ -2257,11 +2401,87 @@ class Package:
                 if resource.type in _READ_TYPES and resource.id not in written.carried
             )
             written.bundle._carried_tables = {
-                resource_id: root / carried.target
+                resource_id: root / carried.entry_path
                 for resource_id, carried in written.carried.items()
             }
         self._pending.clear()
         self._staged = _Staged()
+
+    def _move(
+        self,
+        move: _Move,
+        document: dict[str, Any],
+        pending: Sequence[_Written],
+        undo: _Undo,
+    ) -> None:
+        """Move the single file a type is listed as into the type's folder,
+        every file changed recorded in *undo*: the file renamed there, its
+        entry in *document* replaced, in its place, by the folder's, and
+        every manifest lying in the package that the write does not write
+        (*pending* are) rewritten with its resources naming the file naming
+        the folder instead, in the file form it was read in."""
+        assert self._path is not None
+        root = self._path.parent
+        old, new = root / move.old, root / move.copy.target
+        if old.resolve() != new.resolve():
+            undo.folder(new.parent)
+            undo.keep(old)
+            undo.keep(new)
+            os.replace(old, new)
+        entries = document["tables"]
+        index = next(
+            i
+            for i, entry in enumerate(entries)
+            if entry["type"] == move.type and entry["url"] == move.url
+        )
+        folder = dict(move.copy.entry)
+        if any(
+            entry["type"] == move.type and entry["url"] == folder["url"]
+            for entry in entries
+        ):
+            del entries[index]
+        else:
+            entries[index] = folder
+        written = {w.url for w in pending}
+        for listed in document["manifests"]:
+            if listed["url"] in written:
+                continue
+            path = resource_path(root, listed["url"])
+            if not path.is_file():
+                continue
+            text = path.read_text(encoding="utf-8")
+            manifest = loads(text)
+            directory = posixpath.dirname(listed["url"]) or "."
+            changed = False
+            for resource in manifest.get("resources") or ():
+                url = resource.get("url")
+                if resource.get("type") != move.type or not isinstance(url, str):
+                    continue
+                parts = urlsplit(url)
+                if parts.scheme or parts.netloc:
+                    continue
+                named = posixpath.normpath(
+                    posixpath.join(directory, unquote(parts.path))
+                )
+                if named != move.old:
+                    continue
+                resource["url"] = move.copy.location(directory)
+                # A folder states no size and no digest.
+                resource.pop("size", None)
+                resource.pop("integrity", None)
+                changed = True
+            if not changed:
+                continue
+            undo.keep(path)
+            path.write_text(
+                timetoshare.dumps_file(manifest, timetoshare.file_form(text)),
+                encoding="utf-8",
+                newline="",
+            )
+            if {"size", "integrity"} & listed.keys():
+                data = path.read_bytes()
+                listed["size"] = len(data)
+                listed["integrity"] = Integrity.of_bytes(data).to_dict()
 
     def _parse_table(
         self,
@@ -2448,6 +2668,19 @@ def _content_digest(path: Path) -> str:
             digest.update(len(part).to_bytes(8, "big"))
             digest.update(part)
     return digest.hexdigest()
+
+
+def _entry_path(entry: Mapping[str, Any]) -> str | None:
+    """The path from the package's root of the local table *entry* names (a
+    folder's without its closing ``/``), None for an external entry (an
+    absolute URI) or one leading outside the package."""
+    parts = urlsplit(entry["url"])
+    if parts.scheme or parts.netloc or parts.query or not parts.path:
+        return None
+    path = posixpath.normpath(unquote(parts.path))
+    if path.startswith(("/", "../")) or path in (".", ".."):
+        return None
+    return path
 
 
 def _copy_into(carried: _Copy, root: Path, undo: _Undo) -> None:

@@ -6,6 +6,7 @@ Values in tests/alignment/README.md, section "Event Files and Packages".
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import shutil
 import zipfile
@@ -24,6 +25,7 @@ from timetoshare.tables import (
     non_event_rows,
     package_fixture_path,
     package_problems,
+    read_table,
 )
 
 from timetoalign.alignment import AlignmentBundle, MatchClaim, Package
@@ -49,6 +51,7 @@ from timetoalign.timelines.manifest import (
     content_in_memory,
     event_tables,
     pre_parsed_schema,
+    resource_path,
 )
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
@@ -869,6 +872,50 @@ def _carrying(
     read = AlignmentBundle.from_file(directory / "manifest.yaml")
     assert list(read._carried_tables) == ["features"]
     return read
+
+
+#: The name the package writer mints for ``b``'s ``beats.parquet``, whose
+#: name ``a``'s copy holds (seeded from the type ``Beat`` and the file's
+#: content; probed once).
+_MINTED_BEATS = "beats_2dggumq9r5gv4.parquet"
+
+
+def _carrying_beats(
+    directory: Path, bundle: AlignmentBundle, event_id: str, label: str
+) -> AlignmentBundle:
+    """*bundle* given a resource ``beats`` (``Beat``) naming ``beats.parquet``,
+    a Parquet file of one row: *event_id*, the bundle's root timeline,
+    *label*; written into *directory* with its events and read back: a
+    bundle carrying that table."""
+    directory.mkdir(parents=True)
+    (timeline,) = [t for t in bundle.timelines if t.endswith("_score")]
+    pq.write_table(
+        pa.table({"id": [event_id], "timeline_id": [timeline], "label": [label]}),
+        directory / "beats.parquet",
+    )
+    bundle.resources.append(Resource("beats", "Beat", (timeline,), "beats.parquet"))
+    bundle.to_file(directory / "manifest.yaml", events=True)
+    read = AlignmentBundle.from_file(directory / "manifest.yaml")
+    assert list(read._carried_tables) == ["beats"]
+    return read
+
+
+def _own_rows(root: Path, manifest: str) -> list[dict[str, Any]]:
+    """The rows of the ``Beat`` table the manifest at *manifest* names, read
+    with the timelines its resource ``beats`` lists."""
+    (resource,) = [
+        r
+        for r in timetoshare.loads((root / manifest).read_text(encoding="utf-8"))[
+            "resources"
+        ]
+        if r["id"] == "#beats"
+    ]
+    folder = (root / manifest).parent
+    return read_table(
+        resource_path(folder, resource["url"]),
+        timelines=[timeline.removeprefix("#") for timeline in resource["timelines"]],
+        type="Beat",
+    ).to_pylist()
 
 
 class TestWritersOfLoneManifests:
@@ -1754,8 +1801,8 @@ class TestPackage:
 
             assert str(refused.value) == (
                 f"The package check refuses the package written at '{path}': "
-                "foreign_table in 'tables/Features/features.parquet': the table "
-                "'tables/Features/features.parquet' of type 'Features' has no 'id' "
+                "foreign_table in 'tables/Features/': the table "
+                "'tables/Features/' of type 'Features' has no 'id' "
                 "column: a package's tables hold the registry, the Parse "
                 "table, MatchClaim tables and pre-parsed tables of events keyed by "
                 "'id'; the package is restored as it was."
@@ -1798,7 +1845,7 @@ class TestPackage:
             ("Registry", "registry.parquet"),
             ("Parse", "tables/parses.parquet"),
             ("Note", "tables/Note/"),
-            ("Scan", "tables/Scan/scans/"),
+            ("Scan", "tables/Scan/"),
         ]
         manifest = timetoshare.loads(
             (tmp_path / "package" / "b" / "manifest.yaml").read_text(encoding="utf-8")
@@ -1808,12 +1855,14 @@ class TestPackage:
                 "id": "#scans",
                 "type": "Scan",
                 "timelines": ["#b_score"],
-                "url": "../tables/Scan/scans/",
+                "url": "../tables/Scan/",
             }
         ]
         assert package_problems(path) == []
         again = Package.from_file(path).bundle("b/manifest.yaml")
-        assert list(again._carried_tables) == ["scans"]
+        assert again._carried_tables == {
+            "scans": Path(os.path.abspath(tmp_path / "package" / "tables" / "Scan"))
+        }
         assert _rows(again) == _rows(_b())
 
         # Written back through the opened package, the copy stays.
@@ -1825,9 +1874,7 @@ class TestPackage:
             "tables/Scan/scans/page1.png"
         ]
         assert len(after) == len(before)
-        assert [table["url"] for table in opened.tables].count(
-            "tables/Scan/scans/"
-        ) == 1
+        assert [table["url"] for table in opened.tables].count("tables/Scan/") == 1
         assert package_problems(path) == []
 
     def test_a_carried_folder_s_name_taken(self, tmp_path: Path) -> None:
@@ -1852,12 +1899,13 @@ class TestPackage:
 
         root = tmp_path / "package"
         assert _parts(root, "Scan") == ["scans", _MINTED_SCANS]
+        assert (root / "tables/Scan/scans/page1.png").read_bytes() == b"\x89PNG b"
         assert (root / "tables/Scan" / _MINTED_SCANS / "page1.png").read_bytes() == (
             b"\x89PNG e"
         )
-        urls = {
+        resources = {
             url: [
-                r["url"]
+                (r["url"], r["timelines"])
                 for r in timetoshare.loads((root / url).read_text(encoding="utf-8"))[
                     "resources"
                 ]
@@ -1865,14 +1913,135 @@ class TestPackage:
             ]
             for url in package.manifests
         }
-        assert urls == {
-            "b/manifest.yaml": ["../tables/Scan/scans/"],
-            "e/manifest.yaml": [f"../tables/Scan/{_MINTED_SCANS}/"],
-            "f/manifest.yaml": ["../tables/Scan/scans/"],
+        assert resources == {
+            "b/manifest.yaml": [("../tables/Scan/", ["#b_score"])],
+            "e/manifest.yaml": [("../tables/Scan/", ["#e_score"])],
+            "f/manifest.yaml": [("../tables/Scan/", ["#f_score"])],
         }
-        assert [t["url"] for t in package.tables if t["type"] == "Scan"] == [
-            "tables/Scan/scans/",
-            f"tables/Scan/{_MINTED_SCANS}/",
+        assert [
+            (t["type"], t["url"]) for t in package.tables if t["type"] == "Scan"
+        ] == [("Scan", "tables/Scan/")]
+        assert package_problems(path) == []
+
+    def test_two_carried_parquet_tables_are_parts_of_one_entry(
+        self, tmp_path: Path
+    ) -> None:
+        a_beats = _carrying_beats(tmp_path / "a", _a(), "a_b1", "one")
+        b_beats = _carrying_beats(tmp_path / "b", _b(), "b_b1", "two")
+        package = Package()
+        package.write_bundle(a_beats, "a/manifest.yaml")
+        package.write_bundle(b_beats, "b/manifest.yaml")
+
+        path = package.to_file(tmp_path / "package" / "package.yaml")
+
+        root = tmp_path / "package"
+        assert [t for t in package.tables if t["type"] == "Beat"] == [
+            {"type": "Beat", "url": "tables/Beat/"}
+        ]
+        assert _parts(root, "Beat") == ["beats.parquet", _MINTED_BEATS]
+        assert (root / "tables/Beat/beats.parquet").read_bytes() == (
+            tmp_path / "a" / "beats.parquet"
+        ).read_bytes()
+        assert (root / "tables/Beat" / _MINTED_BEATS).read_bytes() == (
+            tmp_path / "b" / "beats.parquet"
+        ).read_bytes()
+        for url, timeline in (
+            ("a/manifest.yaml", "a_score"),
+            ("b/manifest.yaml", "b_score"),
+        ):
+            (resource,) = [
+                r
+                for r in timetoshare.loads((root / url).read_text(encoding="utf-8"))[
+                    "resources"
+                ]
+                if r["id"] == "#beats"
+            ]
+            assert resource == {
+                "id": "#beats",
+                "type": "Beat",
+                "timelines": [f"#{timeline}"],
+                "url": "../tables/Beat/",
+            }
+        assert _own_rows(root, "a/manifest.yaml") == [
+            {"id": "a_b1", "timeline_id": "a_score", "label": "one"}
+        ]
+        assert _own_rows(root, "b/manifest.yaml") == [
+            {"id": "b_b1", "timeline_id": "b_score", "label": "two"}
+        ]
+        assert package_problems(path) == []
+        opened = Package.from_file(path)
+        for url, written in (
+            ("a/manifest.yaml", a_beats),
+            ("b/manifest.yaml", b_beats),
+        ):
+            again = opened.bundle(url)
+            assert again._carried_tables == {
+                "beats": Path(os.path.abspath(root / "tables" / "Beat"))
+            }
+            assert _rows(again) == _rows(written)
+
+    def test_a_type_held_as_a_file_moves_into_its_folder(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        package = Package()
+        package.write_bundle(
+            _carrying_beats(tmp_path / "a", _a(), "a_b1", "one"), "a/manifest.yaml"
+        )
+        root = tmp_path / "package"
+        path = package.to_file(root / "package.yaml")
+        # The type listed as one file, a/beats.parquet, by hand.
+        (root / "tables/Beat/beats.parquet").rename(root / "a" / "beats.parquet")
+        (root / "tables/Beat").rmdir()
+        document = timetoshare.loads(path.read_text(encoding="utf-8"))
+        index = document["tables"].index({"type": "Beat", "url": "tables/Beat/"})
+        document["tables"][index] = {"type": "Beat", "url": "a/beats.parquet"}
+        path.write_text(timetoshare.dumps(document), encoding="utf-8")
+        manifest_path = root / "a" / "manifest.yaml"
+        manifest = timetoshare.loads(manifest_path.read_text(encoding="utf-8"))
+        (beats,) = [r for r in manifest["resources"] if r["id"] == "#beats"]
+        beats["url"] = "beats.parquet"
+        manifest_path.write_text(timetoshare.dumps(manifest), encoding="utf-8")
+        assert package_problems(path) == []
+        before = _files(root)
+        opened = Package.from_file(path)
+        tables = opened.tables
+        b_beats = _carrying_beats(tmp_path / "b", _b(), "b_b1", "two")
+
+        problem = PackageProblem("duplicate_id", "a/manifest.yaml", 0, (), "induced")
+        with monkeypatch.context() as patch:
+            patch.setattr(package_module, "package_problems", lambda path: [problem])
+            with pytest.raises(ValueError):
+                opened.write_bundle(b_beats, "b/manifest.yaml")
+        assert _files(root) == before
+        assert opened.tables == tables
+
+        opened.write_bundle(b_beats, "b/manifest.yaml")
+
+        assert not (root / "a" / "beats.parquet").exists()
+        assert _parts(root, "Beat") == ["beats.parquet", _MINTED_BEATS]
+        assert (root / "tables/Beat/beats.parquet").read_bytes() == before[
+            "a/beats.parquet"
+        ]
+        assert [t for t in opened.tables if t["type"] == "Beat"] == [
+            {"type": "Beat", "url": "tables/Beat/"}
+        ]
+        assert opened.tables[index] == {"type": "Beat", "url": "tables/Beat/"}
+        rewritten = timetoshare.loads(manifest_path.read_text(encoding="utf-8"))
+        (beats,) = [r for r in rewritten["resources"] if r["id"] == "#beats"]
+        assert beats == {
+            "id": "#beats",
+            "type": "Beat",
+            "timelines": ["#a_score"],
+            "url": "../tables/Beat/",
+        }
+        assert [r for r in rewritten["resources"] if r["id"] != "#beats"] == [
+            r for r in manifest["resources"] if r["id"] != "#beats"
+        ]
+        assert _own_rows(root, "a/manifest.yaml") == [
+            {"id": "a_b1", "timeline_id": "a_score", "label": "one"}
+        ]
+        assert _own_rows(root, "b/manifest.yaml") == [
+            {"id": "b_b1", "timeline_id": "b_score", "label": "two"}
         ]
         assert package_problems(path) == []
 

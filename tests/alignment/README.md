@@ -2744,36 +2744,99 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
   `b` read with its `features` table (a Parquet file of the column `x`
   alone, the type `Features`), staged at `b/manifest.yaml` in a new
   package, makes `to_file` raise exactly `The package check refuses the
-  package written at '<path>': foreign_table in
-  'tables/Features/features.parquet': the table
-  'tables/Features/features.parquet' of type 'Features' has no 'id'
-  column: a package's tables hold the registry, the Parse table,
-  MatchClaim tables and pre-parsed tables of events keyed by 'id'; the
-  package is restored as it was.`; the package's folder holds no file
+  package written at '<path>': foreign_table in 'tables/Features/': the
+  table 'tables/Features/' of type 'Features' has no 'id' column: a
+  package's tables hold the registry, the Parse table, MatchClaim tables
+  and pre-parsed tables of events keyed by 'id'; the package is restored
+  as it was.` (the file is a part of the type's one folder,
+  `tables/Features/features.parquet`, below); the package's folder holds no file
   afterwards (no `package.yaml`, no `tables/`), the package stays new
   (`path` None), its manifest still listed and staged, so a second
   `to_file` elsewhere raises the same problem at its own path. A manifest
   alone carries the same table: `b` written back with `to_file` beside its
   table keeps the resource `features` and the file's bytes, and is read
   carrying it again (no package check applies to a manifest alone).
+- **A package lists one local table per type; what it carries lies inside
+  it.** The package check refuses a second local entry of a type
+  (`duplicate_table`), so every table the bundles carry of a type lies in
+  that type's one entry: the folder `package.yaml` lists for the type
+  already, else `tables/<Type>/`. A carried file is a part of it, a carried
+  folder a subfolder of it, each under its own name, or, where that name
+  holds other content (on disk or among the copies staged), under a name
+  seeded from the type and the content; equal content lying at a name is
+  that copy. Every manifest's resource of the type names the one entry
+  (`../tables/<Type>/`), with the timelines it lists, as a manifest names
+  the MatchClaim table, and drops `size` and `integrity`, which a folder
+  has none of. Read back through the package, the bundle carries the
+  type's folder. The package check reads a folder's Parquet files directly
+  inside it, never a subfolder's (`table_files`): a subfolder holding no
+  Parquet file (scans) is carried and never read, which is what a carried
+  folder of other files is. What would show it broken: a second entry of
+  the type in `package.yaml`, a resource naming the subfolder (no table
+  entry: `unknown_table`), a part of one manifest read by another's
+  resource, or any problem of the package check.
 - **A folder of other files is carried into the package and listed.** A
   carried folder holding no Parquet file passes the package check: the
   folder `scans/` holding `page1.png` is copied, its bytes kept, to
-  `tables/Scan/scans/page1.png`, listed as the folder `tables/Scan/scans/`
+  `tables/Scan/scans/page1.png`, the type's folder `tables/Scan/` listed
   after the registry, the Parse table and the kind folder `tables/Note/`
   (`b`'s Beat writes none); the manifest's resource `scans` names
-  `../tables/Scan/scans/`, every other field as it was, and
-  `package_problems` reports nothing. Read through the package, the
-  bundle carries it again. Written back through the opened package at its
-  URL, the folder stays where it lies, listed once, no file added.
+  `../tables/Scan/`, every other field as it was, and `package_problems`
+  reports nothing. Read through the package, the bundle carries
+  `tables/Scan/`. Written back through the opened package at its URL, the
+  folder stays where it lies, listed once, no file added.
 - **A carried folder's name taken.** `b` carrying `scans/` holding
   `page1.png` of the bytes `b"\x89PNG b"`, `e` carrying a `scans/` of the
   bytes `b"\x89PNG e"`, and `f` (an empty `f_score`) carrying a `scans/`
-  of `b`'s bytes, staged in this order: `b`'s copy keeps the name; `e`'s
-  takes the name seeded from its type and content,
-  `tables/Scan/scans_2uozflji0q0pn/` (probed once, pinned); `f` shares `b`'s copy;
-  each manifest's resource names its copy, and `package_problems`
-  reports nothing.
+  of `b`'s bytes, staged in this order: `package.yaml` lists one `Scan`
+  entry, `tables/Scan/`, holding two subfolders: `b`'s copy keeps the name
+  `scans`; `e`'s takes the name seeded from its type and content,
+  `scans_2uozflji0q0pn` (probed once, pinned), holding `e`'s bytes; `f`
+  shares `b`'s copy (no third subfolder). Every manifest's resource
+  `scans` names `../tables/Scan/` with its own timeline (`b_score`,
+  `e_score`, `f_score`), and `package_problems` reports nothing.
+- **Two carried Parquet tables of one type are two parts of one entry.**
+  `a` and `b` each read carrying a resource `beats` (`Beat`, its own
+  timeline) naming `beats.parquet`, a Parquet file of the columns `id`,
+  `timeline_id` and `label`: `a`'s one row `a_b1`, `a_score`, `"one"`;
+  `b`'s one row `b_b1`, `b_score`, `"two"`. A Beat event holds nothing but
+  its ID, so no pre-parsed Beat table is written: the IDs are the
+  registry's Beat rows, the content each table's own. Staged `a` then `b`
+  in a new package: `package.yaml` lists one `Beat` entry, `tables/Beat/`
+  (no `size`, no `integrity`), holding two files: `a`'s keeps the name
+  `beats.parquet`, `b`'s takes the name seeded from its type and content
+  (probed once, pinned: `beats_2dggumq9r5gv4.parquet`), each with its source's
+  bytes. `a`'s resource names `../tables/Beat/` with `["#a_score"]`, `b`'s
+  with `["#b_score"]`; reading the entry with each resource's timelines
+  (`timetoshare.tables.read_table(..., timelines=...)`) gives exactly that
+  manifest's row (`a_b1`/`a_score`/`one`, `b_b1`/`b_score`/`two`), so a
+  manifest reads its own rows alone; `package_problems` reports nothing;
+  read through the package, each bundle carries `tables/Beat/` and its
+  events are the bundle's as written.
+- **A type held as a single file moves into its folder.** The package of
+  `a` carrying `beats` as above, then rewritten by hand into a package
+  that lists the type as one file: `a/beats.parquet` (the part moved
+  there, the entry `{type: Beat, url: a/beats.parquet}` in place of
+  `tables/Beat/`, `a`'s resource naming `beats.parquet`), which the package
+  check accepts. Opened, and `b` carrying its `beats` written into it: the
+  file moves into the type's folder, `tables/Beat/beats.parquet` with its
+  bytes (its own name, placed first), `b`'s at its seeded name beside it;
+  the file entry is replaced, in its place, by `tables/Beat/`, the only
+  Beat entry; `a`'s manifest, not written by the call, is rewritten with
+  its resource `beats` naming `../tables/Beat/` and its other resources as
+  they were (written by `timetoshare.dumps_file` in the form it was read
+  in);
+  each manifest reads exactly its own row back, and `package_problems`
+  reports nothing. Atomic: the same write with the package check made to
+  report a problem raises it, and every file of the package keeps its
+  bytes (the file at `a/beats.parquet`, `a`'s manifest as it was), no file
+  is added, and the package's `tables` are as before.
+- **A carried folder holding Parquet files is no subfolder.** The package
+  check reads no subfolder's Parquet files, so such a folder in the type's
+  folder would hide its rows: it keeps an entry of its own,
+  `tables/<Type>/<name>/` (named as above), and the package check refuses
+  a second local table of its type (`duplicate_table`). Not tested here:
+  no bundle of these tests carries one.
 - **A table the writer has no file of is refused before any file.** The
   bundle `b` built in code with a resource `features` it never read:
   `write_bundle` is refused (`The resource 'features' of the bundle 'b'

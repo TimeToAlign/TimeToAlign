@@ -163,8 +163,7 @@ Classes for connecting and aligning timelines.
 | [Resource](Resource.qmd#timetoalign.timelines.Resource) | A file or a folder of files the manifest names: one entry of its ``resources``. |
 | [Integrity](Integrity.qmd#timetoalign.timelines.Integrity) | The digest of a resource's raw bytes and the hash function computing it. |
 | [Package](Package.qmd#timetoalign.alignment.Package) | A TimeToShare package: a folder of manifests sharing their tables. |
-| [event_file_name](event_file_name.qmd#timetoalign.timelines.manifest.event_file_name) | The file name of the event table of *event_type* beside a lone manifest. |
-| [event_types](event_types.qmd#timetoalign.timelines.manifest.event_types) | The event types the timelines hold themselves, each once, sorted by name. |
+| [resolve](resolve.qmd#timetoalign.alignment.resolve) | Everything an ID names, through a manifest or a package root. |
 | [MatchGraph](MatchGraph.qmd#timetoalign.alignment.MatchGraph) | A graph of MatchClaims connecting events across timelines/groups. |
 | [MatchStamp](MatchStamp.qmd#timetoalign.alignment.MatchStamp) | A synchronized timestamp across multiple timelines. |
 | [MatchLine](MatchLine.qmd#timetoalign.alignment.MatchLine) | Ordered sequence of MatchStamps for a source timeline. |
@@ -196,6 +195,8 @@ Data ingestion from various file formats.
 | [EventStore](EventStore.qmd#timetoalign.EventStore) | Abstract base class for collections of EventData. |
 | [SingleStore](SingleStore.qmd#timetoalign.SingleStore) | Store wrapper for a single EventData. |
 | [DictStore](DictStore.qmd#timetoalign.DictStore) | Generic EventStore with arbitrary named EventData tables. |
+| [EventRegistry](EventRegistry.qmd#timetoalign.EventRegistry) | The registry rows of the events of one or more families, as a view. |
+| [Extraction](Extraction.qmd#timetoalign.Extraction) | One run of a parser over one source file: what made a set of events. |
 | [EventLoader](EventLoader.qmd#timetoalign.loader.EventLoader) | Abstract base class for event-producing loaders. |
 | [AudioLoader](AudioLoader.qmd#timetoalign.loader.AudioLoader) | Load audio file metadata for creating physical timelines. |
 | [AudioInfo](AudioInfo.qmd#timetoalign.loader.AudioInfo) | Metadata for an audio file. |

@@ -135,8 +135,7 @@ website:
       - reference/Resource.qmd
       - reference/Integrity.qmd
       - reference/Package.qmd
-      - reference/event_file_name.qmd
-      - reference/event_types.qmd
+      - reference/resolve.qmd
       - reference/MatchGraph.qmd
       - reference/MatchStamp.qmd
       - reference/MatchLine.qmd
@@ -158,6 +157,8 @@ website:
       - reference/EventStore.qmd
       - reference/SingleStore.qmd
       - reference/DictStore.qmd
+      - reference/EventRegistry.qmd
+      - reference/Extraction.qmd
       - reference/EventLoader.qmd
       - reference/AudioLoader.qmd
       - reference/AudioInfo.qmd

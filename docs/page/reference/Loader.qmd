@@ -19,6 +19,7 @@ maps and flow control it builds without an ID of their own included.
 
 | Name | Description |
 | --- | --- |
+| [extractions](#timetoalign.loader.Loader.extractions) | One :class:`~timetoalign.storage.Extraction` per source file read, in order. |
 | [metadata](#timetoalign.loader.Loader.metadata) | Aggregated source metadata. |
 | [sources](#timetoalign.loader.Loader.sources) | The loaded sources: ``Path`` objects and ZIP members (``zipfile.Path``). |
 
@@ -31,8 +32,10 @@ maps and flow control it builds without an ID of their own included.
 | [create_group](#timetoalign.loader.Loader.create_group) | Create a timeline group when supported. |
 | [create_timeline](#timetoalign.loader.Loader.create_timeline) | Create a timeline from the loaded payload. |
 | [create_timelines](#timetoalign.loader.Loader.create_timelines) | Create all timelines, optionally filtered by an implementation. |
-| [from_file](#timetoalign.loader.Loader.from_file) | Instantiate the loader with *kwargs*, load *paths*, and return it. |
+| [from_file](#timetoalign.loader.Loader.from_file) | Instantiate the loader, load *paths*, and return it. |
+| [from_registry](#timetoalign.loader.Loader.from_registry) | A loader set up from *registry*'s extractions, to refresh it with :meth:`update`. |
 | [load](#timetoalign.loader.Loader.load) | Load and accept one or more sources through the shared template. |
+| [update](#timetoalign.loader.Loader.update) | Re-read the loader's sources and update *registry* with what they hold now. |
 
 ### clear { #timetoalign.loader.Loader.clear }
 
@@ -82,14 +85,19 @@ Create all timelines, optionally filtered by an implementation.
 loader.Loader.from_file(*paths, **kwargs)
 ```
 
-Instantiate the loader with *kwargs*, load *paths*, and return it.
+Instantiate the loader, load *paths*, and return it.
+
+A keyword the loader's :meth:`load` declares keyword-only (what to
+read of a source, as ``performance`` of
+:class:`~timetoalign.loader.alignment.MpmLoader`) goes to
+:meth:`load`; every other keyword to the constructor.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type                                                   | Description                                                                                   | Default   |
-|----------|--------------------------------------------------------|-----------------------------------------------------------------------------------------------|-----------|
-| *paths   | [SourceLike](`timetoalign.loader._sources.SourceLike`) | Filesystem paths or members of ZIP archives (``zipfile.Path``), as :meth:`load` takes them.   | `()`      |
-| **kwargs | [Any](`typing.Any`)                                    | Passed to the loader's constructor, ``seed`` among them (the seed of the loader's ID minter). | `{}`      |
+| Name     | Type                                                   | Description                                                                                                                                   | Default   |
+|----------|--------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| *paths   | [SourceLike](`timetoalign.loader._sources.SourceLike`) | Filesystem paths or members of ZIP archives (``zipfile.Path``), as :meth:`load` takes them.                                                   | `()`      |
+| **kwargs | [Any](`typing.Any`)                                    | The keyword-only arguments of :meth:`load`, and the loader's constructor arguments, ``seed`` among them (the seed of the loader's ID minter). | `{}`      |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -98,6 +106,41 @@ Instantiate the loader with *kwargs*, load *paths*, and return it.
 >>> member = ZipPath("corpus.zip", at="corpus/measures/piece.measures.tsv")
 >>> loader = Ms3Loader.from_file(member)
 ```
+
+### from_registry { #timetoalign.loader.Loader.from_registry }
+
+```python
+loader.Loader.from_registry(registry, *sources, root=None, **kwargs)
+```
+
+A loader set up from *registry*'s extractions, to refresh it with :meth:`update`.
+
+The loader runs with the parameters (and the seed) the registry's
+extractions of this loader's class recorded, and reads their source
+files, unless *sources* names what to read (a loader reading a
+folder, an archive or a project is given that). Nothing is read
+until :meth:`update`.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                   | Description                                                                                                                              | Default    |
+|----------|--------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|------------|
+| registry | [EventRegistry](`timetoalign.storage.EventRegistry`)   | The registry to refresh, a timeline's, a group's or a bundle's.                                                                          | _required_ |
+| *sources | [SourceLike](`timetoalign.loader._sources.SourceLike`) | What the loader reads, as :meth:`load` takes it; by default the source files of the extractions, in order.                               | `()`       |
+| root     | [Path](`pathlib.Path`) \| [str](`str`) \| None         | The folder a relative source file of an extraction lies in; by default the current one.                                                  | `None`     |
+| **kwargs | [Any](`typing.Any`)                                    | The keyword-only arguments of :meth:`load`, and constructor arguments, which must leave the parameters as the extractions recorded them. | `{}`       |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                             | Description                                         |
+|--------|----------------------------------|-----------------------------------------------------|
+|        | [Self](`typing_extensions.Self`) | The loader, its ``load`` call recorded but not run. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                                                                                                                         |
+|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the extractions of this class record two sets of parameters or seeds, the loader set up runs with other parameters than they record, or neither *sources* nor an extraction names a source file. |
 
 ### load { #timetoalign.loader.Loader.load }
 
@@ -132,3 +175,43 @@ IDs, in any process; IDs the source states are kept as they are.
 |--------|------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
 |        | [FileNotFoundError](`FileNotFoundError`) | If a ``zipfile.Path`` names a member its archive does not hold.                                                                                              |
 |        | [ValueError](`ValueError`)               | If the loader reads one source and is given none or more than one, or any while it holds one (after ``clear()`` it reads one again). Nothing is parsed then. |
+
+### update { #timetoalign.loader.Loader.update }
+
+```python
+loader.Loader.update(registry)
+```
+
+Re-read the loader's sources and update *registry* with what they hold now.
+
+The loader is cleared and its ``load`` calls are run again (those
+:meth:`from_registry` set up, or the loader's own); each timeline
+:meth:`create_timelines` builds from them (and each descendant) then
+updates the registry's timeline that holds the rows its locators
+name (else the one of its ID), one extraction at a time
+(:meth:`EventRegistry.update <timetoalign.storage.EventRegistry.update>`):
+a row found again by its locator keeps its ID and takes the new
+content, position and extraction; a new row is added with the ID
+it was given (minted from the content, as at every ``load``); a
+row of the source no longer found is kept and marked vanished in
+the new extraction. Nothing is deleted. Rows that name no locator
+(a child's place, events made in code) are left as they are.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name     | Type                                                 | Description                                                                                                                          | Default    |
+|----------|------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|------------|
+| registry | [EventRegistry](`timetoalign.storage.EventRegistry`) | The registry to update: a timeline's, a group's or a bundle's (:attr:`Timeline.registry <timetoalign.timelines.Timeline.registry>`). | _required_ |
+
+#### Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                           | Description                                            |
+|--------|--------------------------------|--------------------------------------------------------|
+|        | [list](`list`)\[[str](`str`)\] | The IDs of the registry's timelines updated, in order. |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                           | Description                                                                                                        |
+|--------|--------------------------------|--------------------------------------------------------------------------------------------------------------------|
+|        | [RuntimeError](`RuntimeError`) | If the loader has no ``load`` call to run again (it read nothing, or in-memory content only).                      |
+|        | [ValueError](`ValueError`)     | If a timeline built holds rows that match no timeline of *registry*, by locator or by ID; nothing is updated then. |

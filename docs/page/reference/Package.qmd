@@ -7,19 +7,26 @@ alignment.Package(id=None, name=None)
 A TimeToShare package: a folder of manifests sharing their tables.
 
 ``package.yaml`` at the folder's root lists the package's manifests and
-its tables, each a file or a folder of Parquet files (``tables/<Type>/``
-as this class writes them) holding the rows of one type, of every
-manifest that names it. A manifest names each file or folder it reads
-in its ``resources``, with the timelines whose rows it keeps; nothing in
-a file names a manifest. An event ID is held once among all events of
-the package, every type; a MatchClaim ID once among its MatchClaims; a
-timeline ID by one manifest.
+its tables: the **registry** (``registry/``, as this class writes it: an
+part of the non-event rows ``non_events.parquet``, one per manifest
+element, MatchClaim and
+extraction, and one part per extraction of its event rows, each
+position on the axis of its timeline's root), the **Extraction table**
+(``tables/extractions.parquet``), one **pre-parsed table** per kind of
+event (``tables/<Kind>/``, each event's content keyed by its ID, without
+positions) and the **MatchClaim table** (``tables/MatchClaim/``). A
+manifest names the registry and the MatchClaim table in its
+``resources``, with the timelines whose rows it keeps; nothing in a file
+names a manifest. An event ID is held once among all events of the
+package, every kind; a MatchClaim ID once among its MatchClaims; a
+timeline ID, as this class writes a package, by one manifest.
 
 :meth:`from_file` opens a package; :meth:`bundle` reads one of its
 manifests as an :class:`~timetoalign.alignment.AlignmentBundle`, every
-table filtered by the timelines its resources list.
-:meth:`write_bundle` writes a bundle into the package as one of its
-manifests, and :meth:`to_file` writes a new package where it is told.
+table filtered by the timelines its resources list and the events'
+content read when first asked for. :meth:`write_bundle` writes a bundle
+into the package as one of its manifests, and :meth:`to_file` writes a
+new package where it is told.
 
 ## Parameters {.doc-section .doc-section-parameters}
 
@@ -43,8 +50,10 @@ manifests, and :meth:`to_file` writes a new package where it is told.
 >>> package = Package(name="Pieces")
 >>> package.write_bundle(bundle, "piece/manifest.yaml")
 >>> path = package.to_file(Path(tempfile.mkdtemp()) / "package.yaml")
->>> package.manifests, [table["url"] for table in package.tables]
-(['piece/manifest.yaml'], ['tables/Note/'])
+>>> package.manifests
+['piece/manifest.yaml']
+>>> [(table["type"], table["url"]) for table in package.tables]
+[('Registry', 'registry/'), ('Extraction', 'tables/extractions.parquet'), ('Note', 'tables/Note/')]
 >>> read = Package.from_file(path).bundle("piece/manifest.yaml")
 >>> read.get_timeline("score").events.table.column("id").to_pylist()
 ['n1']
@@ -78,12 +87,14 @@ alignment.Package.bundle(url)
 The manifest at *url* as an :class:`~timetoalign.alignment.AlignmentBundle`.
 
 Read as :meth:`AlignmentBundle.from_file
-<timetoalign.alignment.AlignmentBundle.from_file>` reads it, but
-every table its resources name, a single file as a folder, is read
-filtered: its rows of the timelines the resource lists (a
-MatchClaim's either of whose timelines it lists), the other
-manifests' passed over. A manifest read alone instead refuses a row
-of a timeline it lacks in a single file.
+<timetoalign.alignment.AlignmentBundle.from_file>` reads a manifest
+that ``package.yaml`` lists: every table its resources name, a
+single file as a folder, is read filtered, its rows of the timelines
+the resource lists (a MatchClaim's either of whose timelines it
+lists), the other manifests' passed over; each event's content is
+read from its pre-parsed table, by ID, when its family's events are
+first read. A manifest read alone instead refuses a row of a
+timeline it lacks in a single file.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -109,8 +120,9 @@ Open the package whose ``package.yaml`` lies at *path*.
 The file is read in any serialization of the format and validated
 (:func:`timetoshare.validate_package`); its manifests and tables
 are read when asked for (:meth:`bundle`). A file a write cut short
-left hidden in a folder of ``tables/`` (``.part_….parquet``, which
-no reader reads) is removed.
+left hidden in the registry's folder or in a folder of ``tables/``
+(a name starting with ``.`` and ending in ``.parquet``, which no
+reader reads) is removed.
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -166,40 +178,61 @@ alignment.Package.write_bundle(bundle, url)
 Write *bundle* into the package as its manifest at *url*.
 
 The manifest lies at *url* under the package's root, its resources
-naming the folders ``tables/<Type>/`` (relative to it, without size
-or digest, since other manifests' rows share them), one per type it
-has rows of, with its timelines holding them (a MatchClaim's both);
-a resource that is no table (a recording) is kept. A table the
-bundle carries, read as a table of other rows (a Parquet file
-without an event table's columns, a folder holding no Parquet file),
-is copied into the package with its bytes, at ``tables/<Type>/``
-under its own name (a name holding other content: one seeded from
-the table's content), listed in ``package.yaml``, and its resource
-names the copy; one lying in the package already stays where it
-lies, and equal content lying at its name is that copy. A table
-resource of a type the bundle holds no rows of and does not carry
-is refused: the writer has no file to copy. Its rows of every
-event type (:func:`~timetoalign.timelines.manifest.event_table`,
-Projections and Boxes among them) and its MatchClaims (each row with
-its own provenance) go into the package's files: each write adds one
-new file per type, ``tables/<Type>/part_<13 base-36
-characters>.parquet``, holding the rows of every bundle it writes
-(:meth:`to_file` writes every bundle staged at once), sorted by
-``timeline_id`` with each timeline's rows in their order (the
-MatchClaims by ``timeline_a_id``, ``timeline_b_id`` and ``id``),
-named from its content through the library's ID minter, so that a
-rebuild names its files again. A manifest the package holds at *url*
-already is replaced: the rows of its timelines and of the bundle's
-leave the files holding them, each such file rewritten whole (one
-left without a row removed), the other manifests' rows kept, sorted
-as they are declared; its MatchClaims must be kept by the bundle, as
-:meth:`MatchClaimField.to_parquet
+naming the registry (``registry/``, relative to it, without size or
+digest, since other manifests' rows share it) with the timelines
+holding its events, and the MatchClaim table (``tables/MatchClaim/``)
+with the timelines its MatchClaims name; a resource that is no table
+(a recording) is kept. A table the bundle carries (a table resource
+of a type it does not read, or a MatchClaim table it holds no rows
+of) is copied into the package with its bytes, at
+``tables/<Type>/`` under its own name (a name holding other content:
+one seeded from the table's content), listed in ``package.yaml``,
+and its resource names the copy; one lying in the package already
+stays where it lies, and equal content lying at its name is that
+copy. The format reads such a table as the pre-parsed table of its
+type, keyed by ``id``: a Parquet table without an ``id`` column of
+strings is the package check's ``foreign_table``, so writing the
+package raises it and restores the package, while a folder holding
+no Parquet file (scans, recordings) is carried. A table resource of
+a type the bundle holds no rows of and does not carry is refused:
+the writer has no file to copy.
+
+Its events of every kind (:func:`~timetoalign.timelines.manifest.event_tables`)
+go into the registry: one part per extraction, ``registry/<extraction
+ID>.parquet`` (an ID that is no plain file name: ``part_`` and 13
+base-36 characters minted from it), holding that extraction's rows of
+every manifest, sorted by ``timeline_id``, exact ``start`` and
+``id``; a part holding the extraction already takes the new rows in,
+rewritten whole. Their extractions go into the Extraction table
+(``tables/extractions.parquet``, each extraction once, its source
+written as a path from the package's root where the file lies under
+it, else as its ``file:`` URI, so that the package names no path of
+the machine that wrote it; read back, the source is the file's path
+again), their
+content into the pre-parsed table of their kind and their
+MatchClaims (each row with its own provenance) into the MatchClaim
+table: each write adds one new file per kind and one of MatchClaims,
+``tables/<Type>/part_<13 base-36 characters>.parquet``, holding the
+rows of every bundle it writes (:meth:`to_file` writes every bundle
+staged at once), named from its content through the library's ID
+minter, so that a rebuild names its files again; a column two
+bundles hold in two types is held in the one type holding both
+exactly (an ``int8`` and an ``int64`` column as ``int64``), never
+in a type that may change a value. Last, the
+registry's non-event rows are written from the manifests and tables
+(``timetoshare.tables.write_non_event_rows``). A manifest the package holds
+at *url* already is replaced: the rows of its timelines and of the
+bundle's leave the files holding them (a pre-parsed row by the ID
+of its event), each such file rewritten whole (one left without a
+row removed), the other manifests' rows kept; its MatchClaims must
+be kept by the bundle, as :meth:`MatchClaimField.to_parquet
 <timetoalign.alignment.MatchClaimField.to_parquet>` requires, so a
 bundle holding none while the package holds MatchClaims of that
-manifest is refused.
+manifest is refused, and an extraction once written stays in the
+Extraction table.
 
 Before anything is written, every ID is checked in memory: each
-event ID among every event of the package, every type; each
+event ID among every event of the package, every kind; each
 MatchClaim ID among its MatchClaims; each timeline ID among the
 timelines of its other manifests. A collision is refused, naming
 the ID and both holders; nothing is renamed. A new package (not

@@ -1,0 +1,77 @@
+# resolve { #timetoalign.alignment.resolve }
+
+```python
+alignment.resolve(target, id)
+```
+
+Everything an ID names, through a manifest or a package root.
+
+An ID combined with a manifest's persistent location names an element,
+an event, a MatchClaim or an extraction of its package. *target* is a
+manifest file or a package root (the folder of ``package.yaml``), as a
+path or a ``file:`` URL; *id* is bare, or written ``#id``. The
+resolutions are TimeToShare's (``timetoshare.tables.resolve``): through
+a manifest, its element of that ID first, then the registry rows of that
+ID that belong to it; through a package root, every registry row of that
+ID, an element ID repeated across manifests once per manifest. Each is
+answered as a library object:
+
+- a manifest element: the :class:`AlignmentBundle` for the manifest
+  itself, the :class:`~timetoalign.timelines.Timeline`, the
+  :class:`~timetoalign.timelines.TimelineGroup`, the
+  :class:`~timetoalign.timelines.manifest.Resource` or the
+  :class:`~timetoalign.timelines.Region` of the manifest read (its
+  events read as :meth:`from_file` reads them); any other element as
+  its object in the manifest, IDs bare;
+- a MatchClaim: the :class:`~timetoalign.alignment.MatchClaim`, read
+  from its table by ID;
+- an event: its scalar (a :class:`~timetoalign.core.Projection`, a
+  :class:`~timetoalign.core.Box`, else an
+  :class:`~timetoalign.core.Event`), its position on the axis of its
+  timeline's root as the registry states it, its content read from its
+  pre-parsed table by ID (none for an event only re-parsable);
+- an extraction: the :class:`~timetoalign.storage.Extraction`, its
+  source as the library holds a source (the path of a file the package
+  names relative to its root, or by a ``file:`` URI).
+
+## Parameters {.doc-section .doc-section-parameters}
+
+| Name   | Type                                                      | Description                        | Default    |
+|--------|-----------------------------------------------------------|------------------------------------|------------|
+| target | [str](`str`) \| [PathLike](`os.PathLike`)\[[str](`str`)\] | A manifest file or a package root. | _required_ |
+| id     | [str](`str`)                                              | The ID.                            | _required_ |
+
+## Returns {.doc-section .doc-section-returns}
+
+| Name   | Type                                  | Description                                                       |
+|--------|---------------------------------------|-------------------------------------------------------------------|
+|        | [list](`list`)\[[Any](`typing.Any`)\] | The objects, in the order of the resolutions; an empty list where |
+|        | [list](`list`)\[[Any](`typing.Any`)\] | nothing holds the ID.                                             |
+
+## Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                                     | Description                                            |
+|--------|------------------------------------------|--------------------------------------------------------|
+|        | [FileNotFoundError](`FileNotFoundError`) | If *target* is neither a package root nor a file.      |
+|        | [ValueError](`ValueError`)               | If *target* is a URL of another scheme than ``file:``. |
+
+## Examples {.doc-section .doc-section-examples}
+
+```python
+>>> import tempfile
+>>> from pathlib import Path
+>>> from timetoalign.alignment import AlignmentBundle, resolve
+>>> from timetoalign.timelines import ContinuousLogicalTimeline
+>>> score = ContinuousLogicalTimeline(length=4, uid="score")
+>>> _ = score.add_projections([{"id": "p1", "event_type": "Projection", "start": 1}])
+>>> bundle = AlignmentBundle(id="piece")
+>>> _ = bundle.add_timeline(score)
+>>> path = bundle.to_file(Path(tempfile.mkdtemp()) / "piece.yaml")
+>>> [type(found).__name__ for found in resolve(path, "score")]
+['ContinuousLogicalTimeline']
+>>> projection = resolve(path, "#p1")[0]
+>>> projection.id, projection.start
+('p1', Coordinate(Fraction(1, 1), quarters))
+>>> resolve(path, "nowhere")
+[]
+```

@@ -79,7 +79,7 @@ from timetoalign.timelines.types import (
 
 _VERSION = timetoshare.SCHEMA_VERSION
 #: TimeToShare's table fixture package, as its package carries it.
-_TABLES = fixture_path("manifest.yaml").parent
+_TABLES = fixture_path("tables.tts.yaml").parent
 (_RESOURCES,) = [
     path for path in fixture_paths() if path.name == "bundle_resources.yaml"
 ]
@@ -1249,7 +1249,7 @@ def _in_the_writer_s_order(table: pa.Table) -> list[dict[str, Any]]:
 class TestTimeToShareFixturePackage:
     @pytest.fixture(scope="class")
     def bundle(self) -> AlignmentBundle:
-        return AlignmentBundle.from_file(_TABLES / "manifest.yaml")
+        return AlignmentBundle.from_file(_TABLES / "tables.tts.yaml")
 
     def test_the_package_is_read(self, bundle: AlignmentBundle) -> None:
         fixture = pq.read_table(_TABLES / "registry.parquet")
@@ -1320,15 +1320,15 @@ class TestTimeToShareFixturePackage:
         )
 
     def test_the_package_is_written_back(self, tmp_path: Path) -> None:
-        bundle = AlignmentBundle.from_file(_TABLES / "manifest.yaml")
+        bundle = AlignmentBundle.from_file(_TABLES / "tables.tts.yaml")
         fixture = timetoshare.loads(
-            (_TABLES / "manifest.yaml").read_text(encoding="utf-8")
+            (_TABLES / "tables.tts.yaml").read_text(encoding="utf-8")
         )
 
-        bundle.to_file(tmp_path / "manifest.yaml")
+        bundle.to_file(tmp_path / "tables.tts.yaml")
 
         written = timetoshare.loads(
-            (tmp_path / "manifest.yaml").read_text(encoding="utf-8")
+            (tmp_path / "tables.tts.yaml").read_text(encoding="utf-8")
         )
         assert (tmp_path / "match_claims.parquet").read_bytes() == (
             _TABLES / "match_claims.parquet"
@@ -1337,10 +1337,10 @@ class TestTimeToShareFixturePackage:
             pq.read_table(tmp_path / "registry.parquet")
         ) == _in_the_writer_s_order(pq.read_table(_TABLES / "registry.parquet"))
         assert sorted(p.name for p in tmp_path.iterdir()) == [
-            "manifest.yaml",
             "match_claims.parquet",
             "parses.parquet",
             "registry.parquet",
+            "tables.tts.yaml",
         ]
         claims, registry = sorted(fixture["resources"], key=lambda entry: entry["type"])
         data = (tmp_path / "registry.parquet").read_bytes()
@@ -1357,8 +1357,8 @@ class TestTimeToShareFixturePackage:
         ]
         first = _bytes(tmp_path)
         (tmp_path / "again").mkdir()
-        AlignmentBundle.from_file(tmp_path / "manifest.yaml").to_file(
-            tmp_path / "again" / "manifest.yaml"
+        AlignmentBundle.from_file(tmp_path / "tables.tts.yaml").to_file(
+            tmp_path / "again" / "tables.tts.yaml"
         )
         assert _bytes(tmp_path / "again") == first
 
@@ -1402,7 +1402,7 @@ class TestTimeToShareFixturePackage:
         # Every case is read under the fixture manifest's own @context (the
         # seventh names its believer by a compact IRI only it expands).
         context = timetoshare.loads(
-            (_TABLES / "manifest.yaml").read_text(encoding="utf-8")
+            (_TABLES / "tables.tts.yaml").read_text(encoding="utf-8")
         )["@context"]
         table = bundle.match_claim_table.filter(
             believer=case["believer"], beliefs=case["beliefs"], context=context
@@ -2188,7 +2188,7 @@ class TestSeveralResourcesOfAType:
 class TestFolderResources:
     #: The rows each manifest of the fixture reads, as its expected.yaml states them.
     EXPECTED = {
-        "bach/manifest.yaml": {
+        "bach.tts.yaml": {
             "resource_1": ["claim_1", "claim_2", "claim_5"],
             "resource_2": [
                 "note_1",
@@ -2201,7 +2201,7 @@ class TestFolderResources:
                 "projection_9",
             ],
         },
-        "handel/manifest.yaml": {
+        "handel.tts.yaml": {
             "resource_1": ["claim_3", "claim_4"],
             "resource_2": [
                 "note_5",
@@ -2241,8 +2241,8 @@ class TestFolderResources:
         assert expected["read"] == self.EXPECTED
 
     def test_each_manifest_reads_its_own_rows_of_the_shared_folders(self) -> None:
-        bach = AlignmentBundle.from_file(_SHARED / "bach" / "manifest.yaml")
-        handel = AlignmentBundle.from_file(_SHARED / "handel" / "manifest.yaml")
+        bach = AlignmentBundle.from_file(_SHARED / "bach.tts.yaml")
+        handel = AlignmentBundle.from_file(_SHARED / "handel.tts.yaml")
 
         assert bach.match_claim_table.table.column("id").to_pylist() == [
             "claim_1",
@@ -2297,14 +2297,14 @@ class TestFolderResources:
                     "resource_1",
                     "MatchClaim",
                     timelines[0],
-                    "../tables/MatchClaim/",
+                    "tables/MatchClaim/",
                     PARQUET_MEDIA_TYPE,
                 ),
                 Resource(
                     "resource_2",
                     "Registry",
                     timelines[1],
-                    "../registry.parquet",
+                    "registry.parquet",
                     PARQUET_MEDIA_TYPE,
                 ),
             ]
@@ -2327,7 +2327,7 @@ class TestFolderResources:
             ("handel", "dpt_1", ["clt_2", "dpt_2", "clt_3"]),
         ):
             with pytest.raises(KeyError) as refused:
-                AlignmentBundle.from_file(package / manifest / "manifest.yaml")
+                AlignmentBundle.from_file(package / f"{manifest}.tts.yaml")
             assert refused.value.args[0] == (
                 f"MatchClaims name timeline(s) ['{outside}'] that this bundle "
                 f"does not hold. Available timelines: {held}"
@@ -2337,7 +2337,7 @@ class TestFolderResources:
     def test_a_bundle_read_through_a_package_is_not_written_alone(
         self, tmp_path: Path, manifest: str
     ) -> None:
-        bundle = AlignmentBundle.from_file(_SHARED / manifest / "manifest.yaml")
+        bundle = AlignmentBundle.from_file(_SHARED / f"{manifest}.tts.yaml")
         target = tmp_path / "out"
         target.mkdir()
 
@@ -2351,15 +2351,15 @@ class TestFolderResources:
             )
 
         with pytest.raises(NotImplementedError) as refused:
-            bundle.to_file(target / "manifest.yaml")
+            bundle.to_file(target / f"{manifest}.tts.yaml")
         assert str(refused.value) == refusal(
-            "resource_1", "folder", "../tables/MatchClaim/", "MatchClaim"
+            "resource_1", "folder", "tables/MatchClaim/", "MatchClaim"
         )
         bundle.resources = [r for r in bundle.resources if r.type == "Registry"]
         with pytest.raises(NotImplementedError) as refused:
-            bundle.to_file(target / "manifest.yaml")
+            bundle.to_file(target / f"{manifest}.tts.yaml")
         assert str(refused.value) == refusal(
-            "resource_2", "package table", "../registry.parquet", "Registry"
+            "resource_2", "package table", "registry.parquet", "Registry"
         )
         assert sorted(p.name for p in tmp_path.iterdir()) == ["out"]
         assert list(target.iterdir()) == []
@@ -2368,7 +2368,7 @@ class TestFolderResources:
         copy = shutil.copytree(
             package_fixture_path("rejections", "registry_folder"), tmp_path / "old"
         )
-        manifest = copy / "bach" / "manifest.yaml"
+        manifest = copy / "bach.tts.yaml"
 
         def message(url: str) -> str:
             return (
@@ -2378,11 +2378,11 @@ class TestFolderResources:
 
         with pytest.raises(ValueError) as refused:
             AlignmentBundle.from_file(manifest)
-        assert str(refused.value) == message("../registry/")
+        assert str(refused.value) == message("registry/")
         package = Package.from_file(copy / "package.yaml")
         with pytest.raises(ValueError) as refused:
-            package.bundle("bach/manifest.yaml")
-        assert str(refused.value) == message("../registry/")
+            package.bundle("bach.tts.yaml")
+        assert str(refused.value) == message("registry/")
         before = {
             path.relative_to(copy).as_posix(): path.read_bytes()
             for path in sorted(copy.rglob("*"))
@@ -2393,9 +2393,9 @@ class TestFolderResources:
         bundle = AlignmentBundle(id="new")
         bundle.add_timeline(score)
         with pytest.raises(ValueError) as refused:
-            package.write_bundle(bundle, "new/manifest.yaml")
+            package.write_bundle(bundle, "new.tts.yaml")
         assert str(refused.value) == message("registry/")
-        assert package.manifests == ["bach/manifest.yaml", "handel/manifest.yaml"]
+        assert package.manifests == ["bach.tts.yaml", "handel.tts.yaml"]
         after = {
             path.relative_to(copy).as_posix(): path.read_bytes()
             for path in sorted(copy.rglob("*"))
@@ -2406,6 +2406,6 @@ class TestFolderResources:
         bundle.resources = [Resource("registry", "Registry", ("new_score",), "reg/")]
         (tmp_path / "alone").mkdir()
         with pytest.raises(ValueError) as refused:
-            bundle.to_file(tmp_path / "alone" / "manifest.yaml", events=True)
+            bundle.to_file(tmp_path / "alone" / "new.tts.yaml", events=True)
         assert str(refused.value) == message("reg/")
         assert list((tmp_path / "alone").iterdir()) == []

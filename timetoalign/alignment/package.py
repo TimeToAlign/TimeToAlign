@@ -1452,13 +1452,13 @@ class Package:
         >>> bundle = AlignmentBundle(id="piece")
         >>> _ = bundle.add_timeline(score)
         >>> package = Package(name="Pieces")
-        >>> package.write_bundle(bundle, "piece/manifest.yaml")
+        >>> package.write_bundle(bundle, "piece.tts.yaml")
         >>> path = package.to_file(Path(tempfile.mkdtemp()) / "package.yaml")
         >>> package.manifests
-        ['piece/manifest.yaml']
+        ['piece.tts.yaml']
         >>> [(table["type"], table["url"]) for table in package.tables]
         [('Registry', 'registry.parquet'), ('Parse', 'tables/parses.parquet'), ('Note', 'tables/Note/')]
-        >>> read = Package.from_file(path).bundle("piece/manifest.yaml")
+        >>> read = Package.from_file(path).bundle("piece.tts.yaml")
         >>> read.get_timeline("score").events.table.column("id").to_pylist()
         ['n1']
     """
@@ -1698,7 +1698,7 @@ class Package:
         Args:
             bundle: The bundle.
             url: The manifest's location relative to the package's root,
-                such as ``bach/manifest.yaml``.
+                such as ``bach.tts.yaml``.
 
         Raises:
             ValueError: If *url* leaves the package's root or names no file

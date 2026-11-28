@@ -400,7 +400,7 @@ def _projections(timeline: Timeline) -> list[Projection]:
 
 class TestTimeToShareFixture:
     def test_the_fixture_rows_read_as_projections(self) -> None:
-        bundle = AlignmentBundle.from_file(fixture_path("manifest.yaml"))
+        bundle = AlignmentBundle.from_file(fixture_path("tables.tts.yaml"))
         read = {
             timeline_id: _projections(timeline)
             for timeline_id, timeline in sorted(bundle._known_timelines().items())

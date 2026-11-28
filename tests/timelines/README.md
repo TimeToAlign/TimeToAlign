@@ -3654,9 +3654,9 @@ each `start.value`, `duration.value` and shape number of the type the axis
 declares (`int` on pixels, `Fraction` on fractions), and so do the Boxes
 read back after (a) the timeline's dict form, `Timeline.from_dict(
 page.to_dict(events=True))`, and (b) the package: an `AlignmentBundle`
-holding the page written with `to_file` into a folder as `manifest.yaml`
-(the folder then holds exactly `boxes.parquet`, `parses.parquet`,
-`manifest.yaml` and `registry.parquet`) and read with
+holding the page written with `to_file` into a folder as `boxes.tts.yaml`
+(the folder then holds exactly `boxes.parquet`, `boxes.tts.yaml`,
+`parses.parquet` and `registry.parquet`) and read with
 `AlignmentBundle.from_file`. What would show it
 broken: a Box read back unequal to the one added (an ID, a number or its
 type changed on the way), or a form that loses the Boxes.

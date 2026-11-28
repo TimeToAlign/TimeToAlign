@@ -417,7 +417,7 @@ class TestOneCheckEveryPath:
         seg_2.add_events(Box.from_shape(RECT_H2, origin=7, id="rect_h2"))
         bundle = AlignmentBundle()
         bundle.add_timeline(seg_2)
-        manifest = bundle.to_file(tmp_path / "manifest.yaml")
+        manifest = bundle.to_file(tmp_path / "page.tts.yaml")
         return manifest, tmp_path / "registry.parquet"
 
     @staticmethod
@@ -524,7 +524,7 @@ class TestDictForm:
         (m1,) = data["timelines"][0]["children"][0]["events"]
         bundle = AlignmentBundle()
         bundle.add_timeline(page)
-        read = AlignmentBundle.from_file(bundle.to_file(tmp_path / "manifest.yaml"))
+        read = AlignmentBundle.from_file(bundle.to_file(tmp_path / "page.tts.yaml"))
 
         assert m1["quadrilateral"] == {
             "top_left": {"x": 1221, "y": 1589},

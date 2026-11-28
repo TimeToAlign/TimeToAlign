@@ -725,10 +725,10 @@ class TestPackageRoundTrip:
         volume = MeiFacsimileLoader.from_file(source).create_timeline(uid="chorale")
         bundle = AlignmentBundle(id="choralbuch")
         bundle.add_timeline(volume)
-        path = bundle.to_file(tmp_path / "package" / "manifest.yaml")
+        path = bundle.to_file(tmp_path / "package" / "choralbuch.tts.yaml")
         assert sorted(entry.name for entry in path.parent.iterdir()) == [
             "boxes.parquet",
-            "manifest.yaml",
+            "choralbuch.tts.yaml",
             "parses.parquet",
             "registry.parquet",
         ]

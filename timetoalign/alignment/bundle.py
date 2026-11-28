@@ -3573,7 +3573,7 @@ def resolve(target: str | PathLike[str], id: str) -> list[Any]:
         >>> _ = score.add_projections([{"id": "p1", "event_type": "Projection", "start": 1}])
         >>> bundle = AlignmentBundle(id="piece")
         >>> _ = bundle.add_timeline(score)
-        >>> path = bundle.to_file(Path(tempfile.mkdtemp()) / "piece.yaml")
+        >>> path = bundle.to_file(Path(tempfile.mkdtemp()) / "piece.tts.yaml")
         >>> [type(found).__name__ for found in resolve(path, "score")]
         ['ContinuousLogicalTimeline']
         >>> projection = resolve(path, "#p1")[0]

@@ -347,7 +347,7 @@ loader.create_bundle(track_lengths={key: 431.0}).get_timeline(track.id).length
 # %%
 package = Path(tempfile.mkdtemp()) / "beethoven_op002no1-01"
 package.mkdir()
-manifest = bundle.to_file(package / "manifest.yaml", events=False)
+manifest = bundle.to_file(package / "beethoven_op002no1-01.tts.yaml", events=False)
 sorted(path.name for path in package.iterdir())
 
 # %% [markdown]

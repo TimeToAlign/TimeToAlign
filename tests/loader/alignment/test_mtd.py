@@ -1425,7 +1425,7 @@ class TestBundle:
     def test_package_round_trip(self, archive: Path, tmp_path: Path) -> None:
         loader = MtdLoader.from_file(archive)
         bundle = loader.create_bundle()
-        manifest = tmp_path / "manifest.json"
+        manifest = tmp_path / "op002no1_01.tts.json"
         bundle.to_file(manifest, serialization="json", events=False)
         timetoshare.validate(json.loads(manifest.read_text(encoding="utf-8")))
         assert (tmp_path / "match_claims.parquet").is_file()

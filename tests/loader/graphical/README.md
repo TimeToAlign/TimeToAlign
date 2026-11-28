@@ -241,9 +241,9 @@ warning names that one (`page 1, system 2`) alone.
 
 **The package round trip** (principle 4). The scan's volume, created with
 `uid="scan"` and `box_ids="m{n}"`, is written in a bundle to
-`package/manifest.yaml` (a lone manifest: `package.yaml` is the name a
+`package/gallica.tts.yaml` (a lone manifest: `package.yaml` is the name a
 package's descriptor takes); the directory then holds exactly
-`boxes.parquet`, `parses.parquet`, `manifest.yaml` and
+`boxes.parquet`, `gallica.tts.yaml`, `parses.parquet` and
 `registry.parquet`. Read back, every value is one derived above: the volume
 `scan` is a locked segment line of length 53123 stating the
 `score_image_url`; its pages `dgt_…`, `dgt_…`, `dgt_…`, `dgt_…` (each
@@ -423,9 +423,10 @@ other numbers.
 - **Zones without coordinates** are not read and are listed, in document
   order, in `zones_without_coordinates`.
 - **The package round trip** (principle 4). The excerpt's volume, created
-  with `uid="chorale"`, is written in a bundle to `package/manifest.yaml`
-  (a lone manifest; the directory then holds exactly `boxes.parquet`,
-  `parses.parquet`, `manifest.yaml` and `registry.parquet`) and read
+  with `uid="chorale"`, is written in a bundle to
+  `package/choralbuch.tts.yaml` (a lone manifest; the directory then holds
+  exactly `boxes.parquet`, `choralbuch.tts.yaml`, `parses.parquet` and
+  `registry.parquet`) and read
   back. Every value is one derived above: the volume `chorale` is a
   locked segment line of length 5610 with empty `meta`; its one page has the
   surface's `xml:id`, name `"15"`, length 5610, `meta` the image alone and

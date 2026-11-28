@@ -69,12 +69,12 @@ _PART = re.compile(r"part_[0-9a-z]{13}\.parquet")
 
 #: The rows each manifest of the shared fixture reads, as its expected.yaml states them.
 _EXPECTED = {
-    "bach/manifest.yaml": {
+    "bach.tts.yaml": {
         "MatchClaim": ["claim_1", "claim_2", "claim_5"],
         "Note": ["note_1", "note_2", "note_3", "note_4"],
         "Projection": ["projection_1", "projection_2", "projection_7", "projection_9"],
     },
-    "handel/manifest.yaml": {
+    "handel.tts.yaml": {
         "MatchClaim": ["claim_3", "claim_4"],
         "Note": ["note_5", "note_6", "note_7"],
         "Projection": [
@@ -682,7 +682,7 @@ class TestTablesBesideAManifest:
     ) -> None:
         _a().to_file(tmp_path / "lone" / "a.yaml", events=True)
         package = Package()
-        package.write_bundle(_a(), "a/manifest.yaml")
+        package.write_bundle(_a(), "a.tts.yaml")
         package.to_file(tmp_path / "package" / "package.yaml")
 
         assert pq.read_schema(tmp_path / "package" / "registry.parquet").metadata == {
@@ -835,8 +835,8 @@ def _two_bundle_package(
     """``a`` and ``b`` written into a new package in *directory*."""
     a, b = _a(), _b()
     package = Package(id="https://example.org/pieces", name="Pieces")
-    package.write_bundle(a, "a/manifest.yaml")
-    package.write_bundle(b, "b/manifest.yaml")
+    package.write_bundle(a, "a.tts.yaml")
+    package.write_bundle(b, "b.tts.yaml")
     return package.to_file(directory / "package.yaml"), a, b
 
 
@@ -850,8 +850,8 @@ def _carrying_scans(
     (directory / "scans" / "page1.png").write_bytes(data)
     (timeline,) = bundle.timelines
     bundle.resources.append(Resource("scans", "Scan", (timeline,), "scans/"))
-    bundle.to_file(directory / "manifest.yaml", events=True)
-    read = AlignmentBundle.from_file(directory / "manifest.yaml")
+    bundle.to_file(directory / f"{bundle.id}.tts.yaml", events=True)
+    read = AlignmentBundle.from_file(directory / f"{bundle.id}.tts.yaml")
     assert list(read._carried_tables) == ["scans"]
     return read
 
@@ -868,8 +868,8 @@ def _carrying(
     bundle.resources.append(
         Resource("features", "Features", (timeline,), "features.parquet")
     )
-    bundle.to_file(directory / "manifest.yaml", events=True)
-    read = AlignmentBundle.from_file(directory / "manifest.yaml")
+    bundle.to_file(directory / f"{bundle.id}.tts.yaml", events=True)
+    read = AlignmentBundle.from_file(directory / f"{bundle.id}.tts.yaml")
     assert list(read._carried_tables) == ["features"]
     return read
 
@@ -894,8 +894,8 @@ def _carrying_beats(
         directory / "beats.parquet",
     )
     bundle.resources.append(Resource("beats", "Beat", (timeline,), "beats.parquet"))
-    bundle.to_file(directory / "manifest.yaml", events=True)
-    read = AlignmentBundle.from_file(directory / "manifest.yaml")
+    bundle.to_file(directory / f"{directory.name}.tts.yaml", events=True)
+    read = AlignmentBundle.from_file(directory / f"{directory.name}.tts.yaml")
     assert list(read._carried_tables) == ["beats"]
     return read
 
@@ -1042,7 +1042,7 @@ class TestParseSources:
         (root / "sources" / "notes.csv").write_bytes(b"a\n1\n")
         score, parse = _sourced("score", root / "sources" / "notes.csv")
         package = Package()
-        package.write_bundle(_bundle_of(score), "score/manifest.yaml")
+        package.write_bundle(_bundle_of(score), "score.tts.yaml")
 
         path = package.to_file(root / "package.yaml")
 
@@ -1050,10 +1050,10 @@ class TestParseSources:
         (row,) = pq.read_table(table).to_pylist()
         assert (row["id"], row["source"]) == (parse.id, "sources/notes.csv")
         opened = Package.from_file(path)
-        read = opened.bundle("score/manifest.yaml")
+        read = opened.bundle("score.tts.yaml")
         assert read.registry.parses == [parse]
         before = table.read_bytes()
-        opened.write_bundle(read, "score/manifest.yaml")
+        opened.write_bundle(read, "score.tts.yaml")
         assert table.read_bytes() == before
         assert package_problems(path) == []
 
@@ -1065,8 +1065,8 @@ class TestPackage:
         files = _files(tmp_path)
         parses = [_tool(root) for root in ("a_score", "a_pcm", "a_seg", "b_score")]
         assert [name for name in files if not name.startswith("tables/")] == [
-            "a/manifest.yaml",
-            "b/manifest.yaml",
+            "a.tts.yaml",
+            "b.tts.yaml",
             "package.yaml",
             "registry.parquet",
         ]
@@ -1109,13 +1109,13 @@ class TestPackage:
             "id": "https://example.org/pieces",
             "name": "Pieces",
             "manifests": [
-                {"media_type": "application/yaml", "url": "a/manifest.yaml"},
-                {"media_type": "application/yaml", "url": "b/manifest.yaml"},
+                {"media_type": "application/yaml", "url": "a.tts.yaml"},
+                {"media_type": "application/yaml", "url": "b.tts.yaml"},
             ],
             "tables": tables,
         }
         opened = Package.from_file(path)
-        assert opened.manifests == ["a/manifest.yaml", "b/manifest.yaml"]
+        assert opened.manifests == ["a.tts.yaml", "b.tts.yaml"]
         assert opened.tables == tables
         assert (opened.id, opened.name, opened.path) == (
             "https://example.org/pieces",
@@ -1125,20 +1125,20 @@ class TestPackage:
         for bundle, url, expected in (
             (
                 a,
-                "a/manifest.yaml",
+                "a.tts.yaml",
                 [
-                    ("MatchClaim", ("a_pcm", "a_score"), "../tables/MatchClaim/"),
+                    ("MatchClaim", ("a_pcm", "a_score"), "tables/MatchClaim/"),
                     (
                         "Registry",
                         ("a_bar", "a_pcm", "a_score", "a_seg"),
-                        "../registry.parquet",
+                        "registry.parquet",
                     ),
                 ],
             ),
             (
                 b,
-                "b/manifest.yaml",
-                [("Registry", ("b_score",), "../registry.parquet")],
+                "b.tts.yaml",
+                [("Registry", ("b_score",), "registry.parquet")],
             ),
         ):
             assert sorted(
@@ -1229,12 +1229,12 @@ class TestPackage:
         bundle = AlignmentBundle(id="onsets")
         bundle.add_timeline(take)
         package = Package()
-        package.write_bundle(bundle, "o/manifest.yaml")
+        package.write_bundle(bundle, "o.tts.yaml")
 
         path = package.to_file(tmp_path / "package.yaml")
 
         assert sorted(_files(tmp_path)) == [
-            "o/manifest.yaml",
+            "o.tts.yaml",
             "package.yaml",
             "registry.parquet",
             "tables/parses.parquet",
@@ -1253,10 +1253,10 @@ class TestPackage:
         ]
         assert package_problems(path) == []
         opened = Package.from_file(path)
-        read = opened.bundle("o/manifest.yaml")
+        read = opened.bundle("o.tts.yaml")
         assert _rows(read) == _rows(bundle)
         before = _files(tmp_path)
-        opened.write_bundle(read, "o/manifest.yaml")
+        opened.write_bundle(read, "o.tts.yaml")
         assert _files(tmp_path) == before
 
     def test_one_file_per_type_however_many_bundles(self, tmp_path: Path) -> None:
@@ -1270,10 +1270,10 @@ class TestPackage:
         e = AlignmentBundle(id="e")
         e.add_timeline(score)
         package = Package()
-        package.write_bundle(e, "e/manifest.yaml")
-        package.write_bundle(_a(), "a/manifest.yaml")
-        package.write_bundle(_a(), "a/manifest.yaml")
-        package.write_bundle(_b(), "b/manifest.yaml")
+        package.write_bundle(e, "e.tts.yaml")
+        package.write_bundle(_a(), "a.tts.yaml")
+        package.write_bundle(_a(), "a.tts.yaml")
+        package.write_bundle(_b(), "b.tts.yaml")
 
         path = package.to_file(tmp_path / "package.yaml")
 
@@ -1309,9 +1309,9 @@ class TestPackage:
         assert unstored == sorted(["a_b1", "b_b1", "e_b1", "e_n1", projection])
         assert package_problems(path) == []
         assert package.manifests == [
-            "e/manifest.yaml",
-            "a/manifest.yaml",
-            "b/manifest.yaml",
+            "e.tts.yaml",
+            "a.tts.yaml",
+            "b.tts.yaml",
         ]
 
     def test_rewriting_one_bundle_keeps_the_other_s_rows(self, tmp_path: Path) -> None:
@@ -1331,12 +1331,12 @@ class TestPackage:
 
         b_before = b_rows()
         package = Package.from_file(path)
-        changed = package.bundle("a/manifest.yaml")
+        changed = package.bundle("a.tts.yaml")
         changed.get_timeline("a_score").add_events(
             [{"id": "a_n4", "event_type": "Note", "start": Fraction(2)}]
         )
 
-        package.write_bundle(changed, "a/manifest.yaml")
+        package.write_bundle(changed, "a.tts.yaml")
 
         after = _files(tmp_path)
         pre_parsed = {
@@ -1377,9 +1377,9 @@ class TestPackage:
             .to_pylist()
         ) == sorted(_tool(root) for root in ("a_score", "a_pcm", "a_seg", "b_score"))
         assert package_problems(path) == []
-        data = (tmp_path / "a" / "manifest.yaml").read_bytes()
+        data = (tmp_path / "a.tts.yaml").read_bytes()
         assert timetoshare.loads(path.read_text(encoding="utf-8"))["manifests"][0] == {
-            "url": "a/manifest.yaml",
+            "url": "a.tts.yaml",
             "media_type": "application/yaml",
             "size": len(data),
             "integrity": {
@@ -1388,8 +1388,8 @@ class TestPackage:
             },
         }
         reopened = Package.from_file(path)
-        assert _rows(reopened.bundle("b/manifest.yaml")) == _rows(b)
-        rows = _rows(reopened.bundle("a/manifest.yaml"))
+        assert _rows(reopened.bundle("b.tts.yaml")) == _rows(b)
+        rows = _rows(reopened.bundle("a.tts.yaml"))
         assert rows["a_score"]["a_n4"]["start"] == {
             "value": 2.0,
             "numerator": 2,
@@ -1410,9 +1410,9 @@ class TestPackage:
 
         handel_rows = rows_of("parse_2")
         package = Package.from_file(copy / "package.yaml")
-        bach = package.bundle("bach/manifest.yaml")
+        bach = package.bundle("bach.tts.yaml")
 
-        package.write_bundle(bach, "bach/manifest.yaml")
+        package.write_bundle(bach, "bach.tts.yaml")
 
         def ids(name: str) -> list[str]:
             return _ids(pq.read_table(copy / name))
@@ -1465,7 +1465,7 @@ class TestPackage:
     def test_the_fixture_opened_as_a_package(self) -> None:
         package = Package.from_file(_SHARED / "package.yaml")
 
-        assert package.manifests == ["bach/manifest.yaml", "handel/manifest.yaml"]
+        assert package.manifests == ["bach.tts.yaml", "handel.tts.yaml"]
         assert [(table["type"], table["url"]) for table in package.tables] == [
             ("Registry", "registry.parquet"),
             ("Parse", "tables/parses.parquet"),
@@ -1481,18 +1481,16 @@ class TestPackage:
         _assert_expected_reads(Package.from_file(copy / "package.yaml"))
         # The manifest and the registry alone, no package listing them.
         alone = tmp_path / "alone"
-        (alone / "bach").mkdir(parents=True)
-        shutil.copy(copy / "bach" / "manifest.yaml", alone / "bach" / "manifest.yaml")
+        alone.mkdir()
+        shutil.copy(copy / "bach.tts.yaml", alone / "bach.tts.yaml")
         shutil.copy(copy / "registry.parquet", alone / "registry.parquet")
         with pytest.raises(TableError) as refused:
-            AlignmentBundle.from_file(alone / "bach" / "manifest.yaml")
+            AlignmentBundle.from_file(alone / "bach.tts.yaml")
         assert refused.value.problem.code == "unknown_timeline"
 
     def test_a_projection_of_another_manifest_s_timeline_is_read(self) -> None:
         directory = package_fixture_path("acceptances", "timeline_in_two_manifests")
-        bundle = Package.from_file(directory / "package.yaml").bundle(
-            "handel/manifest.yaml"
-        )
+        bundle = Package.from_file(directory / "package.yaml").bundle("handel.tts.yaml")
         assert "clt_1" not in bundle._known_timelines()
         events = bundle._known_timelines()["dpt_1"].events.table
         assert events.select(["id", "event_type", "projection_of"]).to_pylist() == [
@@ -1510,7 +1508,7 @@ class TestPackage:
         source = package_fixture_path("acceptances", "timeline_in_two_manifests")
         copy = shutil.copytree(source, tmp_path / "package")
         _project_to(copy / "registry.parquet", "projection_1", "nowhere")
-        for url in ("bach/manifest.yaml", "handel/manifest.yaml"):
+        for url in ("bach.tts.yaml", "handel.tts.yaml"):
             package = Package.from_file(copy / "package.yaml")
             with pytest.raises(TableError) as refused:
                 package.bundle(url)
@@ -1524,11 +1522,13 @@ class TestPackage:
     def test_a_lone_manifest_refuses_a_projection_of_a_timeline_it_lacks(
         self, tmp_path: Path
     ) -> None:
-        copy = shutil.copytree(fixture_path("manifest.yaml").parent, tmp_path / "lone")
-        AlignmentBundle.from_file(copy / "manifest.yaml")
+        copy = shutil.copytree(
+            fixture_path("tables.tts.yaml").parent, tmp_path / "lone"
+        )
+        AlignmentBundle.from_file(copy / "tables.tts.yaml")
         _project_to(copy / "registry.parquet", "projection_1", "nowhere")
         with pytest.raises(TableError) as refused:
-            AlignmentBundle.from_file(copy / "manifest.yaml")
+            AlignmentBundle.from_file(copy / "tables.tts.yaml")
         assert str(refused.value) == "the manifest has no timeline 'nowhere'"
         assert refused.value.problem.code == "unknown_timeline"
         assert refused.value.problem.column == ("projection_of", "timeline_id")
@@ -1536,7 +1536,7 @@ class TestPackage:
     def test_an_id_held_twice_is_refused_before_any_file(self, tmp_path: Path) -> None:
         a = _a()
         package = Package(name="Pieces")
-        package.write_bundle(a, "a/manifest.yaml")
+        package.write_bundle(a, "a.tts.yaml")
         package.to_file(tmp_path / "package.yaml")
         before = _files(tmp_path)
         note_file = "registry.parquet"
@@ -1569,55 +1569,55 @@ class TestPackage:
             (
                 c(note="a_n1"),
                 "The event 'a_n1' of timeline 'c_score' of the manifest "
-                "'c/manifest.yaml' cannot join the package: its ID is held by the "
+                "'c.tts.yaml' cannot join the package: its ID is held by the "
                 f"event of timeline 'a_score' in '{note_file}'; nothing "
                 "is renamed.",
             ),
             (
                 c(pcm="a_pcm"),
-                "timeline 'a_pcm' of the manifest 'c/manifest.yaml' cannot join the "
+                "timeline 'a_pcm' of the manifest 'c.tts.yaml' cannot join the "
                 "package: its id 'a_pcm' is already held by a timeline of the "
-                "manifest 'a/manifest.yaml'",
+                "manifest 'a.tts.yaml'",
             ),
             (
                 c(claim_id=claim.id),
                 f"The MatchClaim '{claim.id}' of timeline 'c_score' of the manifest "
-                "'c/manifest.yaml' cannot join the package: its ID is held by the "
+                "'c.tts.yaml' cannot join the package: its ID is held by the "
                 f"MatchClaim of timeline 'a_score' in 'tables/MatchClaim/{claim_file}'; "
                 "nothing is renamed.",
             ),
         ):
             with pytest.raises(ValueError) as refused:
-                package.write_bundle(bundle, "c/manifest.yaml")
+                package.write_bundle(bundle, "c.tts.yaml")
             assert str(refused.value) == message
             assert _files(tmp_path) == before
-            assert package.manifests == ["a/manifest.yaml"]
+            assert package.manifests == ["a.tts.yaml"]
 
         fresh = Package()
-        fresh.write_bundle(_a(), "a/manifest.yaml")
+        fresh.write_bundle(_a(), "a.tts.yaml")
         with pytest.raises(ValueError) as refused:
-            fresh.write_bundle(c(note="a_n1"), "c/manifest.yaml")
+            fresh.write_bundle(c(note="a_n1"), "c.tts.yaml")
         assert str(refused.value) == (
             "The event 'a_n1' of timeline 'c_score' of the manifest "
-            "'c/manifest.yaml' cannot join the package: its ID is held by the "
-            "event of timeline 'a_score' in the manifest 'a/manifest.yaml'; nothing "
+            "'c.tts.yaml' cannot join the package: its ID is held by the "
+            "event of timeline 'a_score' in the manifest 'a.tts.yaml'; nothing "
             "is renamed."
         )
-        assert fresh.manifests == ["a/manifest.yaml"]
+        assert fresh.manifests == ["a.tts.yaml"]
         assert fresh.path is None
 
     def test_a_manifest_s_match_claims_are_kept(self, tmp_path: Path) -> None:
         path, a, _ = _two_bundle_package(tmp_path)
         before = _files(tmp_path)
         package = Package.from_file(path)
-        read = package.bundle("a/manifest.yaml")
+        read = package.bundle("a.tts.yaml")
         without = AlignmentBundle(id="a")
         for timeline in read.timelines.values():
             without.add_timeline(timeline)
         (claim,) = a.get_match_claims()
 
         with pytest.raises(ValueError) as refused:
-            package.write_bundle(without, "a/manifest.yaml")
+            package.write_bundle(without, "a.tts.yaml")
 
         assert str(refused.value) == (
             f"The new MatchClaim table lacks the MatchClaim '{claim.id}' of the "
@@ -1633,20 +1633,20 @@ class TestPackage:
         before = _files(tmp_path / "opened")
         package = Package.from_file(path)
         manifests, tables = package.manifests, package.tables
-        changed = package.bundle("a/manifest.yaml")
+        changed = package.bundle("a.tts.yaml")
         changed.get_timeline("a_score").add_events(
             [{"id": "a_n4", "event_type": "Note", "start": Fraction(2)}]
         )
-        problem = PackageProblem("duplicate_id", "a/manifest.yaml", 0, (), "induced")
+        problem = PackageProblem("duplicate_id", "a.tts.yaml", 0, (), "induced")
         written = package_module.package_problems
 
         with monkeypatch.context() as patch:
             patch.setattr(package_module, "package_problems", lambda path: [problem])
             with pytest.raises(ValueError) as refused:
-                package.write_bundle(changed, "a/manifest.yaml")
+                package.write_bundle(changed, "a.tts.yaml")
             assert str(refused.value) == (
                 f"The package check refuses the package written at '{path}': "
-                "duplicate_id in 'a/manifest.yaml', row 0: induced; the package "
+                "duplicate_id in 'a.tts.yaml', row 0: induced; the package "
                 "is restored as it was."
             )
             assert _files(tmp_path / "opened") == before
@@ -1658,8 +1658,8 @@ class TestPackage:
             assert (package.manifests, package.tables) == (manifests, tables)
 
             new = Package()
-            new.write_bundle(_a(), "a/manifest.yaml")
-            new.write_bundle(_b(), "b/manifest.yaml")
+            new.write_bundle(_a(), "a.tts.yaml")
+            new.write_bundle(_b(), "b.tts.yaml")
             (tmp_path / "new").mkdir()
             with pytest.raises(ValueError):
                 new.to_file(tmp_path / "new" / "package.yaml")
@@ -1675,7 +1675,7 @@ class TestPackage:
         # today, so the document read is changed in memory).
         package._document["timetoshare"] = "0.1.0"
         with pytest.raises(ValueError) as refused:
-            package.write_bundle(changed, "a/manifest.yaml")
+            package.write_bundle(changed, "a.tts.yaml")
         assert str(refused.value) == (
             f"The package at '{path}' is of the format version '0.1.0', and the "
             "library writes '0.2.0': a package holds files of one version; "
@@ -1706,11 +1706,9 @@ class TestPackage:
         self, tmp_path: Path
     ) -> None:
         package = Package()
+        package.write_bundle(_bundle_of(_velocity("s1", 100, pa.int8())), "v1.tts.yaml")
         package.write_bundle(
-            _bundle_of(_velocity("s1", 100, pa.int8())), "v1/manifest.yaml"
-        )
-        package.write_bundle(
-            _bundle_of(_velocity("s2", 300, pa.int64())), "v2/manifest.yaml"
+            _bundle_of(_velocity("s2", 300, pa.int64())), "v2.tts.yaml"
         )
 
         path = package.to_file(tmp_path / "package.yaml")
@@ -1740,25 +1738,25 @@ class TestPackage:
         def refusal(held: int) -> str:
             return (
                 f"The event 's{held}_n1' of timeline 's6_score' of the manifest "
-                "'s6/manifest.yaml' cannot join the package: its ID is held by the "
+                "'s6.tts.yaml' cannot join the package: its ID is held by the "
                 f"event of timeline 's{held}_score' in the manifest "
-                f"'s{held}/manifest.yaml'; nothing is renamed."
+                f"'s{held}.tts.yaml'; nothing is renamed."
             )
 
         package = Package()
         for index in range(6):
-            package.write_bundle(staged(index), f"s{index}/manifest.yaml")
+            package.write_bundle(staged(index), f"s{index}.tts.yaml")
         for held in (0, 5):
             with pytest.raises(ValueError) as refused:
-                package.write_bundle(staged(6, f"s{held}_n1"), "s6/manifest.yaml")
+                package.write_bundle(staged(6, f"s{held}_n1"), "s6.tts.yaml")
             assert str(refused.value) == refusal(held)
 
-        package.write_bundle(staged(0), "s0/manifest.yaml")
+        package.write_bundle(staged(0), "s0.tts.yaml")
 
         with pytest.raises(ValueError) as refused:
-            package.write_bundle(staged(6, "s0_n1"), "s6/manifest.yaml")
+            package.write_bundle(staged(6, "s0_n1"), "s6.tts.yaml")
         assert str(refused.value) == refusal(0)
-        assert package.manifests == [f"s{index}/manifest.yaml" for index in range(6)]
+        assert package.manifests == [f"s{index}.tts.yaml" for index in range(6)]
 
     def test_where_a_package_is_written(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError) as refused:
@@ -1781,10 +1779,9 @@ class TestPackage:
             f"'{elsewhere}': its manifests and tables lie beside it."
         )
         with pytest.raises(KeyError) as missing:
-            Package.from_file(path).bundle("a/manifest.yaml")
+            Package.from_file(path).bundle("a.tts.yaml")
         assert missing.value.args[0] == (
-            "The package lists no manifest 'a/manifest.yaml'. Available "
-            "manifests: []"
+            "The package lists no manifest 'a.tts.yaml'. Available " "manifests: []"
         )
 
     def test_a_table_of_other_rows_is_a_problem_of_the_package(
@@ -1792,7 +1789,7 @@ class TestPackage:
     ) -> None:
         read = _carrying(tmp_path / "source", _b(), [1, 2])
         package = Package()
-        package.write_bundle(read, "b/manifest.yaml")
+        package.write_bundle(read, "b.tts.yaml")
 
         for folder in ("package", "elsewhere"):
             path = tmp_path / folder / "package.yaml"
@@ -1809,7 +1806,7 @@ class TestPackage:
             )
             assert _files(tmp_path / folder) == {}
             assert package.path is None
-            assert package.manifests == ["b/manifest.yaml"]
+            assert package.manifests == ["b.tts.yaml"]
 
     def test_a_manifest_alone_carries_a_table_of_other_rows(
         self, tmp_path: Path
@@ -1818,10 +1815,10 @@ class TestPackage:
         source = tmp_path / "source" / "features.parquet"
         data = source.read_bytes()
 
-        read.to_file(tmp_path / "source" / "manifest.yaml")
+        read.to_file(tmp_path / "source" / "b.tts.yaml")
 
         assert source.read_bytes() == data
-        again = AlignmentBundle.from_file(tmp_path / "source" / "manifest.yaml")
+        again = AlignmentBundle.from_file(tmp_path / "source" / "b.tts.yaml")
         (carried,) = [r for r in again.resources if r.id == "features"]
         assert (carried.type, carried.url) == ("Features", "features.parquet")
         assert list(again._carried_tables) == ["features"]
@@ -1831,7 +1828,7 @@ class TestPackage:
     ) -> None:
         read = _carrying_scans(tmp_path / "source", _b(), b"\x89PNG")
         package = Package()
-        package.write_bundle(read, "b/manifest.yaml")
+        package.write_bundle(read, "b.tts.yaml")
 
         path = package.to_file(tmp_path / "package" / "package.yaml")
 
@@ -1848,18 +1845,18 @@ class TestPackage:
             ("Scan", "tables/Scan/"),
         ]
         manifest = timetoshare.loads(
-            (tmp_path / "package" / "b" / "manifest.yaml").read_text(encoding="utf-8")
+            (tmp_path / "package" / "b.tts.yaml").read_text(encoding="utf-8")
         )
         assert [r for r in manifest["resources"] if r["id"] == "#scans"] == [
             {
                 "id": "#scans",
                 "type": "Scan",
                 "timelines": ["#b_score"],
-                "url": "../tables/Scan/",
+                "url": "tables/Scan/",
             }
         ]
         assert package_problems(path) == []
-        again = Package.from_file(path).bundle("b/manifest.yaml")
+        again = Package.from_file(path).bundle("b.tts.yaml")
         assert again._carried_tables == {
             "scans": Path(os.path.abspath(tmp_path / "package" / "tables" / "Scan"))
         }
@@ -1868,7 +1865,7 @@ class TestPackage:
         # Written back through the opened package, the copy stays.
         before = _files(tmp_path / "package")
         opened = Package.from_file(path)
-        opened.write_bundle(opened.bundle("b/manifest.yaml"), "b/manifest.yaml")
+        opened.write_bundle(opened.bundle("b.tts.yaml"), "b.tts.yaml")
         after = _files(tmp_path / "package")
         assert [name for name in after if "Scan" in name] == [
             "tables/Scan/scans/page1.png"
@@ -1886,13 +1883,13 @@ class TestPackage:
         f.add_timeline(ContinuousLogicalTimeline(length=Fraction(4), uid="f_score"))
         package = Package()
         package.write_bundle(
-            _carrying_scans(tmp_path / "b", _b(), b"\x89PNG b"), "b/manifest.yaml"
+            _carrying_scans(tmp_path / "b", _b(), b"\x89PNG b"), "b.tts.yaml"
         )
         package.write_bundle(
-            _carrying_scans(tmp_path / "e", e, b"\x89PNG e"), "e/manifest.yaml"
+            _carrying_scans(tmp_path / "e", e, b"\x89PNG e"), "e.tts.yaml"
         )
         package.write_bundle(
-            _carrying_scans(tmp_path / "f", f, b"\x89PNG b"), "f/manifest.yaml"
+            _carrying_scans(tmp_path / "f", f, b"\x89PNG b"), "f.tts.yaml"
         )
 
         path = package.to_file(tmp_path / "package" / "package.yaml")
@@ -1914,9 +1911,9 @@ class TestPackage:
             for url in package.manifests
         }
         assert resources == {
-            "b/manifest.yaml": [("../tables/Scan/", ["#b_score"])],
-            "e/manifest.yaml": [("../tables/Scan/", ["#e_score"])],
-            "f/manifest.yaml": [("../tables/Scan/", ["#f_score"])],
+            "b.tts.yaml": [("tables/Scan/", ["#b_score"])],
+            "e.tts.yaml": [("tables/Scan/", ["#e_score"])],
+            "f.tts.yaml": [("tables/Scan/", ["#f_score"])],
         }
         assert [
             (t["type"], t["url"]) for t in package.tables if t["type"] == "Scan"
@@ -1929,8 +1926,8 @@ class TestPackage:
         a_beats = _carrying_beats(tmp_path / "a", _a(), "a_b1", "one")
         b_beats = _carrying_beats(tmp_path / "b", _b(), "b_b1", "two")
         package = Package()
-        package.write_bundle(a_beats, "a/manifest.yaml")
-        package.write_bundle(b_beats, "b/manifest.yaml")
+        package.write_bundle(a_beats, "a.tts.yaml")
+        package.write_bundle(b_beats, "b.tts.yaml")
 
         path = package.to_file(tmp_path / "package" / "package.yaml")
 
@@ -1946,8 +1943,8 @@ class TestPackage:
             tmp_path / "b" / "beats.parquet"
         ).read_bytes()
         for url, timeline in (
-            ("a/manifest.yaml", "a_score"),
-            ("b/manifest.yaml", "b_score"),
+            ("a.tts.yaml", "a_score"),
+            ("b.tts.yaml", "b_score"),
         ):
             (resource,) = [
                 r
@@ -1960,19 +1957,19 @@ class TestPackage:
                 "id": "#beats",
                 "type": "Beat",
                 "timelines": [f"#{timeline}"],
-                "url": "../tables/Beat/",
+                "url": "tables/Beat/",
             }
-        assert _own_rows(root, "a/manifest.yaml") == [
+        assert _own_rows(root, "a.tts.yaml") == [
             {"id": "a_b1", "timeline_id": "a_score", "label": "one"}
         ]
-        assert _own_rows(root, "b/manifest.yaml") == [
+        assert _own_rows(root, "b.tts.yaml") == [
             {"id": "b_b1", "timeline_id": "b_score", "label": "two"}
         ]
         assert package_problems(path) == []
         opened = Package.from_file(path)
         for url, written in (
-            ("a/manifest.yaml", a_beats),
-            ("b/manifest.yaml", b_beats),
+            ("a.tts.yaml", a_beats),
+            ("b.tts.yaml", b_beats),
         ):
             again = opened.bundle(url)
             assert again._carried_tables == {
@@ -1985,18 +1982,18 @@ class TestPackage:
     ) -> None:
         package = Package()
         package.write_bundle(
-            _carrying_beats(tmp_path / "a", _a(), "a_b1", "one"), "a/manifest.yaml"
+            _carrying_beats(tmp_path / "a", _a(), "a_b1", "one"), "a.tts.yaml"
         )
         root = tmp_path / "package"
         path = package.to_file(root / "package.yaml")
-        # The type listed as one file, a/beats.parquet, by hand.
-        (root / "tables/Beat/beats.parquet").rename(root / "a" / "beats.parquet")
+        # The type listed as one file, beats.parquet at the package's root, by hand.
+        (root / "tables/Beat/beats.parquet").rename(root / "beats.parquet")
         (root / "tables/Beat").rmdir()
         document = timetoshare.loads(path.read_text(encoding="utf-8"))
         index = document["tables"].index({"type": "Beat", "url": "tables/Beat/"})
-        document["tables"][index] = {"type": "Beat", "url": "a/beats.parquet"}
+        document["tables"][index] = {"type": "Beat", "url": "beats.parquet"}
         path.write_text(timetoshare.dumps(document), encoding="utf-8")
-        manifest_path = root / "a" / "manifest.yaml"
+        manifest_path = root / "a.tts.yaml"
         manifest = timetoshare.loads(manifest_path.read_text(encoding="utf-8"))
         (beats,) = [r for r in manifest["resources"] if r["id"] == "#beats"]
         beats["url"] = "beats.parquet"
@@ -2007,20 +2004,20 @@ class TestPackage:
         tables = opened.tables
         b_beats = _carrying_beats(tmp_path / "b", _b(), "b_b1", "two")
 
-        problem = PackageProblem("duplicate_id", "a/manifest.yaml", 0, (), "induced")
+        problem = PackageProblem("duplicate_id", "a.tts.yaml", 0, (), "induced")
         with monkeypatch.context() as patch:
             patch.setattr(package_module, "package_problems", lambda path: [problem])
             with pytest.raises(ValueError):
-                opened.write_bundle(b_beats, "b/manifest.yaml")
+                opened.write_bundle(b_beats, "b.tts.yaml")
         assert _files(root) == before
         assert opened.tables == tables
 
-        opened.write_bundle(b_beats, "b/manifest.yaml")
+        opened.write_bundle(b_beats, "b.tts.yaml")
 
-        assert not (root / "a" / "beats.parquet").exists()
+        assert not (root / "beats.parquet").exists()
         assert _parts(root, "Beat") == ["beats.parquet", _MINTED_BEATS]
         assert (root / "tables/Beat/beats.parquet").read_bytes() == before[
-            "a/beats.parquet"
+            "beats.parquet"
         ]
         assert [t for t in opened.tables if t["type"] == "Beat"] == [
             {"type": "Beat", "url": "tables/Beat/"}
@@ -2032,15 +2029,15 @@ class TestPackage:
             "id": "#beats",
             "type": "Beat",
             "timelines": ["#a_score"],
-            "url": "../tables/Beat/",
+            "url": "tables/Beat/",
         }
         assert [r for r in rewritten["resources"] if r["id"] != "#beats"] == [
             r for r in manifest["resources"] if r["id"] != "#beats"
         ]
-        assert _own_rows(root, "a/manifest.yaml") == [
+        assert _own_rows(root, "a.tts.yaml") == [
             {"id": "a_b1", "timeline_id": "a_score", "label": "one"}
         ]
-        assert _own_rows(root, "b/manifest.yaml") == [
+        assert _own_rows(root, "b.tts.yaml") == [
             {"id": "b_b1", "timeline_id": "b_score", "label": "two"}
         ]
         assert package_problems(path) == []
@@ -2052,7 +2049,7 @@ class TestPackage:
         )
         package = Package()
         with pytest.raises(ValueError) as refused:
-            package.write_bundle(bundle, "b/manifest.yaml")
+            package.write_bundle(bundle, "b.tts.yaml")
         assert str(refused.value) == (
             "The resource 'features' of the bundle 'b' names the table "
             "'features.parquet' of the type Features, of which the bundle holds no "
@@ -2067,7 +2064,7 @@ class TestPackage:
         source = tmp_path / "source" / "features.parquet"
         source.unlink()
         with pytest.raises(ValueError) as refused:
-            package.write_bundle(read, "b/manifest.yaml")
+            package.write_bundle(read, "b.tts.yaml")
         assert str(refused.value) == (
             "The resource 'features' of the bundle 'b' names the table "
             f"'features.parquet' of the type Features, which the bundle carries "
@@ -2078,7 +2075,7 @@ class TestPackage:
 
     def test_a_write_cut_short_leaves_no_hidden_file(self, tmp_path: Path) -> None:
         package = Package()
-        package.write_bundle(_a(), "a/manifest.yaml")
+        package.write_bundle(_a(), "a.tts.yaml")
         path = package.to_file(tmp_path / "package.yaml")
         before = _files(tmp_path)
         hidden = [
@@ -2100,19 +2097,21 @@ class TestPackage:
         self, tmp_path: Path
     ) -> None:
         path, _, written = _two_bundle_package(tmp_path / "package")
-        read = Package.from_file(path).bundle("b/manifest.yaml")
+        read = Package.from_file(path).bundle("b.tts.yaml")
         merged = AlignmentBundle.from_bundles([read], id="merged")
         (tmp_path / "alone").mkdir()
         before = _files(tmp_path)
 
         for bundle in (read, written, merged):
             with pytest.raises(NotImplementedError) as refused:
-                bundle.to_file(tmp_path / "alone" / "manifest.yaml", events=True)
+                bundle.to_file(
+                    tmp_path / "alone" / f"{bundle.id}.tts.yaml", events=True
+                )
 
             (first,) = bundle.resources
             assert str(refused.value) == (
                 f"The resource '{first.id}' names the package table "
-                f"'../registry.parquet' for its {first.type} rows: "
+                f"'registry.parquet' for its {first.type} rows: "
                 "AlignmentBundle.to_file writes a manifest's tables as single files "
                 "beside it and does not write into a package's tables, which other "
                 "manifests may share; write the bundle into its package with "
@@ -2161,8 +2160,8 @@ class TestResolve:
         )["resolutions"]
         samples = TimeUnit.samples
         expected: dict[tuple[str, str], list[tuple[Any, ...]]] = {
-            ("bach/manifest.yaml", "dpt_1"): [("DiscretePhysicalTimeline", "dpt_1")],
-            ("bach/manifest.yaml", "projection_1"): [
+            ("bach.tts.yaml", "dpt_1"): [("DiscretePhysicalTimeline", "dpt_1")],
+            ("bach.tts.yaml", "projection_1"): [
                 (
                     "Projection",
                     "projection_1",
@@ -2171,17 +2170,17 @@ class TestResolve:
                     EventReference(timeline_id="clt_1", event_id="note_1"),
                 )
             ],
-            ("bach/manifest.yaml", "projection_3"): [],
-            ("bach/manifest.yaml", "claim_1"): [("MatchClaim", "claim_1")],
-            ("bach/manifest.yaml", "parse_1"): [
+            ("bach.tts.yaml", "projection_3"): [],
+            ("bach.tts.yaml", "claim_1"): [("MatchClaim", "claim_1")],
+            ("bach.tts.yaml", "parse_1"): [
                 (
                     "Parse",
                     "parse_1",
                     (_SHARED.resolve() / "bach" / "alignment.csv").as_posix(),
                 )
             ],
-            ("bach/manifest.yaml", "parse_2"): [],
-            ("handel/manifest.yaml", "projection_5"): [_PROJECTION_5],
+            ("bach.tts.yaml", "parse_2"): [],
+            ("handel.tts.yaml", "projection_5"): [_PROJECTION_5],
             (".", "resource_1"): [
                 ("Resource", "resource_1", ("clt_1", "dpt_1")),
                 ("Resource", "resource_1", ("clt_2", "dpt_2")),

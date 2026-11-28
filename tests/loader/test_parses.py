@@ -483,7 +483,7 @@ class TestMatchfileLocatorsAndIds:
     def test_the_bundle_writes_and_reads_back(
         self, bundle: AlignmentBundle, tmp_path: Path
     ) -> None:
-        path = bundle.to_file(tmp_path / "match" / "manifest.yaml", events=True)
+        path = bundle.to_file(tmp_path / "match" / "match.tts.yaml", events=True)
         read = AlignmentBundle.from_file(path)
         assert id_locator_pairs(read) == id_locator_pairs(bundle)
 

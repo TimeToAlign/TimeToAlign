@@ -190,7 +190,7 @@ bach
 # %%
 single = FILES / "bach"
 single.mkdir()
-manifest_path = bach.to_file(single / "bach.yaml", events=True)
+manifest_path = bach.to_file(single / "bach.tts.yaml", events=True)
 files(single)
 
 # %% [markdown]
@@ -269,7 +269,7 @@ pq.read_table(single / "parses.parquet").select(
 read = AlignmentBundle.from_file(manifest_path)
 copy = FILES / "copy"
 copy.mkdir()
-read.to_file(copy / "bach.yaml")
+read.to_file(copy / "bach.tts.yaml")
 {
     "events per timeline": {
         timeline_id: len(read.get_timeline(timeline_id).get_events())
@@ -310,8 +310,8 @@ read.to_file(copy / "bach.yaml")
 
 # %%
 package = Package(name="Two pieces")
-package.write_bundle(bach, "bach/manifest.yaml")
-package.write_bundle(handel, "handel/manifest.yaml")
+package.write_bundle(bach, "bach.tts.yaml")
+package.write_bundle(handel, "handel.tts.yaml")
 root = FILES / "pieces"
 root.mkdir()
 package_path = package.to_file(root / "package.yaml")
@@ -336,7 +336,7 @@ print(package_path.read_text(encoding="utf-8"), end="")
 # digest: the rows of other manifests share them.
 
 # %%
-show(root / "bach" / "manifest.yaml", "resources")
+show(root / "bach.tts.yaml", "resources")
 
 # %% [markdown]
 # The registry holds the event rows of the four timelines of both pieces;
@@ -366,7 +366,7 @@ show(root / "bach" / "manifest.yaml", "resources")
 
 # %%
 opened = Package.from_file(package_path)
-from_package = opened.bundle("bach/manifest.yaml")
+from_package = opened.bundle("bach.tts.yaml")
 {
     "manifests": opened.manifests,
     "table types": [table["type"] for table in opened.tables],
@@ -425,7 +425,7 @@ package_problems(package_path)
 # %%
 try:
     opened.write_bundle(
-        piece("bach", [60, 62, 64, 65], [0.0, 0.9, 1.8]), "bach_again/manifest.yaml"
+        piece("bach", [60, 62, 64, 65], [0.0, 0.9, 1.8]), "bach_again.tts.yaml"
     )
 except ValueError as refusal:
     print(refusal)
@@ -449,7 +449,7 @@ from_package.create_match_claims(
     synchronous=False,
     provenance=STATED,
 )
-opened.write_bundle(from_package, "bach/manifest.yaml")
+opened.write_bundle(from_package, "bach.tts.yaml")
 {
     "Note": values_per_file(root / "tables" / "Note", "id"),
     "MatchClaim": values_per_file(root / "tables" / "MatchClaim", "timeline_a_id"),
@@ -477,7 +477,7 @@ opened.write_bundle(from_package, "bach/manifest.yaml")
 elsewhere = FILES / "elsewhere"
 elsewhere.mkdir()
 try:
-    from_package.to_file(elsewhere / "bach.yaml")
+    from_package.to_file(elsewhere / "bach.tts.yaml")
 except NotImplementedError as refusal:
     print(refusal)
 

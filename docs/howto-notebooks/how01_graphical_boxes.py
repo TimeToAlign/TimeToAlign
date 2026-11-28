@@ -817,7 +817,7 @@ bundle = AlignmentBundle(name="Page and score")
 bundle.add_timeline(page)
 bundle.add_timeline(score)
 
-manifest_path = bundle.to_file(FILES / "package" / "page.yaml")
+manifest_path = bundle.to_file(FILES / "package" / "page.tts.yaml")
 sorted(path.name for path in manifest_path.parent.iterdir())
 
 # %% [markdown]

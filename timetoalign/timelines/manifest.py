@@ -1169,7 +1169,7 @@ def joined_parts(
 
     Args:
         parts: Each part with its holder as a message names it
-            (``timeline 'score'``, ``the manifest 'a/manifest.yaml'``).
+            (``timeline 'score'``, ``the manifest 'a.tts.yaml'``).
         kind: The table's kind, as a message names it.
         declared: The declared columns, which the parts hold in their
             declared types.
@@ -2544,7 +2544,7 @@ class ManifestFileMixin:
             >>> from pathlib import Path
             >>> from timetoalign.timelines import ContinuousLogicalTimeline, Timeline
             >>> score = ContinuousLogicalTimeline(length=Fraction(32), uid="piece")
-            >>> path = score.to_file(Path(tempfile.mkdtemp()) / "piece.yaml")
+            >>> path = score.to_file(Path(tempfile.mkdtemp()) / "piece.tts.yaml")
             >>> text = path.read_text(encoding="utf-8")
             >>> text.startswith('"@context":')
             True

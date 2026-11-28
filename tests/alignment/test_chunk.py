@@ -581,7 +581,7 @@ class TestASentinelNamesNoEvent:
     def test_a_registry_naming_a_sentinel(self, sentinel: str, tmp_path: Path) -> None:
         """The fixture's ``projection_10``, of ``onset_1``, now of a sentinel."""
         package = Path(
-            shutil.copytree(fixture_path("manifest.yaml").parent, tmp_path / "tables")
+            shutil.copytree(fixture_path("tables.tts.yaml").parent, tmp_path / "tables")
         )
         table = pq.read_table(package / "registry.parquet")
         ids = table.column("id").to_pylist()
@@ -596,7 +596,7 @@ class TestASentinelNamesNoEvent:
             package / "registry.parquet",
         )
         with pytest.raises(TableError) as caught:
-            AlignmentBundle.from_file(package / "manifest.yaml")
+            AlignmentBundle.from_file(package / "tables.tts.yaml")
         problem = caught.value.problem
         assert (problem.code, problem.row, problem.column, problem.message) == (
             "invalid_projection_of",

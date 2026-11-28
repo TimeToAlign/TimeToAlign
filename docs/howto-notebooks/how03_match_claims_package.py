@@ -291,7 +291,7 @@ claim_rows(bundle.get_match_claims())
 # itself, the Projections. To keep the notes and onsets in the package as
 # well, `to_file(events=True)` writes them into the registry and a
 # pre-parsed table per event type, never into the manifest itself:
-# see [How to Write the Registry and Share Tables in a Package](how03_event_files_and_packages.ipynb).
+# see [How to Write the Registry and Share Tables in a Package](how03_registry_and_packages.ipynb).
 
 # %%
 package = FILES / "song"
@@ -330,8 +330,8 @@ pq.read_table(package / "match_claims.parquet").select(
 # with that axis's unit and number type once, each number written once, as
 # that number type says: an int as its numerator alone, a fraction as
 # numerator and denominator, a float as its value alone. The registry's
-# other rows index the manifest's elements, the MatchClaims and the
-# extraction.
+# other rows, its non-event rows, name the manifest's elements, the
+# MatchClaims and the extraction.
 
 # %%
 [
@@ -441,8 +441,9 @@ len(AlignmentBundle.from_file(manifest_path).get_match_claims())
 #   claims become MatchStamps: the
 #   [Alignment Bundles and MatchClaims](../tutorials/tut06_alignment_bundles.ipynb)
 #   tutorial.
-# - Events in event files, and several manifests sharing their tables in
-#   one package: [How to Write Event Files and Share Tables in a Package](how03_event_files_and_packages.ipynb).
+# - Events in the registry and pre-parsed tables, and several manifests
+#   sharing their tables in one package:
+#   [How to Write the Registry and Share Tables in a Package](how03_registry_and_packages.ipynb).
 # - Manifests in depth (minimal and complete form, serializations, editing
 #   a file): [How to Save and Load Timelines, Groups and Bundles](how02_group_and_bundle_files.ipynb).
 # - Beliefs on statements as well as claims:

@@ -305,21 +305,6 @@ Event: |
   Anything associated with a timeline via Instants. An InstantEvent has zero
   duration; a TimeIntervalEvent has duration defined by start and end coordinates.
 
-Event file: |
-  A Parquet table of the events of one type, named by a manifest as a table
-  resource whose type is that event type. Beside a lone manifest it is a
-  file named by event_file_name() (Note.parquet; projections.parquet and
-  boxes.parquet for Projections and Boxes); in a package it is the folder
-  tables/<Type>/, shared by every manifest. One row per event: its id, its
-  timeline_id, the unit and number_type of the timeline's axis, its start
-  and, for a span, its duration, each number written once in the member its
-  number type names (the package form), then every further column the rows
-  hold a value in. The file's metadata states its type and the format
-  version. An AlignmentBundle's to_file(events=True) writes one for every
-  event type its timelines hold (event_types(); a child's Segment row on its
-  parent is structure, not an event), and a bundle read with event files
-  writes them again; from_file() reads them back onto the timelines.
-
 IdCoordinate: |
   A Coordinate that also names the timeline it belongs to. It is the default
   return of every coordinate getter in the library — stamps, timelines, groups,
@@ -575,9 +560,11 @@ Package: |
   class writes and opens such a folder: write_bundle(bundle, url) adds a
   bundle as the manifest at url (a new package stages it and to_file(path)
   writes every bundle staged, then package.yaml; a package on disk is
-  written at once); each write adds one file per type under tables/<Type>/,
-  holding the rows of every bundle it writes, every event type included,
-  and named from its content. from_file(path) opens a package, and
+  written at once). The registry is the folder registry/ and the Extraction
+  table the file tables/extractions.parquet; each write adds one file per
+  pre-parsed table type and one of MatchClaims under tables/<Type>/, holding
+  the rows of every bundle it writes, every event type included, and named
+  from its content. from_file(path) opens a package, and
   bundle(url) reads one of its manifests with every table filtered to the
   timelines its resources list. In a package a timeline ID is held by one
   manifest, an event ID once among the events of every type, and a
@@ -615,6 +602,20 @@ Parent: |
   its children must share the same measuring unit. Coordinate transfer uses
   exact offset arithmetic.
 
+Pre-parsed table: |
+  A Parquet table holding what is particular to the events of one type,
+  keyed by their IDs and without positions: a Note's name, a Projection's
+  projection_of, a Box's shape. An event's ID, type, timeline and position
+  are its registry row, whose location names the table holding its content.
+  Beside a lone manifest it is a file (Note.parquet; projections.parquet and
+  boxes.parquet for Projections and Boxes); in a package it is the folder
+  tables/<Type>/, shared by every manifest. An event whose content can be
+  read again from its source file is re-parsed instead and has no row
+  there. An AlignmentBundle's to_file() writes the tables of the Projections
+  and Boxes its timelines hold, to_file(events=True) one for every other
+  event type as well, and from_file() reads each event's content when its
+  timeline's events are first read.
+
 Projection: |
   An event standing on a timeline for an event that timeline does not hold,
   so that a MatchClaim can join two events: its ID (projection_ and 13 random
@@ -628,15 +629,16 @@ Projection: |
   already holds for the same event and position;
   AlignmentBundle.create_match_claims(), the alignment loaders and
   match_notes_by_attributes() give a Projection to every side stated as a
-  position, except the CHUNK sides. A package holds every timeline's Projections in one table, the
-  Projections table (projections.parquet, one row per Projection with its
-  timeline_id), which an AlignmentBundle's to_file() writes beside the
-  manifest whenever one of its timelines holds Projections, named in its
-  resources, sorted by timeline ID, and from_file() reads back onto the
-  timelines. In memory a Projection's start and duration are coordinate
-  cells, each naming its unit and number type; the table writes them in the
-  package form: the timeline's unit and number_type once per row, each number
-  once, in the member its number type names (see MatchClaimField). A
+  position, except the CHUNK sides. A package holds every timeline's Projections as rows of the registry,
+  which hold their positions, and in the Projection table
+  (projections.parquet), the pre-parsed table of their IDs and
+  projection_of; an AlignmentBundle's to_file() writes both beside the
+  manifest whenever one of its timelines holds Projections, and from_file()
+  reads them back onto the timelines. In memory a Projection's start and
+  duration are coordinate cells, each naming its unit and number type; the
+  registry writes them in the package form: the axis's unit and number_type
+  once per row, each number once, in the member its number type names (see
+  MatchClaimField). A
   Projection's ID is unique among all Projections of its manifest: a missing
   one is minted when the Projection is added, an ID another timeline's
   Projection already holds is refused, and no ID is ever renamed, since a
@@ -694,14 +696,31 @@ Region: |
   and displayed by its name (e.g., "Chorus", "Verse"). Regions are not
   timelines and cannot hold events or maps directly.
 
+Registry: |
+  The Parquet table of every ID a TimeToShare manifest or a package
+  resolves. An event's row states its ID, its type (kind), its timeline, its
+  position on the axis of its timeline's root (start and, for a span,
+  duration, with the axis's unit and number_type, each number once in the
+  member its number type names), the extraction that made it with its
+  locator in the source, and the location of the pre-parsed table holding
+  its content. A non-event row names every element of the manifest, every
+  MatchClaim and every extraction, with its kind and location. The registry
+  holds no names. Beside it, the Extraction table has one row per run of a
+  parser over a source file, or of a tool that made events without one. A
+  manifest names the registry among its resources with the type Registry:
+  beside a lone manifest it is registry.parquet, in a package the folder
+  registry/ of non_events.parquet and one part per extraction.
+  resolve(target, id) answers what an ID names, through a manifest or a
+  package root, always as a list.
+
 Resource: |
   An entry of a TimeToShare manifest's resources, naming a file, or a folder
   of Parquet files read as one table, that holds data for its timelines: its
   id (any element id no other element of the manifest holds; an entry the
   library adds gets a minted resource_…, and an entry read keeps its own
   when written back), its type (what its rows are: MatchClaim for the
-  MatchClaim table, Projection for the Projections table, or the type of the
-  events it holds, such as Box or Note), the ids of the timelines it holds
+  MatchClaim table, or Registry for the registry, whose rows point to the
+  pre-parsed tables, which no resource names), the ids of the timelines it holds
   data for, its url relative to the manifest (a folder when it ends in /),
   and optionally its media type, size in bytes and integrity (an Integrity:
   algorithm and digest; a file's only). A manifest may name several
@@ -715,11 +734,10 @@ Resource: |
   since the files of a folder may hold the rows of other manifests of a
   package; a table of other rows, and a folder holding no Parquet file, is
   carried as it stands. Its to_file() writes the MatchClaim table when it
-  holds MatchClaims, the Projections table when a timeline holds Projections
-  and the Box table (boxes.parquet) when a timeline holds Boxes, and with
-  events=True an event file of every other event type its timelines hold,
-  one table of each type with its entry (the type's first entry names it,
-  the type's other entries are left out). It refuses, with a
+  holds MatchClaims, and the registry, the Extraction table and a
+  pre-parsed table per type for the Projections and Boxes its timelines
+  hold, and with events=True for every other event type its timelines hold
+  as well. It refuses, with a
   NotImplementedError, to write rows of a type whose resource names a
   folder: the files of a folder are shared by a package's manifests, and
   Package.write_bundle() writes into them. A named file or folder that is

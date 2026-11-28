@@ -41,6 +41,8 @@
 # ## Setup
 
 # %%
+import warnings
+
 from timetoalign import Provenance
 from timetoalign.testdata import DATA_DIR, ensure_data
 from timetoalign.timelines import Timeline
@@ -108,8 +110,18 @@ tsv_loader.store.measures  # MeasureData
 tsv_loader.store["notes"].to_dataframe().head()
 
 # %%
-tsv_tl = tsv_loader.create_timeline()
+with warnings.catch_warnings(record=True) as tsv_warnings:
+    warnings.simplefilter("always")
+    tsv_tl = tsv_loader.create_timeline()
 tsv_tl
+
+# %% [markdown]
+# The measures of this polyrhythm fragment do not add up to their bars, and
+# building the timeline warns which. The cell above recorded the warning
+# instead of letting it print:
+
+# %%
+print(tsv_warnings[0].message)
 
 # %%
 tsv_tl.get_events()
@@ -331,8 +343,17 @@ mm_loader.store.measures
 mm_loader.store["measures"].to_dataframe().head()
 
 # %%
-mm_tl = mm_loader.create_timeline()
+with warnings.catch_warnings(record=True) as mm_warnings:
+    warnings.simplefilter("always")
+    mm_tl = mm_loader.create_timeline()
 mm_tl
+
+# %% [markdown]
+# Building the timeline warns where a measure, joined with the next that
+# shares its number, runs past its bar; recorded, the warning reads:
+
+# %%
+print(mm_warnings[0].message)
 
 # %%
 mm_tl.get_events()

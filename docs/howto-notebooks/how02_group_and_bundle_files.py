@@ -236,9 +236,9 @@ before
 # %% [markdown]
 # A group writes an anonymous bundle holding its group:
 #
-# - `timelines`: the root of every member's tree, sorted by id. The child
-#   member arrives inside its root, the score, among the score's
-#   `children`.
+# - `timelines`: the root of every member, sorted by id; a member that is
+#   a child arrives inside its root. Here the second half arrives inside
+#   the score, among the score's `children`.
 # - `groups`: the one group, with its `id`, its `name` and its `members`,
 #   the member ids sorted so that two equal groups write equal text.
 # - `graphical.order`: the members in the order they were added, keyed by
@@ -602,7 +602,7 @@ stream.is_length_known, answers([broadcast.get_timestamp_at(Fraction(4), program
 #   A bundle's file names no event: `to_file(events=True)` writes its events
 #   into the registry beside the manifest, their content into one
 #   pre-parsed table per event type; see
-#   [How to Write the Registry and Share Tables in a Package](how03_event_files_and_packages.ipynb).
+#   [How to Write the Registry and Share Tables in a Package](how03_registry_and_packages.ipynb).
 # - Groups in depth: the [Timeline Groups](../tutorials/tut05_timeline_groups.ipynb)
 #   tutorial.
 # - Alignments between groups: the

@@ -35,7 +35,7 @@
 #
 # **What we demonstrate here is a 1x22 sample** — one piece (Chopin Etude
 # Op. 10 No. 3 in E major) performed by all 22 pianists. This is one quarter
-# of the full dataset, and it is the specimen shipped with the TimeToAlign!
+# of the full dataset, and it is the specimen that comes with the TimeToAlign!
 # test suite. The workflow generalises straightforwardly to the remaining
 # three pieces.
 #

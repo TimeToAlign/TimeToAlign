@@ -33,8 +33,8 @@
 #
 # A manifest carrying statements is YAML-LD: its inline `@context` declares
 # the prefixes its compact IRIs use, so it reads as linked data without
-# fetching anything. The {{< glossary catalogue >}} shipped with the
-# TimeToShare package knows the vocabularies, the identifier systems and the
+# fetching anything. The {{< glossary catalogue >}} that comes with
+# the TimeToShare package knows the vocabularies, the identifier systems and the
 # verbs that state one relation in each of them.
 #
 # This guide describes the LayerIt example: an MEI encoding of the first six

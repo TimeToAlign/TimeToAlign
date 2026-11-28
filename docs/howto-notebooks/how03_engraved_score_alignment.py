@@ -390,10 +390,11 @@ page.list_children()
 # writes the bundle as a package: a
 # {{< glossary "TimeToShare manifest" >}} holding the timelines, their
 # children and conversion maps and the score's measures, and beside it the
-# MatchClaim table and the recording's Projections table, which the
-# manifest names in its `resources`. A manifest names no event: the claims
-# name the score's notes by their `xml:id`, which the MEI file holds. The
-# file opens with the manifest's inline JSON-LD `@context`; the cell below
+# MatchClaim table and the recording's Projections, as its registry rows
+# and the pre-parsed Projection table; the manifest names the registry and
+# the MatchClaim table in its `resources`. A manifest names no event: the
+# claims name the score's notes by their `xml:id`, which the MEI file holds.
+# The file opens with the manifest's inline JSON-LD `@context`; the cell below
 # lists the directory, where the MAPS file and the SVG are this guide's
 # own, and prints the manifest from `timelines` on.
 

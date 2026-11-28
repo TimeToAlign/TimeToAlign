@@ -110,8 +110,8 @@ website:
               href: howto/how03_describe_the_work.ipynb
             - text: "How to Keep MatchClaims, Projections and Beliefs in a Package"
               href: howto/how03_match_claims_package.ipynb
-            - text: "How to Write Event Files and Share Tables in a Package"
-              href: howto/how03_event_files_and_packages.ipynb
+            - text: "How to Write the Registry and Share Tables in a Package"
+              href: howto/how03_registry_and_packages.ipynb
         - section: "In-depth Topics"
           contents:
             - text: "How to Encode Song Genesis (Hendrix)"
@@ -401,10 +401,8 @@ quartodoc:
           package: timetoalign.timelines
         - name: Package
           package: timetoalign.alignment
-        - name: event_file_name
-          package: timetoalign.timelines.manifest
-        - name: event_types
-          package: timetoalign.timelines.manifest
+        - name: resolve
+          package: timetoalign.alignment
         - name: MatchGraph
           package: timetoalign.alignment
         - name: MatchStamp
@@ -447,6 +445,8 @@ quartodoc:
         - EventStore
         - SingleStore
         - DictStore
+        - EventRegistry
+        - Extraction
         - name: EventLoader
           package: timetoalign.loader
         - name: AudioLoader

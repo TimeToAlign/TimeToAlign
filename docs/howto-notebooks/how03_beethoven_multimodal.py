@@ -44,6 +44,7 @@
 # ## 1. Setup
 
 # %%
+import warnings
 
 import pandas as pd
 from PIL import Image
@@ -387,8 +388,18 @@ os_loader = Ms3Loader.from_file(
     OPENSCORE_DIR / "sq8913219.notes.tsv",
     OPENSCORE_DIR / "sq8913219.measures.tsv",
 )
-os_full = os_loader.create_timeline(uid="openscore_full")
+with warnings.catch_warnings(record=True) as os_warnings:
+    warnings.simplefilter("always")
+    os_full = os_loader.create_timeline(uid="openscore_full")
 os_full
+
+# %% [markdown]
+# Building the timeline warns where the edition's measures do not add up to
+# their bars; the cell above recorded the warning instead of letting it
+# print:
+
+# %%
+print(os_warnings[0].message)
 
 # %% [markdown]
 # The loader writes the score's section ends as section breaks of its flow

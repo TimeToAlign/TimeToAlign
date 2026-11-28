@@ -50,7 +50,6 @@
 
 # %%
 import tempfile
-from fractions import Fraction
 from pathlib import Path
 
 import pandas as pd
@@ -133,17 +132,12 @@ def claims(field, timeline):
     """One row per MatchClaim from *timeline*: the note, the excerpt's side."""
     events = timeline.get_events().table
     pitches = dict(
-        zip(
-            events.column("id").to_pylist(),
-            [pitch["midi_number"] for pitch in events.column("pitch").to_pylist()],
-        )
+        zip(events.column("id").to_pylist(), events.column("pitch").to_pylist())
     )
     return pd.DataFrame(
         [
             {
-                "onset (quarters)": str(
-                    Fraction(claim.start_anchor.coordinate_a.value)
-                ),
+                "onset (ticks)": claim.start_anchor.coordinate_a.value,
                 "MIDI pitch": pitches[claim.event_a_id],
                 "excerpt side": claim.event_b_id,
                 "excerpt (seconds)": claim.start_anchor.coordinate_b.value,
@@ -217,9 +211,11 @@ track.statements
 # ## The files of one theme
 #
 # The first theme, B689 in Barlow and Morgenstern, is fourteen timelines:
-# the excerpt and one per file of its four encodings. A MIDI file, the
-# MusicXML file and the Sibelius file are quarters timelines, a note list
-# (CSV) and the excerpt seconds timelines, a PDF a points timeline. Each
+# the excerpt and one per file of its four encodings. A MIDI file is a
+# ticks timeline, on the file's own axis, with a C-Map to quarters (480
+# ticks per quarter here); the MusicXML file and the Sibelius file are
+# quarters timelines, a note list (CSV) and the excerpt seconds timelines,
+# a PDF a points timeline. Each
 # names its file in the archive (`lrmoo:R7i_is_exemplified_by`) and, where
 # MTD's paper states that the file was made from another, that file's
 # timeline (`dcterms:source`): the SCORE exports derive from the Sibelius
@@ -252,10 +248,11 @@ edm_orig.statements
 # their files, EDM-alig of its two files and the excerpt, to which
 # EDM-alig is aligned (its quarter notes are the excerpt's seconds). The
 # members of a group share its start and end. Two pairs of members state
-# different lengths: EDM-alig's MIDI file ends at 1369/480 quarters, 25/480
-# past the excerpt's 2.8 seconds, since the aligned notes run past the
-# excerpt's cut; the MusicXML file's last bar ends at 9 quarters, past the
-# SCORE MIDI file's end of track at 8. Nothing is stretched to fit: the
+# different lengths: EDM-alig's MIDI file ends at tick 1369, 25 ticks past
+# the 1344 ticks (2.8 quarters) of the excerpt's 2.8 seconds, since the
+# aligned notes run past the excerpt's cut; the MusicXML file's last bar
+# ends at 9 quarters, past the SCORE MIDI file's end of track at tick 3840,
+# 8 quarters. Nothing is stretched to fit: the
 # longer member takes part through a child of it, starting at 0 and as long
 # as the shorter one, named after the span it covers (the children of the
 # table above).
@@ -293,9 +290,9 @@ fifth_track.get_child(fifth_track.list_children()[0]).statements["rdfs:comment"]
 # timeline to the sentinel `CHUNK` on the excerpt (written `CHUNK_SENTINEL`
 # in the MatchClaim table): the excerpt holds no event, the claim states a
 # position on it. The file writes the onset with five decimals (`6.66667`);
-# the claim holds the exact onset of the note it meets, `20/3`. The last
-# row, the end of the last note, is checked and not kept. The loader hands
-# the claims over as one field.
+# the claim holds the onset of the note it meets on the MIDI file's own
+# axis, tick 3200. The last row, the end of the last note, is checked and
+# not kept. The loader hands the claims over as one field.
 
 # %%
 field = loader.get_field(MatchClaim)
@@ -303,6 +300,13 @@ edm_corr = next(
     t for t in theme_timelines(bundle, theme) if label(t, theme) == "EDM-corr MIDI"
 )
 claims(field, edm_corr)
+
+# %% [markdown]
+# The timeline's C-Map reads tick 3200 as exactly `20/3` quarters, the
+# onset the alignment file writes as `6.66667`.
+
+# %%
+edm_corr.get_timestamp_at(3200)
 
 # %% [markdown]
 # The bundle holds the same claims (`bundle.match_claim_table`) beside its
@@ -316,7 +320,7 @@ plain = AlignmentBundle(name="timelines and claims")
 for timeline in loader.create_timelines():
     plain.add_timeline(timeline)
 plain.add_match_claim_field(field)
-plain.get_matchstamp_at(Fraction(20, 3), edm_corr.id)
+plain.get_matchstamp_at(3200, edm_corr.id)
 
 # %% [markdown]
 # ## Track lengths from elsewhere

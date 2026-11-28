@@ -36,6 +36,7 @@
 # not depend on its bundles or claims.
 
 # %%
+import warnings
 from fractions import Fraction
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -257,9 +258,11 @@ repeat_events
 
 # %%
 flow_dir = score_data / "flow_control" / "flow_only"
-flow_score = Ms3Loader.from_file(
-    flow_dir / "out_of_the_flow_experience-flow_only.measures.tsv",
-).create_timeline(uid="flow_only")
+with warnings.catch_warnings(record=True) as flow_only_warnings:
+    warnings.simplefilter("always")
+    flow_score = Ms3Loader.from_file(
+        flow_dir / "out_of_the_flow_experience-flow_only.measures.tsv",
+    ).create_timeline(uid="flow_only")
 flow_elements = flow_score.flow_control
 element_ids = {
     "regions": {region.id: region.name for region in written_score.iter_regions()},
@@ -279,6 +282,13 @@ element_ids
 # `to`; a plain repeat and the *Da Capo* name none and go back to the start
 # of their section, and a bracket the flow simply goes on into states a
 # distance of 0 instead.
+#
+# Loading the fragment, the loader also warned that some of its measures do
+# not add up to their bars. The cell above recorded the warning instead of
+# letting it print; its message names each measure and how it does not fit:
+
+# %%
+print(flow_only_warnings[0].message)
 
 # %% [markdown]
 # ## Computing and checking the route
@@ -289,7 +299,9 @@ element_ids
 # measures, the route of WoO 71 is easy to compare with the score.
 
 # %%
-score_timeline = score_loader.create_timeline(uid="woo71")
+with warnings.catch_warnings(record=True) as woo71_warnings:
+    warnings.simplefilter("always")
+    score_timeline = score_loader.create_timeline(uid="woo71")
 route = score_timeline.get_flow()
 played_measures = measure_ranges(
     [stretch.source for stretch in route.chunks], score_timeline.measure_map
@@ -304,9 +316,17 @@ flow_report
 
 # %% [markdown]
 # The default route visits 505 measures from a 397-measure folded score, in
-# right-open ranges of measure counts, and finds nothing to report. The short
-# score above is another matter: its second of three brackets has no sign at
-# its end, so its flow stops there and never plays the rest.
+# right-open ranges of measure counts, and finds nothing to report. The
+# loader's one warning, recorded as for the fragment, is about the measures
+# themselves: at three places a measure states an offset, or reaches a
+# length, that does not fit its bar.
+
+# %%
+print(woo71_warnings[0].message)
+
+# %% [markdown]
+# The short score above is another matter: its second of three brackets has
+# no sign at its end, so its flow stops there and never plays the rest.
 
 # %%
 [finding.message for finding in flow_score.get_flow().findings]

@@ -21,8 +21,9 @@
 #
 # - the **registry**, one row per ID the package can resolve: for every
 #   event its ID, its type, its timeline, its position on the axis of its
-#   timeline's root and the extraction that made it; and an index row for
-#   every element of the manifest, every MatchClaim and every extraction;
+#   timeline's root and the extraction that made it; and a non-event row
+#   for every element of the manifest, every MatchClaim and every
+#   extraction;
 # - the **Extraction table**, one row per run of a parser over a source
 #   file, or of a tool that made events without one (here the library,
 #   since the events are made in code);
@@ -35,9 +36,10 @@
 #
 # The manifest names the registry and the MatchClaim table in its
 # `resources`. Several manifests can share their tables in a **package**: a
-# folder whose `package.yaml` lists the manifests and the tables, the
-# registry a folder of parts (an index part and one part per extraction)
-# and every other table a folder `tables/<Type>/` of the rows of every
+# folder whose `package.yaml` lists the manifests and the tables: the
+# registry a folder of parts (one part of the non-event rows and one part
+# per extraction), the Extraction table one file, and the MatchClaim table
+# and every pre-parsed table a folder `tables/<Type>/` of the rows of every
 # manifest. An ID combined with the location of a manifest, or of the
 # package, resolves to what it names.
 #
@@ -57,7 +59,7 @@
 # a recording with an onset for each note but the last, a MatchClaim for each
 # note and onset, and one claim giving the last note a position on the
 # recording, where it gets a Projection. Every ID starts with the piece's
-# key, so that the IDs of two pieces differ. `tree` lists a directory's files
+# key, so that the IDs of two pieces differ. `files` lists a directory's files
 # and folders, `show` prints one key of a YAML file as the file holds it,
 # `values_per_file` names the values of one column in each file of a table
 # folder, and `event_rows` reads the event rows of a registry file.
@@ -123,7 +125,7 @@ def piece(key, onsets):
     return bundle
 
 
-def tree(directory):
+def files(directory):
     """Every file and folder under a directory, folders ending in '/', sorted."""
     return sorted(
         str(path.relative_to(directory)) + ("/" if path.is_dir() else "")
@@ -184,7 +186,7 @@ bach
 single = FILES / "bach"
 single.mkdir()
 manifest_path = bach.to_file(single / "bach.yaml", events=True)
-tree(single)
+files(single)
 
 # %% [markdown]
 # The manifest names the registry and the MatchClaim table in its
@@ -208,10 +210,11 @@ show(manifest_path, "resources")
 event_rows(single / "registry.parquet")[:6]
 
 # %% [markdown]
-# The other rows of the registry are its index: one per element of the
-# manifest (its timelines, groups and resources, the manifest itself), per
-# MatchClaim and per extraction, each with its kind and its location, so
-# that an ID found in the registry leads to the file holding it.
+# The other rows of the registry are its non-event rows: one per element
+# of the manifest (its timelines, groups and resources, the manifest
+# itself), per MatchClaim and per extraction, each with its kind and its
+# location, so that an ID found in the registry leads to the file holding
+# it.
 
 # %%
 sorted(
@@ -263,7 +266,7 @@ read.to_file(copy / "bach.yaml")
     "same manifest": read.to_dict() == bach.to_dict(),
     "same bytes": all(
         (single / name).read_bytes() == (copy / name).read_bytes()
-        for name in tree(single)
+        for name in files(single)
     ),
 }
 
@@ -290,7 +293,8 @@ read.to_file(copy / "bach.yaml")
 # `write_bundle(bundle, url)` adds a bundle as the manifest at `url`,
 # relative to the package's root. A new package only stages the bundles;
 # `to_file()` writes them all at once, then `package.yaml`, then the
-# registry's index part, into a folder that holds no package yet.
+# registry's part of the non-event rows, into a folder that holds no
+# package yet.
 
 # %%
 package = Package(name="Two pieces")
@@ -299,12 +303,12 @@ package.write_bundle(handel, "handel/manifest.yaml")
 root = FILES / "pieces"
 root.mkdir()
 package_path = package.to_file(root / "package.yaml")
-tree(root)
+files(root)
 
 # %% [markdown]
 # A package writes every event type of its bundles, with no `events=`
-# needed. The registry is the folder `registry/`: `index.parquet` and one
-# part per extraction, named after it. Every other table has one folder
+# needed. The registry is the folder `registry/`: `non_events.parquet`,
+# the non-event rows, and one part per extraction, named after it. Every other table has one folder
 # under `tables/` but the Extraction table, one file; each write adds one
 # file per pre-parsed type and one of MatchClaims, named from its content,
 # holding the rows of every bundle it writes. `package.yaml` lists the
@@ -385,10 +389,10 @@ from_package.get_matchstamp_at(Fraction(2), "bach_score")
 # `package.yaml`: every manifest valid, every table file of its type and
 # version, every resource naming a table of the package, every ID held once,
 # every event row naming an extraction and a table holding its content, the
-# index agreeing with the manifests, and the rows of each manifest checked
-# against it. It returns the list of problems, here none. `Package` runs the
-# same check after every write and raises its first problem, with every
-# file restored.
+# non-event rows agreeing with the manifests and tables, and the rows of
+# each manifest checked against it. It returns the list of problems, here
+# none. `Package` runs the same check after every write and raises its
+# first problem, with every file restored.
 
 # %%
 package_problems(package_path)

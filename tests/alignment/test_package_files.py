@@ -20,6 +20,7 @@ import timetoshare
 from timetoshare.tables import (
     PackageProblem,
     TableError,
+    fixture_path,
     non_event_rows,
     package_fixture_path,
     package_problems,
@@ -1440,6 +1441,51 @@ class TestPackage:
             AlignmentBundle.from_file(alone / "bach" / "manifest.yaml")
         assert refused.value.problem.code == "unknown_timeline"
 
+    def test_a_projection_of_another_manifest_s_timeline_is_read(self) -> None:
+        directory = package_fixture_path("acceptances", "timeline_in_two_manifests")
+        bundle = Package.from_file(directory / "package.yaml").bundle(
+            "handel/manifest.yaml"
+        )
+        assert "clt_1" not in bundle._known_timelines()
+        events = bundle._known_timelines()["dpt_1"].events.table
+        assert events.select(["id", "event_type", "projection_of"]).to_pylist() == [
+            {
+                "id": f"projection_{number}",
+                "event_type": "Projection",
+                "projection_of": {"timeline_id": "clt_1", "event_id": f"note_{note}"},
+            }
+            for number, note in ((1, 1), (2, 2), (9, 4), (7, 3))
+        ]
+
+    def test_a_projection_of_a_timeline_no_manifest_holds_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        source = package_fixture_path("acceptances", "timeline_in_two_manifests")
+        copy = shutil.copytree(source, tmp_path / "package")
+        _project_to(copy / "registry.parquet", "projection_1", "nowhere")
+        for url in ("bach/manifest.yaml", "handel/manifest.yaml"):
+            package = Package.from_file(copy / "package.yaml")
+            with pytest.raises(TableError) as refused:
+                package.bundle(url)
+            assert (
+                str(refused.value)
+                == "no manifest of the package has the timeline 'nowhere'"
+            )
+            assert refused.value.problem.code == "unknown_timeline"
+            assert refused.value.problem.column == ("projection_of", "timeline_id")
+
+    def test_a_lone_manifest_refuses_a_projection_of_a_timeline_it_lacks(
+        self, tmp_path: Path
+    ) -> None:
+        copy = shutil.copytree(fixture_path("manifest.yaml").parent, tmp_path / "lone")
+        AlignmentBundle.from_file(copy / "manifest.yaml")
+        _project_to(copy / "registry.parquet", "projection_1", "nowhere")
+        with pytest.raises(TableError) as refused:
+            AlignmentBundle.from_file(copy / "manifest.yaml")
+        assert str(refused.value) == "the manifest has no timeline 'nowhere'"
+        assert refused.value.problem.code == "unknown_timeline"
+        assert refused.value.problem.column == ("projection_of", "timeline_id")
+
     def test_an_id_held_twice_is_refused_before_any_file(self, tmp_path: Path) -> None:
         a = _a()
         package = Package(name="Pieces")
@@ -1905,6 +1951,20 @@ class TestPackage:
             )
             assert _files(tmp_path) == before
         assert sorted(p.name for p in tmp_path.iterdir()) == ["alone", "package"]
+
+
+def _project_to(registry: Path, projection_id: str, timeline_id: str) -> None:
+    """Rewrite the registry file *registry* with the Projection *projection_id*
+    standing for an event of *timeline_id*, its file metadata kept."""
+    table = pq.read_table(registry)
+    index = table.schema.get_field_index("projection_of")
+    field = table.schema.field(index)
+    projected = table.column(index).to_pylist()
+    row = table.column("id").to_pylist().index(projection_id)
+    projected[row] = {**projected[row], "timeline_id": timeline_id}
+    pq.write_table(
+        table.set_column(index, field, pa.array(projected, field.type)), registry
+    )
 
 
 def _assert_expected_reads(package: Package) -> None:

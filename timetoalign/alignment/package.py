@@ -47,7 +47,7 @@ from timetoshare.tables import (
     write_registry,
 )
 from timetoshare.tables.package import non_event_rows_of, table_non_event_rows
-from timetoshare.validation.diagnostics import manifest_ids
+from timetoshare.validation.diagnostics import axes_by_id, manifest_ids
 
 from timetoalign.alignment.claim_store import _refuse_shared_claim_ids
 from timetoalign.alignment.claims import MatchClaimField
@@ -447,6 +447,45 @@ def _content_reader(
     return read
 
 
+#: The kinds of the registry's non-event rows of timelines and virtual timelines.
+_TIMELINE_KINDS = pa.array(["Timeline", "VirtualTimeline"], pa.string())
+
+
+def _projected_timelines(
+    path: Path, events: pa.Table, manifest: Mapping[str, Any]
+) -> list[str]:
+    """The timelines of the package whose registry lies at *path* that the
+    Projections among *events*, a manifest's rows of it, may stand for events
+    of: the manifest's own and, of the other timelines their
+    ``projection_of`` names, those the registry holds a timeline's non-event
+    row of, read by those IDs alone. A Projection on a timeline two
+    manifests share may stand for an event of either."""
+    own = {
+        timeline
+        for timeline in axes_by_id(timetoshare.with_bare_ids(manifest))
+        if isinstance(timeline, str)
+    }
+    index = events.schema.get_field_index("projection_of")
+    declared = events.schema.field(index).type if index >= 0 else None
+    if (
+        declared is None
+        or not pa.types.is_struct(declared)
+        or declared.get_field_index("timeline_id") < 0
+    ):
+        # The registry check refuses the missing or mistyped column.
+        return sorted(own)
+    sources = events.column("projection_of").combine_chunks()
+    named = distinct_strings(pc.struct_field(sources, "timeline_id"))
+    others = [timeline for timeline in named if timeline not in own]
+    if not others:
+        return sorted(own)
+    held = read_table(path, ids=others, columns=["id", "kind"], type="Registry")
+    timelines = held.column("id").filter(
+        pc.is_in(held.column("kind"), value_set=_TIMELINE_KINDS)
+    )
+    return sorted(own | set(distinct_strings(timelines)))
+
+
 def _install_registry(
     bundle: AlignmentBundle,
     resource: Resource,
@@ -465,7 +504,10 @@ def _install_registry(
     which passes over a row the manifest states already, holds each
     timeline long enough for its rows and checks every Box against its
     shape; its content is read from the pre-parsed tables the rows locate
-    when the family's events are first read.
+    when the family's events are first read. The rows are checked against
+    the manifest first; read from a package (*filtered*), a Projection may
+    stand for an event of a timeline of another manifest of the package
+    (``_projected_timelines``), read alone only of one of the manifest's.
 
     Returns:
         Whether a row is of a kind other than Projection and Box.
@@ -475,7 +517,14 @@ def _install_registry(
         path, timelines=resource.timelines if filtered else None, type="Registry"
     )
     events = rows.filter(pc.invert(_is_non_event(rows)))
-    check_registry(events, manifest)
+    if filtered:
+        check_registry(
+            events,
+            manifest,
+            projected_timelines=_projected_timelines(path, events, manifest),
+        )
+    else:
+        check_registry(events, manifest)
     if not events.num_rows:
         return False
     memory = registry_rows_in_memory(events, what)

@@ -2676,6 +2676,25 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
   reads exactly its rows (as above); the same manifest read alone
   (`AlignmentBundle.from_file` of a copy of it outside the package) refuses
   the other manifest's rows, the registry check's `unknown_timeline`.
+- **A Projection's projected timeline is a timeline of the package.** A
+  Projection's `projection_of` may name a timeline of another manifest of
+  the package than the one read (the manifests sharing the Projection's
+  timeline), so whether its timeline exists is a question of the package,
+  not of the one manifest; a manifest read alone is a package of one.
+  Both halves are proved, each a refusal or an acceptance a wrong scope
+  would flip. TimeToShare's `timeline_in_two_manifests` acceptance:
+  Handel's manifest, read through `Package.bundle`, holds on `dpt_1`
+  exactly `projection_1`, `projection_2`, `projection_9`, `projection_7`
+  standing for Bach's `note_1`, `note_2`, `note_4`, `note_3` on `clt_1`, a
+  timeline Handel's manifest lacks (a check scoped to the manifest would
+  refuse it). With `projection_1`'s `projection_of` renamed to the timeline
+  `nowhere` in a copy, both manifests' reads through the package raise
+  `TableError` `no manifest of the package has the timeline 'nowhere'`
+  (`unknown_timeline` at `projection_of.timeline_id`). TimeToShare's
+  table fixture, a lone manifest beside its registry, reads; with
+  `projection_1`'s `projection_of` renamed to `nowhere` in a copy,
+  `AlignmentBundle.from_file` raises `TableError` `the manifest has no
+  timeline 'nowhere'` (`unknown_timeline` at `projection_of.timeline_id`).
 - **An ID held twice is refused before any file.** With `a` written: a
   bundle `c` holding a Note `a_n1` on `c_score` (`The event 'a_n1' of
   timeline 'c_score' of the manifest 'c/manifest.yaml' cannot join the

@@ -1529,7 +1529,7 @@ class TestOneAxisPerTable:
         half = Coordinate(Fraction(1, 2), TimeUnit.quarters)
         timeline = ContinuousLogicalTimeline(length=2)
         (held,) = timeline.add_projections([Projection(start=half)])
-        path = tmp_path / "projections.parquet"
+        path = tmp_path / "events.parquet"
         pq.write_table(self._spelled(timeline.events, [(2, 4)]), path)
 
         read = EventData.from_parquet(path).create_timeline()

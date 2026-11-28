@@ -2726,7 +2726,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="timetoalign.timelines.Timeline.add_events" class="level3">
 <h3 class="anchored" data-anchor-id="timetoalign.timelines.Timeline.add_events">add_events</h3>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.add_events(rows, allow_expansion<span class="op">=</span><span class="va">False</span>, <span class="op">*</span>, seed<span class="op">=</span><span class="va">None</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>timelines.Timeline.add_events(</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    rows,</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    allow_expansion<span class="op">=</span><span class="va">False</span>,</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>    parses<span class="op">=</span>(),</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Add events to the timeline.</p>
 <p>Only <code>event_type</code> and a coordinate are strictly required per dict. Missing fields are filled in automatically:</p>
 <ul>
@@ -2734,18 +2740,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <li><strong>temporal_type</strong>: inferred from keys – <code>"interval"</code> when both <code>start</code> and <code>end</code> (or <code>duration</code>) are present, <code>"instant"</code> otherwise.</li>
 </ul>
 <p>Positions are stored on this timeline’s axis. A <code>start</code>, <code>end</code> or <code>instant</code> given as a :class:<code>~timetoalign.core.Coordinate</code> in another unit is converted through the timeline’s C-Map; a <code>duration</code> given as a :class:<code>~timetoalign.core.Duration</code> (or <code>Coordinate</code>) in another unit is the span from the start it is added to, converted as the two ends of that span are, so its start must be given in the same unit. Each converted value is written in the timeline’s number type. Bare numbers and struct dicts are taken as on this timeline’s axis.</p>
-<p>A Projection (<code>event_type</code> <code>"Projection"</code>) holds <code>id</code>, its position and <code>projection_of</code>, the event of another timeline it stands for, as a dict <code>{"timeline_id": ..., "event_id": ...}</code> or an :class:<code>~timetoalign.core.EventReference</code> (<code>None</code> where none is known); it repeats nothing else of that event.</p>
-<p>A Box (<code>event_type</code> <code>"Box"</code>) is an area of the image the timeline runs along: its shape, in the image’s space, and the interval of its x extent on the timeline. Its shape must be on the timeline’s axis (its unit and number type; a shape is never converted), and its start must be the shape’s <code>x_min</code> less the x at which the timeline stands in its image: the <code>x_min</code> of the shape <code>meta["box"]</code> states, 0 where it states none. A shape given as the memory cell of its column is read through the shape’s constructor, as every shape’s numbers are (never rounded). A Box row may state <code>unit</code>, <code>number_type</code> and <code>timeline_id</code>, as a package’s Box table does: they must name this timeline and its axis, and are not stored.</p>
+<p>A Projection (<code>event_type</code> <code>"Projection"</code>) holds <code>id</code>, its position and <code>projection_of</code>, the event of another timeline it stands for, as a dict <code>{"timeline_id": ..., "event_id": ...}</code> or an :class:<code>~timetoalign.core.EventReference</code> (<code>None</code> where none is known); it repeats nothing else of that event. Read from a source file, it names its <code>locator</code> and <code>parse_id</code> as every row does (below).</p>
+<p>A Box (<code>event_type</code> <code>"Box"</code>) is an area of the image the timeline runs along: its shape, in the image’s space, and the interval of its x extent on the timeline. Its shape must be on the timeline’s axis (its unit and number type; a shape is never converted), and its start must be the shape’s <code>x_min</code> less the x at which the timeline stands in its image: the <code>x_min</code> of the shape <code>meta["box"]</code> states, 0 where it states none. A shape given as the memory cell of its column is read through the shape’s constructor, as every shape’s numbers are (never rounded). A Box row may state <code>unit</code>, <code>number_type</code> and <code>timeline_id</code>: they must name this timeline and its axis, and are not stored.</p>
 <p>An :class:<code>~timetoalign.core.Event</code> object (a :class:<code>~timetoalign.core.Projection</code>, a :class:<code>~timetoalign.core.Box</code>) may be given in place of its row, alone or in the list.</p>
+<p>Rows read from a source file name what read them: a row’s <code>parse_id</code> names an :class:<code>~timetoalign.storage.Parse</code> given in <em>parses</em> (or held by the timeline’s family already) and its <code>locator</code> the event’s place in the source. Both go into the event’s registry row (:attr:<code>registry</code>), not into :attr:<code>events</code>. The parses the rows name are held with them; if the rows are refused, none of them is held. A row naming no parse names the family’s parse of events made in code.</p>
 <section id="parameters-4" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-4">Parameters</h4>
 <table class="caption-top table">
-<colgroup>
-<col style="width: 3%">
-<col style="width: 37%">
-<col style="width: 56%">
-<col style="width: 2%">
-</colgroup>
 <thead>
 <tr class="header">
 <th>Name</th>
@@ -2772,6 +2773,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><code>int</code> | None</td>
 <td>The seed of the minter of the missing IDs.</td>
 <td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>parses</td>
+<td><code>Iterable</code>[<a href="../reference/Parse.html#timetoalign.Parse">Parse</a>]</td>
+<td>The parses the rows’ <code>parse_id</code> names; one the rows do not name is not held.</td>
+<td><code>()</code></td>
 </tr>
 </tbody>
 </table>
@@ -2805,8 +2812,8 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <table class="caption-top table">
 <colgroup>
 <col style="width: 1%">
-<col style="width: 5%">
-<col style="width: 93%">
+<col style="width: 4%">
+<col style="width: 94%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -2819,7 +2826,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <tr class="odd">
 <td></td>
 <td><code>ValueError</code></td>
-<td>If an ID, given or minted, is already held by an event of this timeline or given twice, a Projection row holds a key a Projection does not have or names an event of this timeline, a Box’s shape is off the timeline’s axis (or its row’s <code>unit</code>, <code>number_type</code> or <code>timeline_id</code> names another), a number of its shape is one the axis cannot hold exactly, or its start contradicts its shape, a position cannot be converted, or the events exceed the length and expansion is not allowed. Nothing is added then.</td>
+<td>If an ID, given or minted, is already held by an event of this timeline’s family or given twice, a Projection row holds a key a Projection does not have or names an event of this timeline, a Box’s shape is off the timeline’s axis (or its row’s <code>unit</code>, <code>number_type</code> or <code>timeline_id</code> names another), a number of its shape is one the axis cannot hold exactly, or its start contradicts its shape, a position cannot be converted, the events exceed the length and expansion is not allowed, a row names a parse neither given nor held, a parse given is held under its ID with other content, or a locator names two events of one parse. Nothing is added then.</td>
 </tr>
 </tbody>
 </table>
@@ -3229,9 +3236,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>    allow_expansion<span class="op">=</span><span class="va">False</span>,</span>
 <span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">*</span>,</span>
 <span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>    seed<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>    parses<span class="op">=</span>(),</span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Add Projections to the timeline, reusing those it already holds.</p>
 <p>Get-or-add: each Projection is placed on the timeline’s axis as :meth:<code>add_events</code> places it, and the timeline keeps one Projection per thing it stands for. A Projection without an <code>id</code> reuses the Projection the timeline holds with the same <code>projection_of</code> (the same event of another timeline, or none) at the same exact <code>start</code> and <code>duration</code>; a Projection with an <code>id</code> reuses the one held under that id when its content is equal. Rows of one call are taken alike, so two rows standing for one thing give one Projection. Everything else is added, its id kept or minted (<code>projection_…</code>, by :meth:<code>add_events</code>).</p>
+<p>A row read from a source file may name its <code>locator</code> and its <code>parse_id</code> (a parse given in <em>parses</em> or held by the timeline’s family), as :meth:<code>add_events</code> takes them: they go into the added Projection’s registry row. They do not tell Projections apart: a Projection the timeline holds already is returned as it is, its own locator and parse kept, and of rows of one call standing for one thing the first row’s are kept.</p>
 <section id="parameters-9" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-9">Parameters</h4>
 <table class="caption-top table">
@@ -3261,6 +3270,12 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <td><code>int</code> | None</td>
 <td>The seed of the minter of the missing IDs, as :meth:<code>add_events</code> takes it.</td>
 <td><code>None</code></td>
+</tr>
+<tr class="even">
+<td>parses</td>
+<td><code>Iterable</code>[<a href="../reference/Parse.html#timetoalign.Parse">Parse</a>]</td>
+<td>The parses the rows’ <code>parse_id</code> names, as :meth:<code>add_events</code> takes them; one no added row names is not held.</td>
+<td><code>()</code></td>
 </tr>
 </tbody>
 </table>
@@ -7753,8 +7768,9 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb94-4"><a href="#cb94-4" aria-hidden="true" tabindex="-1"></a>    include_children<span class="op">=</span><span class="va">True</span>,</span>
 <span id="cb94-5"><a href="#cb94-5" aria-hidden="true" tabindex="-1"></a>    min_coord<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb94-6"><a href="#cb94-6" aria-hidden="true" tabindex="-1"></a>    max_coord<span class="op">=</span><span class="va">None</span>,</span>
-<span id="cb94-7"><a href="#cb94-7" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>field_filters,</span>
-<span id="cb94-8"><a href="#cb94-8" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb94-7"><a href="#cb94-7" aria-hidden="true" tabindex="-1"></a>    include_number_types<span class="op">=</span><span class="va">None</span>,</span>
+<span id="cb94-8"><a href="#cb94-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">**</span>field_filters,</span>
+<span id="cb94-9"><a href="#cb94-9" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Filter and retrieve events.</p>
 <p>When <code>include_children=True</code> (the default), events from all children are included with their coordinates adjusted to the root timeline’s coordinate system. Each of them names the timeline holding it in the column <code>source_timeline</code> (a child, or a deeper descendant), at every depth; the timeline’s own events leave it null. Segment events (internal bookkeeping) are always excluded.</p>
 <p>A bound written as a float is compared as a key, with the float side of each event’s <code>start</code>: on a <code>fraction</code> axis <code>min_coord=0.1</code> keeps an event starting at <code>1/10</code>, on an <code>int</code> axis <code>min_coord=10.5</code> leaves out an event starting at 10 and <code>max_coord=10.5</code> keeps it, and <code>max_coord=math.inf</code> keeps every event. An exact bound (an <code>int</code>, a <code>Fraction</code>) is compared exactly on an <code>int</code> or <code>fraction</code> axis, never rounded.</p>
@@ -7762,10 +7778,10 @@ parent.add_child(child, offset=offset)</code></pre>
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-53">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 7%">
-<col style="width: 27%">
-<col style="width: 59%">
-<col style="width: 4%">
+<col style="width: 6%">
+<col style="width: 33%">
+<col style="width: 57%">
+<col style="width: 3%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -7807,6 +7823,12 @@ parent.add_child(child, offset=offset)</code></pre>
 <td><code>None</code></td>
 </tr>
 <tr class="even">
+<td>include_number_types</td>
+<td><code>Collection</code>[<code>NumberType</code> | <code>str</code>] | None</td>
+<td>Keep the events read in one of these number types only (<code>EventData.filter</code>). A timeline and its descendants lie on one axis, so this keeps every event or none. <code>None</code> keeps every number type.</td>
+<td><code>None</code></td>
+</tr>
+<tr class="odd">
 <td>**field_filters</td>
 <td><code>Any</code></td>
 <td>Additional field equality filters. Each kwarg name is a field name, and the value is the required value (or a list of values for OR logic).</td>
@@ -10179,15 +10201,15 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb147-8"><a href="#cb147-8" aria-hidden="true" tabindex="-1"></a>    external_references<span class="op">=</span><span class="va">None</span>,</span>
 <span id="cb147-9"><a href="#cb147-9" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>Write the object’s manifest to a file.</p>
-<p>The manifest is <code>to_dict</code>’s complete form, written with <code>timetoshare.dumps_file</code> in the form, styling and serialization chosen: every object’s keys sorted, its arrays in canonical order, so that equal manifests give equal text and a change shows in a diff as the lines it touches. Each argument left None takes the value the file the object was read from had (see :meth:<code>from_file</code>); for an object not read from a file, the minimal form, the styling included, in canonical YAML, without event rows or external references. An :class:<code>~timetoalign.alignment.AlignmentBundle</code> holding MatchClaims or Projections writes its tables beside the manifest and names them in its <code>resources</code>: its manifest is written (validated and serialized) once before any table, and once more naming the tables written. The manifest validated is the one the file holds: without its styling where <code>styling=False</code> leaves the styling out, so a manifest whose styling the format refuses (a named timestamp beyond the length its timeline was given since) is written without it.</p>
+<p>The manifest is <code>to_dict</code>’s complete form, written with <code>timetoshare.dumps_file</code> in the form, styling and serialization chosen: every object’s keys sorted, its arrays in canonical order, so that equal manifests give equal text and a change shows in a diff as the lines it touches. Each argument left None takes the value the file the object was read from had (see :meth:<code>from_file</code>); for an object not read from a file, the minimal form, the styling included, in canonical YAML, without event rows or external references. An :class:<code>~timetoalign.alignment.AlignmentBundle</code> holding MatchClaims, Projections or Boxes, or with <code>events</code> any events, writes its tables beside the manifest (its registry, Parse table, pre-parsed tables and MatchClaim table) and names the registry and the MatchClaim table in its <code>resources</code>, its events never in the manifest: its manifest is written (validated and serialized) once before any table, and once more naming the tables written. The manifest validated is the one the file holds: without its styling where <code>styling=False</code> leaves the styling out, so a manifest whose styling the format refuses (a named timestamp beyond the length its timeline was given since) is written without it.</p>
 <section id="parameters-76" class="level4 doc-section doc-section-parameters">
 <h4 class="doc-section doc-section-parameters anchored" data-anchor-id="parameters-76">Parameters</h4>
 <table class="caption-top table">
 <colgroup>
-<col style="width: 10%">
-<col style="width: 35%">
-<col style="width: 47%">
-<col style="width: 6%">
+<col style="width: 9%">
+<col style="width: 30%">
+<col style="width: 54%">
+<col style="width: 5%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -10225,7 +10247,7 @@ parent.add_child(child, offset=offset)</code></pre>
 <tr class="odd">
 <td>events</td>
 <td><code>bool</code> | None</td>
-<td>Write every timeline’s event rows (<code>events</code>).</td>
+<td>Write every timeline’s event rows (<code>events</code>); a bundle writes them into its registry and pre-parsed tables instead.</td>
 <td><code>None</code></td>
 </tr>
 <tr class="even">
@@ -10287,7 +10309,7 @@ parent.add_child(child, offset=offset)</code></pre>
 <span id="cb148-3"><a href="#cb148-3" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="im">from</span> pathlib <span class="im">import</span> Path</span>
 <span id="cb148-4"><a href="#cb148-4" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> <span class="im">from</span> timetoalign.timelines <span class="im">import</span> ContinuousLogicalTimeline, Timeline</span>
 <span id="cb148-5"><a href="#cb148-5" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> score <span class="op">=</span> ContinuousLogicalTimeline(length<span class="op">=</span>Fraction(<span class="dv">32</span>), uid<span class="op">=</span><span class="st">"piece"</span>)</span>
-<span id="cb148-6"><a href="#cb148-6" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> path <span class="op">=</span> score.to_file(Path(tempfile.mkdtemp()) <span class="op">/</span> <span class="st">"piece.yaml"</span>)</span>
+<span id="cb148-6"><a href="#cb148-6" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> path <span class="op">=</span> score.to_file(Path(tempfile.mkdtemp()) <span class="op">/</span> <span class="st">"piece.tts.yaml"</span>)</span>
 <span id="cb148-7"><a href="#cb148-7" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> text <span class="op">=</span> path.read_text(encoding<span class="op">=</span><span class="st">"utf-8"</span>)</span>
 <span id="cb148-8"><a href="#cb148-8" aria-hidden="true" tabindex="-1"></a><span class="op">&gt;&gt;&gt;</span> text.startswith(<span class="st">'"@context":'</span>)</span>
 <span id="cb148-9"><a href="#cb148-9" aria-hidden="true" tabindex="-1"></a><span class="va">True</span></span>
@@ -10384,14 +10406,15 @@ parent.add_child(child, offset=offset)</code></pre>
 </tr>
 </tbody>
 </table>
+<p>A child has its parent’s number type too, and one parent: its events lie on its root’s axis, which a second parent would change.</p>
 </section>
 <section id="raises-63" class="level4 doc-section doc-section-raises">
 <h4 class="doc-section doc-section-raises anchored" data-anchor-id="raises-63">Raises</h4>
 <table class="caption-top table">
 <colgroup>
 <col style="width: 4%">
-<col style="width: 17%">
-<col style="width: 78%">
+<col style="width: 14%">
+<col style="width: 81%">
 </colgroup>
 <thead>
 <tr class="header">
@@ -10409,7 +10432,7 @@ parent.add_child(child, offset=offset)</code></pre>
 <tr class="even">
 <td></td>
 <td><code>ValueError</code></td>
-<td>If units don’t match, the timeline already is a child of this timeline, or the offset is negative, which is not supported yet.</td>
+<td>If units or number types don’t match, the timeline already is a child of this timeline or of another one, or the offset is negative, which is not supported yet.</td>
 </tr>
 </tbody>
 </table>

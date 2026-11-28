@@ -168,7 +168,9 @@ class ParangonadaLoader(AlignmentLoader):
 
     Every event names the extraction of the file stating it (``part.csv``,
     ``ppart.csv``, a ``.beats`` or ``.dyn`` file) and, as its ``locator``,
-    its data row there: ``row:<i>``, counted from 0 below the header line.
+    its data row there: ``row:<i>``, counted from 0 below the header line,
+    followed by ``key:<id>`` for a note of ``part.csv`` or ``ppart.csv``
+    (its ``id`` column).
     """
 
     def __init__(self, *, seed: int | None = None) -> None:
@@ -341,7 +343,7 @@ class ParangonadaLoader(AlignmentLoader):
                     # struct so the timeline affords the EP semantic field.
                     "pitch": {"midi_number": int(row["pitch"])},
                     "voice": int(row["voice"]),
-                    **self._stamp(part, f"row:{i}"),
+                    **self._stamp(part, f"row:{i}", row["id"]),
                 }
                 for i, row in enumerate(score_rows)
             ],
@@ -362,7 +364,7 @@ class ParangonadaLoader(AlignmentLoader):
                     "event_type": "Note",
                     "pitch": {"midi_number": int(row["pitch"])},
                     "voice": int(row["voice"]),
-                    **self._stamp(part, f"row:{i}"),
+                    **self._stamp(part, f"row:{i}", row["id"]),
                 }
                 for i, row in enumerate(score_rows)
             ],
@@ -433,7 +435,7 @@ class ParangonadaLoader(AlignmentLoader):
                     "event_type": "Note",
                     "pitch": {"midi_number": int(row["pitch"])},
                     "velocity": int(row["velocity"]),
-                    **self._stamp(ppart, f"row:{i}"),
+                    **self._stamp(ppart, f"row:{i}", row["id"]),
                 }
                 for i, row in enumerate(ppart_rows)
             ],
@@ -460,7 +462,7 @@ class ParangonadaLoader(AlignmentLoader):
                     "event_type": "Note",
                     "pitch": {"midi_number": int(row["pitch"])},
                     "velocity": int(row["velocity"]),
-                    **self._stamp(ppart, f"row:{i}"),
+                    **self._stamp(ppart, f"row:{i}", row["id"]),
                 }
                 for i, row in enumerate(ppart_rows)
             ],

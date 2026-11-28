@@ -388,7 +388,12 @@ event per line) produced by a performance-analysis tool.  Six columns:
    it yields `EnharmonicPitch` scalars (e.g. `[0] -> EnharmonicPitch(B♭4)`
    for MIDI 70).  `events.get_field(Id)[0]` yields
    `Id(value='n1b8xktz')`.
-6. **Out-of-scope** (explicitly NOT asserted): the canonical `start`
+6. **The locator is the data row and the note's `note_id`**: row 0
+   `row:0 key:n1b8xktz`, row 1 (its note-off, the same `note_id`)
+   `row:1 key:n1b8xktz`, row 12 `row:12 key:n1fst1u3`; the 2494 locators
+   are distinct although every `note_id` is written twice, because the
+   row leads.
+7. **Out-of-scope** (explicitly NOT asserted): the canonical `start`
    coordinate.  Measures are second-order time units; the loader
    currently routes `start_column = "mn_onset"` and consumers must
    reconcile measure-number into flat-quarter coordinates against a

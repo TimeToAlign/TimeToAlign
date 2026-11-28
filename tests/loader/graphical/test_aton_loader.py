@@ -525,31 +525,53 @@ def _write_aton(path: Path, holes: list[tuple[str, int, int, int, int]]) -> Path
     return path
 
 
-def _event_ids_and_names(timeline: DiscreteGraphicalTimeline) -> tuple[list, list]:
+def _event_ids_and_locators(timeline: DiscreteGraphicalTimeline) -> tuple[list, list]:
+    """The events' IDs and, row for row, their registry rows' locators."""
     events = timeline.get_events().table
-    return events.column("id").to_pylist(), events.column("name").to_pylist()
+    # The @ID is a key, not a name: no event states one.
+    assert (
+        "name" not in events.column_names
+        or events.column("name").null_count == events.num_rows
+    )
+    ids = events.column("id").to_pylist()
+    rows = timeline.registry.table
+    by_id = dict(
+        zip(
+            rows.column("id").to_pylist(),
+            rows.column("locator").to_pylist(),
+            strict=True,
+        )
+    )
+    return ids, [by_id[event_id] for event_id in ids]
 
 
 class TestHoleEventIds:
     """Event IDs of holes (see README "ATONLoader event IDs")."""
 
     def test_holes_sharing_an_id_are_minted(self, tmp_path: Path) -> None:
-        """The colliding SUPRA rows give six distinct IDs, the names as written."""
+        """The colliding SUPRA rows give six distinct IDs, the @IDs in the locators."""
         path = _write_aton(tmp_path / "first_six.txt", SUPRA_FIRST_SIX_HOLES)
         timeline = ATONLoader.from_file(path, seed=0).create_timeline(uid="roll")
 
-        ids, names = _event_ids_and_names(timeline)
+        ids, locators = _event_ids_and_locators(timeline)
         first, second, third = minted(0, "hole", "hole", "hole")
         assert ids == [first, "K0_N2", "K88_N1", "K86_N1", second, third]
-        assert names == ["K0_N1", "K0_N2", "K88_N1", "K86_N1", "K0_N1", "K0_N1"]
+        assert locators == [
+            "hole:0 key:K0_N1",
+            "hole:1 key:K0_N2",
+            "hole:2 key:K88_N1",
+            "hole:3 key:K86_N1",
+            "hole:4 key:K0_N1",
+            "hole:5 key:K0_N1",
+        ]
 
     def test_ids_that_do_not_collide_are_the_source_ids(
         self, loaded_minimal_loader: ATONLoader
     ) -> None:
         """minimal.aton's five distinct IDs are kept as written."""
-        ids, names = _event_ids_and_names(loaded_minimal_loader.create_timeline())
+        ids, locators = _event_ids_and_locators(loaded_minimal_loader.create_timeline())
         assert ids == ["H1_N1", "H2_N2", "H3_N3", "H4_N4", "H5_N5"]
-        assert names == ["H1_N1", "H2_N2", "H3_N3", "H4_N4", "H5_N5"]
+        assert locators == [f"hole:{k} key:{hole}" for k, hole in enumerate(ids)]
 
     def test_a_hole_stated_twice_is_refused(self, tmp_path: Path) -> None:
         """One @ID twice on one tracker hole: refused."""
@@ -567,7 +589,7 @@ class TestHoleEventIds:
     def test_supra_roll_loads_whole(self, loaded_supra_loader: ATONLoader) -> None:
         """30092 events, 30092 IDs; the 992 holes of shared @IDs are minted."""
         timeline = loaded_supra_loader.create_timeline(uid="roll")
-        ids, names = _event_ids_and_names(timeline)
+        ids, locators = _event_ids_and_locators(timeline)
 
         assert timeline.n_events == 30092
         assert len(set(ids)) == 30092
@@ -579,7 +601,7 @@ class TestHoleEventIds:
         assert sum(stated) == 29100
         assert len(minted_ids) == 992
         assert shapes(minted_ids) == ["hole"] * 992
-        assert names == [hole.id for hole in holes]
+        assert locators == [f"hole:{k} key:{hole.id}" for k, hole in enumerate(holes)]
 
 
 # endregion

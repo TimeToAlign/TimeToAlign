@@ -49,8 +49,8 @@ import pyarrow as pa
 from timetoalign.core import TimeUnit, resolve_id
 from timetoalign.core.ids import GROUP_PREFIX
 from timetoalign.loader._ids import give_event_ids
-from timetoalign.loader.base import LOCATOR
-from timetoalign.loader.format.json import JsonLoader, _normalise_array
+from timetoalign.loader.base import LOCATOR, locate
+from timetoalign.loader.format.json import JsonLoader, _normalise_array, _pointer
 from timetoalign.storage.events import EventData
 from timetoalign.storage.store import DictStore
 from timetoalign.timelines.factory import mint_timeline_id
@@ -487,11 +487,13 @@ class TiliaJsonLoader(JsonLoader):
         loader.store.marker     # all marker tables concatenated
         loader.store.beat       # all beat tables concatenated
 
-    Every event names its file's extraction and, as its ``locator``, the ID
-    its component states (the key of a v2 file's ``components``, else its
-    ``id``), else its place in the file as a JSON Pointer
-    (``/timelines/<i>/components/<j>``, both from 0). Events of a dict
-    loaded with ``load_dict`` name their locators only.
+    Every event names its file's extraction and, as its ``locator``, its
+    place in the file as a JSON Pointer: ``/timelines/<i>/components/<j>``,
+    both from 0, in a v1 file listing them; the timeline's and the
+    component's keys in a v2 file keying them by ID. Where the component
+    states its own ID (the key of a v2 file's ``components``, else its
+    ``id``), ``key:<id>`` follows (``/timelines/0/components/3 key:c4``).
+    Events of a dict loaded with ``load_dict`` name their locators only.
 
     **Two-phase usage:**
 
@@ -940,13 +942,19 @@ class TiliaJsonLoader(JsonLoader):
 
         # Convert components to events using the appropriate converter; a
         # component the file names keeps its ID, any other is minted.
+        # A component's place is its JSON Pointer: a v2 file keys its
+        # timelines and components by ID, a v1 file lists them.
+        timeline_at = _pointer("/timelines", raw.get("_tilia_id", spec["index"]))
+        at = _pointer(timeline_at, "components")
         converter = _EVENT_CONVERTERS.get(kind, _generic_to_events)
         events = converter(
             [
                 {
                     **component,
-                    LOCATOR: _component_id(component)
-                    or f"/timelines/{spec['index']}/components/{j}",
+                    LOCATOR: locate(
+                        _pointer(at, component.get("_comp_id", j)),
+                        _component_id(component),
+                    ),
                 }
                 for j, component in enumerate(components)
             ]

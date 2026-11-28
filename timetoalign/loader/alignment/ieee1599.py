@@ -144,7 +144,7 @@ from timetoalign.display.html import code
 from timetoalign.loader._ids import give_event_ids
 from timetoalign.loader._sources import Source
 from timetoalign.loader._xml import element_paths
-from timetoalign.loader.base import EXTRACTION_ID, LOCATOR, LoadSourceResult
+from timetoalign.loader.base import EXTRACTION_ID, LOCATOR, LoadSourceResult, locate
 from timetoalign.loader.format.xml import XmlLoader
 from timetoalign.loader.graphical.paths import group_into_accolades
 from timetoalign.maps.interval import IntervalToConstantMap
@@ -461,11 +461,12 @@ class Ieee1599Loader(XmlLoader):
     state gets no table, except that ``spine``, ``los``, ``notational`` and
     ``audio`` are always present with their stable schema, even when empty.
 
-    Every event names the file's extraction and, as its ``locator``, the
-    ``id`` its element states, else the element's path in the document
+    Every event names the file's extraction and, as its ``locator``, its
+    element's path in the document
     (``/ieee1599/logic/los/part/measure[2]/voice/chord[3]/notehead``; a
     step's position among same-named siblings, from 1, where there are
-    several). A document read with ``load_string`` or ``load_element``
+    several), followed by ``key:<id>`` where the element states its ``id``.
+    A document read with ``load_string`` or ``load_element``
     names no extraction.
 
     Examples:
@@ -604,14 +605,14 @@ class Ieee1599Loader(XmlLoader):
     def _place(self, element: ET.Element) -> dict[str, str | None]:
         """The registry keys of a row read from *element*: where, and by which extraction.
 
-        The locator is the element's ``id`` where it states one, else its
-        path in the document (``/ieee1599/logic/los/part/measure[2]/...``);
-        the extraction is the file's, none for a document read from XML in
-        memory.
+        The locator is the element's path in the document
+        (``/ieee1599/logic/los/part/measure[2]/...``), followed by
+        ``key:<id>`` where the element states its ``id``; the extraction is
+        the file's, none for a document read from XML in memory.
         """
         reading = self._reading
         return {
-            LOCATOR: element.get("id") or self._paths[id(element)],
+            LOCATOR: locate(self._paths[id(element)], element.get("id")),
             EXTRACTION_ID: None if reading is None else self._extraction_of(reading).id,
         }
 

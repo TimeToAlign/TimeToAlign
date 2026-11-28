@@ -416,7 +416,11 @@ class TestZones:
         (page,) = loader.create_timelines()
         (extraction,) = loader.extractions
         rows = page.registry.filter(kinds="Box").table
-        assert rows.column("locator").to_pylist() == ZONE_IDS
+        # The surface holds a graphic and the nine zones: zone[1] … zone[9].
+        assert rows.column("locator").to_pylist() == [
+            f"/mei/music/facsimile/surface/zone[{k}] key:{zone_id}"
+            for k, zone_id in enumerate(ZONE_IDS, start=1)
+        ]
         assert set(rows.column("extraction_id").to_pylist()) == {extraction.id}
         assert page.registry.extractions == [extraction]
 
@@ -425,7 +429,7 @@ class TestZones:
         (page,) = _load(tmp_path, _surface(zones, graphic=CANVAS)).create_timelines()
         rows = page.registry.filter(kinds="Box").table
         assert rows.column("locator").to_pylist() == [
-            "z1",
+            "/mei/music/facsimile/surface/zone[1] key:z1",
             "/mei/music/facsimile/surface/zone[2]",
         ]
 
@@ -721,10 +725,12 @@ class TestPackageRoundTrip:
         volume = MeiFacsimileLoader.from_file(source).create_timeline(uid="chorale")
         bundle = AlignmentBundle(id="choralbuch")
         bundle.add_timeline(volume)
-        path = bundle.to_file(tmp_path / "package" / "package.yaml")
+        path = bundle.to_file(tmp_path / "package" / "manifest.yaml")
         assert sorted(entry.name for entry in path.parent.iterdir()) == [
             "boxes.parquet",
-            "package.yaml",
+            "extractions.parquet",
+            "manifest.yaml",
+            "registry.parquet",
         ]
 
         read = AlignmentBundle.from_file(path).get_timeline("chorale")

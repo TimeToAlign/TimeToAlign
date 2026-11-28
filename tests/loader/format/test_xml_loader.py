@@ -501,13 +501,14 @@ def test_source_recorded_in_metadata() -> None:
 
 
 LOCATED_XML = (
-    '<root><item xml:id="i1" v="1"/><item v="2"/><group><item v="3"/></group></root>'
+    '<root><item xml:id="i1" v="1"/><item id="i2" v="2"/>'
+    '<group><item v="3"/></group></root>'
 )
-ITEM_LOCATORS = ["i1", "/root/item[2]", "/root/group/item"]
+ITEM_LOCATORS = ["/root/item[1] key:i1", "/root/item[2] key:i2", "/root/group/item"]
 
 
 class TestLocators:
-    """Each row's locator is its element's xml:id, else the element's path."""
+    """A row's locator: its element's path, then its xml:id, else its id."""
 
     @pytest.mark.parametrize("propagate", [True, False])
     def test_the_stated_id_else_the_path(self, tmp_path: Path, propagate: bool) -> None:
@@ -524,3 +525,11 @@ class TestLocators:
         table = loader.get_table("item")
         assert table.column("locator").to_pylist() == ITEM_LOCATORS
         assert "extraction_id" not in table.column_names
+
+    def test_an_attribute_named_locator_is_kept(self) -> None:
+        document = '<root><item locator="here" v="1"/><item v="2"/></root>'
+        table = (
+            XmlLoader(principal_tags=["item"]).load_string(document).get_table("item")
+        )
+        assert table.column("source_locator").to_pylist() == ["here", None]
+        assert table.column("locator").to_pylist() == ["/root/item[1]", "/root/item[2]"]

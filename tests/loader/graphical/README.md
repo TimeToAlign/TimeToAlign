@@ -55,7 +55,10 @@ the loader returns, not on its internals:
    even where the single expected values were not spelled out.
 4. **The Boxes survive a package.** A manifest file holds no event, so a
    volume written alone comes back with empty accolades; the Boxes live in
-   the package's `boxes.parquet`. For each reader of Boxes one volume is put
+   the registry beside the manifest (`registry.parquet`, one row per Box
+   with its position, `extractions.parquet` the extraction those rows
+   name) and their content in the pre-parsed `boxes.parquet`. For each
+   reader of Boxes one volume is put
    in an `AlignmentBundle`, written to `tmp_path` and read back, and the
    tree read is compared with literals, never with the volume written: a
    writer and a reader that dropped or moved the same thing would agree
@@ -238,8 +241,10 @@ warning names that one (`page 1, system 2`) alone.
 
 **The package round trip** (principle 4). The scan's volume, created with
 `uid="scan"` and `box_ids="m{n}"`, is written in a bundle to
-`package/package.yaml`; the directory then holds exactly `boxes.parquet`
-and `package.yaml`. Read back, every value is one derived above: the volume
+`package/manifest.yaml` (a lone manifest: `package.yaml` is the name a
+package's descriptor takes); the directory then holds exactly
+`boxes.parquet`, `extractions.parquet`, `manifest.yaml` and
+`registry.parquet`. Read back, every value is one derived above: the volume
 `scan` is a locked segment line of length 53123 stating the
 `score_image_url`; its pages `dgt_…`, `dgt_…`, `dgt_…`, `dgt_…` (each
 page's number follows its predecessor's accolades: 4, 5 and 4 of them),
@@ -312,11 +317,14 @@ other numbers.
   at offset 2806, length 2804, `meta["box"]` (498, 858, 2804, 529); both
   state the page's image. The given page id takes number 1 of the minted
   ids.
-- **A Box's locator is its zone's place in the file**: the zone's `xml:id`
-  where it states one (the nine Boxes of the excerpt: their locators are
-  the nine zone ids, in document order), else the zone's path (a zone
-  without `xml:id`, the second of its surface's zones in a file the test
-  writes: `/mei/music/facsimile/surface/zone[2]`). Every Box names the
+- **A Box's locator is its zone's place in the file**: the zone's path,
+  followed by ` key:<xml:id>` where the zone states one (the nine Boxes of
+  the excerpt, whose surface holds a graphic and nine zones:
+  `/mei/music/facsimile/surface/zone[1] key:zone_01M7DF2D8RNCKHKF6SMCWB94Z5`
+  … `zone[9] key:zone_01M7DF2D8TSXCHCSA07C235VTV`, in document order; a
+  zone without `xml:id`, the second of its surface's zones in a file the
+  test writes: `/mei/music/facsimile/surface/zone[2]`, the first
+  `/mei/music/facsimile/surface/zone[1] key:z1`). Every Box names the
   file's one extraction, which the page's registry lists alone.
 - **Zones are Boxes of their accolade** with the zone's `xml:id`, shape as
   written (MEI corners are points, so a width is `lrx - ulx`), start =
@@ -415,9 +423,10 @@ other numbers.
 - **Zones without coordinates** are not read and are listed, in document
   order, in `zones_without_coordinates`.
 - **The package round trip** (principle 4). The excerpt's volume, created
-  with `uid="chorale"`, is written in a bundle to `package/package.yaml`
-  (the directory then holds exactly `boxes.parquet` and `package.yaml`) and
-  read back. Every value is one derived above: the volume `chorale` is a
+  with `uid="chorale"`, is written in a bundle to `package/manifest.yaml`
+  (a lone manifest; the directory then holds exactly `boxes.parquet`,
+  `extractions.parquet`, `manifest.yaml` and `registry.parquet`) and read
+  back. Every value is one derived above: the volume `chorale` is a
   locked segment line of length 5610 with empty `meta`; its one page has the
   surface's `xml:id`, name `"15"`, length 5610, `meta` the image alone and
   no event; the accolades `dgt_…` (`accolade_1`, offset 0, length 2806,

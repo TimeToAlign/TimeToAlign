@@ -809,6 +809,14 @@ class TestMeasureSpaces:
             VerovioLoader.from_file(mei["space_empty"])
 
 
+def _without_extraction(loader: VerovioLoader) -> list[dict]:
+    """The store's measure rows but their ``extraction_id``, a run's own."""
+    return [
+        {key: value for key, value in row.items() if key != "extraction_id"}
+        for row in loader.store.measures
+    ]
+
+
 def _measures(timeline: ContinuousLogicalTimeline) -> list[tuple]:
     return [
         (m.id, m.name, m.qstamp, m.actual_length, m.time_signature)
@@ -876,7 +884,12 @@ class TestMeasureSpaceRepeated:
             ("m3", "3", Fraction(4), Fraction(2), "2/4"),
         ]
         assert _starts(timeline) == {"m1n": Fraction(0), "m3n": Fraction(4)}
-        assert list(loader.store.measures) == list(repeat.store.measures)
+        assert _without_extraction(loader) == _without_extraction(repeat)
+        assert loader.store.measures.table.column("locator").to_pylist() == [
+            "m1 key:1",
+            "m2 key:2",
+            "m3 key:3",
+        ]
 
 
 _TEMPO_CASES = {
@@ -1098,12 +1111,23 @@ class TestRepeats:
             "m2n-rend2",
             "m3n",
         ]
+        located = {
+            row["id"]: row["locator"] for row in timeline.registry.table.to_pylist()
+        }
+        assert {key: located[key] for key in ("m1n", "m1n-rend2", "m3n")} == {
+            "m1n": "m1n key:m1n",
+            "m1n-rend2": "m1n-rend2 key:m1n",
+            "m3n": "m3n key:m3n",
+        }
         assert _flow(loader) == [1, 2, 1, 2, 3, 4, 3, 5]
         notated = VerovioLoader.from_file(
             mei["repeat_endings"], options={"expandNever": True}
         )
         assert notated.store.metadata["omitted_measures"] == []
-        assert list(notated.store.measures) == rows
+        assert _without_extraction(notated) == _without_extraction(loader)
+        assert notated.store.measures.table.column("locator").to_pylist() == [
+            f"m{n} key:{n}" for n in range(1, 6)
+        ]
 
     def test_expand_always_refused(self, mei: dict[str, Path]) -> None:
         with pytest.raises(ValueError, match="expandAlways"):

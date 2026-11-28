@@ -7,7 +7,7 @@ from collections.abc import Sequence
 import pyarrow as pa
 
 from timetoalign.loader._sources import Source
-from timetoalign.loader.base import LOCATOR, EventLoader
+from timetoalign.loader.base import EXTRACTION_ID, LOCATOR, EventLoader
 from timetoalign.storage.events import EventData
 from timetoalign.storage.store import DictStore
 
@@ -22,9 +22,13 @@ class NormalisedTablesLoader(EventLoader):
 
     Each row of a table holds its ``locator``, the place in the document it
     was read from (the subclass's rule), and, read from a file, the
-    ``extraction_id`` of that file's extraction (:meth:`_stamped`). A field
-    of the document named ``locator`` or ``extraction_id`` is replaced by
-    these: the names are the registry's.
+    ``extraction_id`` of that file's extraction (:meth:`_stamped`). The
+    names are the registry's, so a field the document itself names
+    ``locator`` or ``extraction_id`` is kept, as it states it, under the
+    name ``source_locator`` / ``source_extraction_id`` (``source_`` once
+    more for each name the document holds already: a field
+    ``source_locator`` beside ``locator`` makes ``locator`` the column
+    ``source_source_locator``).
     """
 
     _store: DictStore
@@ -56,10 +60,26 @@ class NormalisedTablesLoader(EventLoader):
     def _stamped(self, table: pa.Table, locators: Sequence[str]) -> pa.Table:
         """*table* with each row's *locator* and, read from a file, its extraction.
 
+        A column of *table* named ``locator`` or ``extraction_id`` (a field
+        of the document) keeps its values under ``source_<name>``, also
+        where the document is read from memory and names no extraction.
+
         Args:
             table: The rows read, in document order.
-            locators: Row for row, its place in the document.
+            locators: Row for row, its locator in the document.
         """
+        for name in (LOCATOR, EXTRACTION_ID):
+            at = table.schema.get_field_index(name)
+            if at >= 0:
+                kept = f"source_{name}"
+                while kept in table.column_names:
+                    kept = f"source_{kept}"
+                table = table.rename_columns(
+                    [
+                        kept if i == at else held
+                        for i, held in enumerate(table.column_names)
+                    ]
+                )
         located = pa.array(locators, pa.string())
         columns = (
             {LOCATOR: located}
@@ -67,12 +87,7 @@ class NormalisedTablesLoader(EventLoader):
             else self._stamps(self._reading, located)
         )
         for name, column in columns.items():
-            at = table.schema.get_field_index(name)
-            table = (
-                table.append_column(name, column)
-                if at < 0
-                else table.set_column(at, name, column)
-            )
+            table = table.append_column(name, column)
         return table
 
     def _wrap_table(self, table: pa.Table) -> EventData:

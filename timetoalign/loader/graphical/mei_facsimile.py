@@ -49,7 +49,7 @@ from typing import Any, ClassVar
 from timetoalign.core import Shape, TimeUnit
 from timetoalign.loader._sources import Source, describe_source, readable
 from timetoalign.loader._xml import XML_ID, element_paths
-from timetoalign.loader.base import Loader
+from timetoalign.loader.base import Loader, locate
 from timetoalign.loader.graphical._located import located
 from timetoalign.loader.graphical._pages import (
     Ids,
@@ -84,7 +84,8 @@ Paths = TimeAxisPath | Mapping[str | int, TimeAxisPath] | None
 class _MeiZone:
     """One zone with coordinates: its ``xml:id`` and ``@type`` (if any), its shape.
 
-    ``locator`` is its place in the file: its ``xml:id``, else its path.
+    ``locator`` is its place in the file: its path, then its ``xml:id``
+    (:func:`~timetoalign.loader.base.locate`).
     """
 
     id: str | None
@@ -205,7 +206,7 @@ def _surface(
                 id=zone_id,
                 type=zone.get("type"),
                 shape=shape,
-                locator=zone_id or paths[id(zone)],
+                locator=locate(paths[id(zone)], zone_id),
             )
         )
     return _MeiSurface(
@@ -279,9 +280,10 @@ class MeiFacsimileLoader(Loader[_MeiFacsimile]):
     loader's minter and cannot be pointed to; an element without ``xml:id``
     is left out of :attr:`facs`, and a zone stating no coordinates out of the
     timelines (:attr:`zones_without_coordinates` lists those with an id).
-    A Box's ``locator`` is its zone's ``xml:id``, else the zone's path in
-    the file (``/mei/music/facsimile/surface/zone[2]``, local names, a
-    position among same-named siblings where there are several). A
+    A Box's ``locator`` is its zone's path in the file
+    (``/mei/music/facsimile/surface/zone[2]``, local names, a position among
+    same-named siblings where there are several), followed by
+    ``key:<xml:id>`` where the zone states its ``xml:id``. A
     zone whose ``@points`` are not four points bounding a convex area (five
     points, a concave or crossed outline) cannot be a
     :class:`~timetoalign.core.Quadrilateral` and refuses the file, the

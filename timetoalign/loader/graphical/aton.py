@@ -119,8 +119,10 @@ class ATONLoader(Loader[list[ATONHole]]):
         Coordinate(293119, pixels)
 
     Every hole event names its file's extraction and, as its ``locator``,
-    the ID its HOLE block states where no other hole of the file states it,
-    else its place: ``hole:<k>``, the k-th HOLE block of the file, from 0.
+    its place, ``hole:<k>`` (the k-th HOLE block of the file, from 0),
+    followed by the ID its HOLE block states (``hole:0 key:K0_N1``). The
+    event keeps that ID where no other hole loaded states it, and is given
+    a minted one otherwise.
 
     Attributes:
         rollinfo: Dictionary of ROLLINFO metadata.
@@ -560,25 +562,13 @@ class ATONLoader(Loader[list[ATONHole]]):
                 f"{tracker_hole}: the file names one hole twice, or two holes alike."
             )
         id_counts = Counter(hole.id for hole in self._holes)
-        in_file = Counter(
-            (describe_source(source), hole.id)
-            for hole, (source, _) in zip(self._holes, self._hole_places, strict=True)
-        )
         hole_events = [
             {
                 "id": hole.id if id_counts[hole.id] == 1 else None,
-                "name": hole.id,
                 "temporal_type": "instant",
                 "event_type": "Hole",
                 "instant": hole.origin_row,  # Absolute coordinate
-                **self._stamp(
-                    source,
-                    (
-                        hole.id
-                        if in_file[(describe_source(source), hole.id)] == 1
-                        else place
-                    ),
-                ),
+                **self._stamp(source, place, hole.id),
             }
             for hole, (source, place) in zip(
                 self._holes, self._hole_places, strict=True

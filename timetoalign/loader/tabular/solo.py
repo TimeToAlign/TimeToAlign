@@ -82,6 +82,9 @@ class SoloLoader(CsvLoader):
     resolve the pair against their measure map — which is what
     :class:`~timetoalign.loader.alignment.performance_precision.PerformancePrecisionLoader`
     does, converting the whole-note offset to quarters on the way.
+
+    A note's ``locator`` is its data row and its ``note_id``:
+    ``row:<i> key:<note_id>``.
     """
 
     # Header-less, tab-delimited.
@@ -93,6 +96,8 @@ class SoloLoader(CsvLoader):
     # synthesised "mn_onset" raw column produced by column_specs and
     # leave measure resolution to downstream consumers.
     id_column: ClassVar[str | None] = None  # auto-generated
+    # The note's own key in the file, written into its locator.
+    key_column: ClassVar[str | None] = "note_id"
     name_column: ClassVar[str | None] = None
     start_column = "mn_onset"
     end_column = None

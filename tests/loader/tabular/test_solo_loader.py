@@ -53,6 +53,15 @@ class TestSoloLoaderCounts:
     def test_event_count_is_exact(self, loader: SoloLoader) -> None:
         assert loader.events.count == 2494
 
+    def test_the_locators(self, loader: SoloLoader) -> None:
+        locators = loader.events.table.column("locator").to_pylist()
+        assert [locators[i] for i in (0, 1, 12)] == [
+            "row:0 key:n1b8xktz",
+            "row:1 key:n1b8xktz",
+            "row:12 key:n1fst1u3",
+        ]
+        assert len(set(locators)) == 2494
+
     def test_row_0_content(self, loader: SoloLoader) -> None:
         table = loader.events.table
         # measure_number: the printed label "0"; a .solo file states no

@@ -58,7 +58,14 @@ from timetoalign.core import (
     NumberType,
     TimeUnit,
 )
-from timetoalign.core.fields import TIMETOALIGN_METADATA_KEY, field_metadata
+from timetoalign.core.fields import (
+    TIMETOALIGN_METADATA_KEY,
+    _compared,
+    _filled,
+    _if_else,
+    _joined_strings,
+    field_metadata,
+)
 from timetoalign.core.ids import (
     CMAP_PREFIX,
     ID_MINTER,
@@ -82,8 +89,12 @@ from ._sources import (
 
 #: The column of a loader's events that says where in its source file each
 #: event was read (the loader's rule, in its docstring); a timeline holds it
-#: in the event's registry row.
+#: in the event's registry row. Its text is :func:`locate`'s.
 LOCATOR = "locator"
+
+#: What follows a locator's pointer where the source states a key of its
+#: own for the event: ``row:3 key:n12``.
+KEY_MARK = " key:"
 
 #: The column naming the extraction (one per source file read) each event
 #: of a loader comes from (:attr:`Loader.extractions`).
@@ -171,13 +182,89 @@ def read_extractions(data: _EventDataT) -> _EventDataT:
     return data.with_extractions(*map(Extraction.from_row, json.loads(saved)))
 
 
-def row_locators(count: int, start: int = 0) -> pa.Array:
+def _key_text(key: object) -> str | None:
+    """*key* as a locator writes it: verbatim, a number in its decimal digits.
+
+    ``None``, an empty string and a missing number (NaN) state no key.
+    """
+    if key is None or (isinstance(key, float) and key != key):
+        return None
+    text = str(key)
+    return text or None
+
+
+def locate(pointer: str, key: object = None) -> str:
+    """The locator of an event: where its source states it, then its own key.
+
+    Every loader writes its locators in this one form. The *pointer* is
+    the event's structural place in the source file, unique within one
+    extraction (``row:<i>``, ``track:<i> message:<j>``, a JSON Pointer, an
+    XPath, ``hole:<k>``); where the source states a key of its own for the
+    event (an ``id`` column or member, an ``xml:id``, a measure number),
+    :data:`KEY_MARK` and the key follow, verbatim and last: everything after
+    the first ``" key:"`` is the key. The pointer keeps the locator unique
+    where a key repeats.
+
+    Args:
+        pointer: The event's place in the file, by the loader's rule.
+        key: The key the source states for the event; ``None``, an empty
+            string or NaN for none.
+
+    Examples:
+        >>> locate("row:3")
+        'row:3'
+        >>> locate("row:3", "n12")
+        'row:3 key:n12'
+        >>> locate("/mei/music/measure[2]", 12)
+        '/mei/music/measure[2] key:12'
+    """
+    text = _key_text(key)
+    return pointer if text is None else f"{pointer}{KEY_MARK}{text}"
+
+
+def locators(
+    pointers: pa.Array | list[str], keys: pa.Array | list[object] | None = None
+) -> pa.Array:
+    """The locators of many events, row for row :func:`locate`'s text.
+
+    Args:
+        pointers: Each event's place in the file.
+        keys: Each event's own key in the source, null (or an empty
+            string) where it states none; ``None`` where it states none at
+            all. Numbers are written in their decimal digits; a list is
+            read as :func:`locate` reads one key (NaN states none).
+
+    Returns:
+        A string array as long as *pointers*.
+    """
+    placed = (
+        pointers if isinstance(pointers, pa.Array) else pa.array(pointers, pa.string())
+    )
+    if keys is None:
+        return placed
+    stated = (
+        pc.cast(keys, pa.string())
+        if isinstance(keys, pa.Array)
+        else pa.array([_key_text(key) for key in keys], pa.string())
+    )
+    # A key is stated where it is valid and not empty: every other string
+    # sorts after the empty one.
+    given = _filled(_compared("greater", stated, ""), pa.scalar(False))
+    return _if_else(given, _joined_strings(placed, stated, KEY_MARK), placed)
+
+
+def row_locators(
+    count: int, start: int = 0, keys: pa.Array | list[object] | None = None
+) -> pa.Array:
     """The locators ``row:<i>`` of *count* data rows of a table, from row *start* on.
 
-    A data row is counted from 0, the header line not counted.
+    A data row is counted from 0, the header line not counted. Where *keys*
+    states a row's own key (a table's ``id`` column), ``key:<key>``
+    follows (:func:`locators`).
     """
     numbers = np.arange(start, start + count).astype(str)
-    return pa.array(np.char.add("row:", numbers).astype(object), pa.string())
+    pointers = pa.array(np.char.add("row:", numbers).astype(object), pa.string())
+    return locators(pointers, keys)
 
 
 @functools.cache
@@ -740,9 +827,18 @@ class Loader(ABC, Generic[PayloadT]):
         for text, extraction in loader._extractions.items():
             self._extractions.setdefault(text, extraction)
 
-    def _stamp(self, source: Source, locator: str | None) -> dict[str, str | None]:
-        """The registry keys of one event read from *source* at *locator*."""
-        return {LOCATOR: locator, EXTRACTION_ID: self._extraction_of(source).id}
+    def _stamp(
+        self, source: Source, pointer: str | None, key: object = None
+    ) -> dict[str, str | None]:
+        """The registry keys of one event read from *source* at *pointer*.
+
+        The locator is :func:`locate`'s of *pointer* and *key*, the key the
+        source states for the event (none by default).
+        """
+        return {
+            LOCATOR: None if pointer is None else locate(pointer, key),
+            EXTRACTION_ID: self._extraction_of(source).id,
+        }
 
     def _stamp_rows(
         self, rows: list[dict[str, Any]], source: Source, locators: list[str | None]

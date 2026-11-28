@@ -54,7 +54,7 @@ from typing_extensions import Self
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.loader._sources import Source, readable
 from timetoalign.loader._xml import XML_ID, element_paths
-from timetoalign.loader.base import LoadSourceResult
+from timetoalign.loader.base import LoadSourceResult, locate
 from timetoalign.storage.store import DictStore
 
 from ._tables import NormalisedTablesLoader
@@ -306,11 +306,12 @@ class XmlLoader(NormalisedTablesLoader):
     Each element's attributes become fields.  Nested child elements are
     flattened with dot-separated field names.  Ancestor attributes are
     propagated downward with ``parent_<tag>_<attr>`` prefixes. A row's
-    ``locator`` is its element's ``xml:id``, else the element's path in the
-    document (``/root/item[2]``: local names, a position among same-named
-    siblings where there are several); a row read from a file names that
-    file's extraction (:attr:`extractions`), one read from a string or an
-    element none.
+    ``locator`` is its element's path in the document (``/root/item[2]``:
+    local names, a position among same-named siblings where there are
+    several), followed by ``key:<key>`` where the element states a key of
+    its own, its ``xml:id``, else its ``id`` (``/root/item[2] key:i2``); a
+    row read from a file names that file's extraction (:attr:`extractions`),
+    one read from a string or an element none.
 
     Follows the standard two-phase pattern:
 
@@ -528,7 +529,7 @@ class XmlLoader(NormalisedTablesLoader):
         principal = self._determine_principal_tags(root)
 
         # Normalise each principal tag; a row's locator is its element's
-        # xml:id, else the element's path.
+        # path and its key, the xml:id, else the id it states.
         paths: dict[int, str] | None = None
         for tag in principal:
             if self._propagate_ancestors:
@@ -546,7 +547,10 @@ class XmlLoader(NormalisedTablesLoader):
                     paths = element_paths(root)
                 table = self._stamped(
                     _normalise_elements([row for _, row in found]),
-                    [elem.get(XML_ID) or paths[id(elem)] for elem, _ in found],
+                    [
+                        locate(paths[id(elem)], elem.get(XML_ID) or elem.get("id"))
+                        for elem, _ in found
+                    ],
                 )
 
                 # Store metadata on the table

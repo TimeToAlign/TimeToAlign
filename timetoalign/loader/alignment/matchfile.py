@@ -35,6 +35,7 @@ with suppressed_backend_warnings():
 from timetoalign.alignment.claims import MatchClaim
 from timetoalign.core import Provenance, TimeUnit, resolve_id
 from timetoalign.core.ids import CLAIM_PREFIX, CMAP_PREFIX
+from timetoalign.loader._ids import give_event_ids
 from timetoalign.loader._sources import Source, describe_source, on_disk
 from timetoalign.loader.base import AlignmentLoader
 from timetoalign.maps.linear import ScalarMap, ShiftMap
@@ -122,8 +123,15 @@ class MatchfileLoader(AlignmentLoader):
     ``certainty=1.0``.
 
     Every note names the extraction of the file that first stated it and,
-    as its ``locator``, the ID that file gives it (``snote`` and ``note``
-    IDs).
+    as its ``locator``, its place in that file followed by the ID the file
+    gives it: ``snote:<k> key:<id>`` for the k-th ``snote`` of the file,
+    ``note:<k> key:<id>`` for its k-th performed ``note``, both from 0, the
+    ID as the file writes it (Partitura reads ``p26100`` as ``np26100``). A
+    match file gives a score note and its performed note the same ID
+    (``n1``) and every performance of a piece the same IDs: a performed
+    note keeps the ID it states unless a score note or a note of a
+    performance read before holds it, and is then given a minted ID (the
+    stated one stays in its locator).
 
     **Coordinate system and normalisation:**
     Score coordinates are stored as **normalised TTA coordinates** (shifted
@@ -173,6 +181,8 @@ class MatchfileLoader(AlignmentLoader):
 
         # Score event tracking: snote_id -> (start, end) in TTA coords
         self._score_events: dict[str, tuple[Fraction, Fraction]] = {}
+        # The IDs of the performed notes read so far, of every performance.
+        self._performed_ids: set[str] = set()
 
         # Anacrusis offset (computed from first file)
         self._anacrusis_offset = Fraction(0)
@@ -279,6 +289,28 @@ class MatchfileLoader(AlignmentLoader):
         return coordinates
 
     @staticmethod
+    def _read_performed_ids(path: Source) -> list[str]:
+        """The IDs of the performed notes a match file states, in file order.
+
+        A performed note is a ``note(...)`` statement: after the ``-`` of a
+        ``snote(...)-note(...)`` or ``insertion-note(...)`` line, or
+        starting its line.
+
+        Args:
+            path: Matchfile to read.
+
+        Returns:
+            The first argument of every ``note(...)``, verbatim.
+        """
+        pattern = re.compile(r"(?:^|-)note\((?P<id>[^,)]+)[,)]")
+        with path.open("r", encoding="utf-8") as handle:
+            return [
+                match.group("id")
+                for line in handle
+                if (match := pattern.search(line.strip())) is not None
+            ]
+
+    @staticmethod
     def _to_tta_fraction(raw: Fraction, offset: Fraction) -> Fraction:
         """Convert an exact raw score coordinate to TTA coordinates."""
         return raw + offset
@@ -289,6 +321,7 @@ class MatchfileLoader(AlignmentLoader):
         onset_tta: Fraction,
         end_tta: Fraction,
         source: Source,
+        place: str,
     ) -> bool:
         """Verify or register a score event on the shared timeline.
 
@@ -304,6 +337,8 @@ class MatchfileLoader(AlignmentLoader):
             end_tta: Normalised end coordinate.
             source: The file stating the note, named in messages; an event
                 added names its extraction.
+            place: The note's place in *source* (``snote:<k>``), its
+                locator's pointer.
 
         Returns:
             ``True`` if compatible (event matched or was added);
@@ -333,7 +368,7 @@ class MatchfileLoader(AlignmentLoader):
                         "id": snote_id,
                         "start": onset_tta,
                         "end": end_tta,
-                        **self._stamp(source, snote_id),
+                        **self._stamp(source, place, snote_id),
                     }
                 ],
                 allow_expansion=True,
@@ -364,7 +399,8 @@ class MatchfileLoader(AlignmentLoader):
         Raises:
             FileNotFoundError: If *path* does not exist.
             ValueError: If *path* is not a ``.match`` file, or Partitura's
-                score ids and the file's differ.
+                score ids and the file's differ, or Partitura reads another
+                number of performed notes than the file states.
         """
         if not path.exists():
             raise FileNotFoundError(f"File not found: {describe_source(path)}")
@@ -397,6 +433,8 @@ class MatchfileLoader(AlignmentLoader):
             score_na = pt.compute_note_array(score)
         score_by_id = {score_na[i]["id"]: score_na[i] for i in range(len(score_na))}
         exact_score_coords = self._read_exact_score_coordinates(path)
+        # Each note's place in the file: the k-th snote, the k-th note.
+        snote_at = {sid: f"snote:{k}" for k, sid in enumerate(exact_score_coords)}
         if set(score_by_id) != set(exact_score_coords):
             raise ValueError(
                 "Score IDs from partitura and source differ in "
@@ -448,7 +486,7 @@ class MatchfileLoader(AlignmentLoader):
                         "start": onset_tta,
                         "duration": end_tta - onset_tta,
                         "end": end_tta,
-                        **self._stamp(path, sid),
+                        **self._stamp(path, snote_at[sid], sid),
                     }
                 )
                 self._score_events[sid] = (onset_tta, end_tta)
@@ -490,7 +528,9 @@ class MatchfileLoader(AlignmentLoader):
                 onset_tta = self._to_tta_fraction(onset_raw, offset)
                 end_tta = self._to_tta_fraction(end_raw, offset)
 
-                if not self._check_or_add_score_event(sid, onset_tta, end_tta, path):
+                if not self._check_or_add_score_event(
+                    sid, onset_tta, end_tta, path, snote_at[sid]
+                ):
                     self._rejected_files.append(path)
                     self._logger.warning(
                         "File '%s' rejected due to incompatible " "score coordinates.",
@@ -498,17 +538,31 @@ class MatchfileLoader(AlignmentLoader):
                     )
                     return
 
-        # Step 2: Build performance timeline
+        # Step 2: Build performance timeline. A performed note keeps the
+        # ID it states unless a score note or an earlier performance's note
+        # holds it; it is then minted, the stated ID kept in its locator.
+        # Partitura lists the performed notes in file order, but writes an
+        # ID that does not start with ``n`` with an ``n`` before it
+        # (``p26100`` becomes ``np26100``): the IDs are the file's own,
+        # read from its text, the k-th for Partitura's k-th note.
+        stated_ids = self._read_performed_ids(path)
+        if len(stated_ids) != len(perf_notes):
+            raise ValueError(
+                f"{describe_source(path)} states {len(stated_ids)} performed notes, "
+                f"Partitura reads {len(perf_notes)}"
+            )
+        held = self._score_events.keys() | self._performed_ids
         perf_event_dicts = []
-        for note in perf_notes:
+        for k, (note, stated) in enumerate(zip(perf_notes, stated_ids, strict=True)):
             perf_event_dicts.append(
                 {
-                    "id": note["id"],
+                    "id": None if stated in held else stated,
                     "start": float(note["note_on_tick"]),
                     "end": float(note["note_off_tick"]),
-                    **self._stamp(path, str(note["id"])),
+                    **self._stamp(path, f"note:{k}", stated),
                 }
             )
+        give_event_ids(perf_event_dicts, self._id_minter)
 
         # Compute performance timeline length
         if perf_event_dicts:
@@ -522,7 +576,10 @@ class MatchfileLoader(AlignmentLoader):
             uid=mint_timeline_id(TimeUnit.ticks, self._id_minter, role="perf"),
             name=perf_stem,
         )
-        self._add_events(perf_tl, perf_event_dicts)
+        given = self._add_events(perf_tl, perf_event_dicts)
+        # Partitura's ID of each performed note -> the ID of its event.
+        perf_ids = dict(zip((str(n["id"]) for n in perf_notes), given, strict=True))
+        self._performed_ids.update(given)
 
         # Attach ticks_to_seconds ScalarMap
         seconds_per_tick = Fraction(midi_clock_rate, midi_clock_units * 1_000_000)
@@ -573,7 +630,7 @@ class MatchfileLoader(AlignmentLoader):
             claim = MatchClaim.from_events(
                 {"id": score_id, "start": score_start, "end": score_end},
                 self._score_timeline,
-                {"id": perf_id, "start": perf_start, "end": perf_end},
+                {"id": perf_ids[perf_id], "start": perf_start, "end": perf_end},
                 perf_tl,
                 end_coord_key="end",
                 provenance=MATCH_META,

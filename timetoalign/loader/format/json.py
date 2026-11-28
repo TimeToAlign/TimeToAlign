@@ -53,7 +53,7 @@ from typing_extensions import Self
 
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.loader._sources import Source
-from timetoalign.loader.base import LoadSourceResult
+from timetoalign.loader.base import LoadSourceResult, locate
 from timetoalign.storage.store import DictStore
 
 from ._tables import NormalisedTablesLoader
@@ -146,6 +146,18 @@ def _pointer(parent: str, token: str | int) -> str:
     return f"{parent}/{str(token).replace('~', '~0').replace('/', '~1')}"
 
 
+def _located(pointer: str, value: Any) -> str:
+    """The locator of a row read from *value* at *pointer*: with its ``id``, if any.
+
+    An object stating an ``id`` member (a string or an integer) names its
+    key in the locator (:func:`~timetoalign.loader.base.locate`).
+    """
+    key = value.get("id") if isinstance(value, dict) else None
+    if isinstance(key, bool) or not isinstance(key, (str, int)):
+        key = None
+    return locate(pointer, key)
+
+
 def _collect_nested_rows(
     data: Any,
     key_path: list[str],
@@ -168,7 +180,8 @@ def _collect_nested_rows(
         pointer: The JSON Pointer of *data* in the document.
 
     Returns:
-        Per leaf-level element, its JSON Pointer and its flat dict.
+        Per leaf-level element, its locator (its JSON Pointer and its ``id``,
+        :func:`_located`) and its flat dict.
     """
     if parent_context is None:
         parent_context = {}
@@ -183,12 +196,12 @@ def _collect_nested_rows(
                     row.update(_flatten_dict(item))
                 else:
                     row["value"] = item
-                results.append((_pointer(pointer, i), row))
+                results.append((_located(_pointer(pointer, i), item), row))
             return results
         elif isinstance(data, dict):
             row = dict(parent_context)
             row.update(_flatten_dict(data))
-            return [(pointer, row)]
+            return [(_located(pointer, data), row)]
         else:
             return [(pointer, dict(parent_context, value=data))]
 
@@ -341,9 +354,10 @@ class JsonLoader(NormalisedTablesLoader):
     level metadata on every resulting ``pa.Table``.
 
     A row's ``locator`` is the JSON Pointer of the object it was read from
-    (``/audio/0``; ``/audio/1/cueData/hotCuePoints/0`` for a nested key); a
-    row read from a file names that file's extraction (:attr:`extractions`),
-    one read from a dict none.
+    (``/audio/0``; ``/audio/1/cueData/hotCuePoints/0`` for a nested key),
+    followed by ``key:<id>`` where the object states an ``id`` member of its
+    own (``/audio/0 key:a1``); a row read from a file names that file's
+    extraction (:attr:`extractions`), one read from a dict none.
 
     Follows the standard two-phase pattern:
 
@@ -621,7 +635,7 @@ class JsonLoader(NormalisedTablesLoader):
         Handles both top-level keys (``"audio"``) and nested paths
         (``"hotCuePoints"`` found by searching inside ``audio[*]``). Each
         row's ``locator`` is the JSON Pointer of the object it was read
-        from (:meth:`_stamped`).
+        from and its ``id``, if any (:func:`_located`, :meth:`_stamped`).
 
         Args:
             data: The root JSON object.
@@ -639,7 +653,7 @@ class JsonLoader(NormalisedTablesLoader):
                 at = _pointer("", key)
                 return self._stamped(
                     _normalise_array(arr, sep=self._sep),
-                    [_pointer(at, i) for i in range(len(arr))],
+                    [_located(_pointer(at, i), item) for i, item in enumerate(arr)],
                 )
             return None
 
@@ -662,7 +676,7 @@ class JsonLoader(NormalisedTablesLoader):
         if found:
             return self._stamped(
                 _normalise_array([row for _, row in found], sep=self._sep),
-                [pointer for pointer, _ in found],
+                [locator for locator, _ in found],
             )
 
         self._logger.warning(f"Principal key {key!r} not found in JSON structure.")
@@ -687,7 +701,8 @@ class JsonLoader(NormalisedTablesLoader):
             pointer: The JSON Pointer of *data* in the document.
 
         Returns:
-            Per value found, its JSON Pointer and its flat row dict.
+            Per value found, its locator (:func:`_located`) and its flat row
+            dict.
         """
         if parent_context is None:
             parent_context = {}
@@ -710,13 +725,13 @@ class JsonLoader(NormalisedTablesLoader):
                         if isinstance(item, dict):
                             row = dict(ctx)
                             row.update(_flatten_dict(item, sep=self._sep))
-                            results.append((_pointer(at, i), row))
+                            results.append((_located(_pointer(at, i), item), row))
                         else:
                             results.append((_pointer(at, i), dict(ctx, value=item)))
                 elif isinstance(value, dict):
                     row = dict(ctx)
                     row.update(_flatten_dict(value, sep=self._sep))
-                    results.append((at, row))
+                    results.append((_located(at, value), row))
                 else:
                     results.append((at, dict(ctx, value=value)))
             else:

@@ -132,6 +132,9 @@ class TabularLoader(EventLoader):
         header_row: Row index containing column headers (default: 0).
         id_column: Source column name for event IDs, kept as stated;
             without one, IDs are minted from the loader's minter.
+        key_column: Source column holding each row's own key in the file,
+            written into its locator; ``None`` (the default) takes
+            ``id_column``.
         name_column: Source column name for event names (optional).
         start_column: Source column name for start coordinate (required).
         end_column: Source column name for end coordinate (None for
@@ -150,7 +153,9 @@ class TabularLoader(EventLoader):
 
     Every event names its file's extraction and, as its ``locator``, its
     data row: ``row:<i>``, counted from 0 in the rows pandas reads (the
-    header line and blank lines are not rows).
+    header line and blank lines are not rows), followed by ``key:<key>``
+    where the row states its own key in ``key_column`` (``row:2 key:n7``;
+    an empty cell states none).
 
     Examples:
         >>> from timetoalign.core import IntField
@@ -171,6 +176,7 @@ class TabularLoader(EventLoader):
 
     # Column mapping - subclasses should override
     id_column: ClassVar[str | None] = None
+    key_column: ClassVar[str | None] = None
     name_column: ClassVar[str | None] = None
     # start_column can be:
     #   - str: Direct column name
@@ -606,8 +612,17 @@ class TabularLoader(EventLoader):
         # Step 3c: Post-process hook (subclass extension point).
         self._post_process_columns(df, columns)
 
-        # Each event's place in the file: its data row, counted from 0.
-        columns[LOCATOR] = row_locators(len(df))
+        # Each event's place in the file: its data row, counted from 0, and
+        # the row's own key where the file states one.
+        key_column = self.key_column or self.id_column
+        columns[LOCATOR] = row_locators(
+            len(df),
+            keys=(
+                pa.array(df[key_column], from_pandas=True)
+                if key_column is not None and key_column in df.columns
+                else None
+            ),
+        )
 
         # Step 4: Build metadata
         metadata = {

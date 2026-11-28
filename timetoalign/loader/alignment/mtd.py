@@ -122,7 +122,7 @@ from typing_extensions import Self
 from timetoalign.alignment.claims import MatchClaim, MatchClaimField
 from timetoalign.core import CHUNK, NumberType, Provenance, TimeUnit
 from timetoalign.core.fields import SemanticField
-from timetoalign.core.ids import CMAP_PREFIX, GROUP_PREFIX, seed_from
+from timetoalign.core.ids import CMAP_PREFIX, GROUP_PREFIX, minting_from, seed_from
 from timetoalign.core.time import express_as
 from timetoalign.display.html import code
 from timetoalign.loader._sources import (
@@ -135,7 +135,7 @@ from timetoalign.loader._sources import (
     join_source,
     source_record,
 )
-from timetoalign.loader.base import AlignmentLoader, _source_text
+from timetoalign.loader.base import AlignmentLoader
 from timetoalign.maps.convenience import QuartersToTicks, TicksToQuarters
 from timetoalign.timelines.factory import mint_timeline_id
 from timetoalign.timelines.groups import TimelineGroup
@@ -329,9 +329,13 @@ class _File:
 
     @property
     def to_ticks(self) -> QuartersToTicks:
-        """The inverse of :attr:`cmap`: quarters → the MIDI file's ticks."""
-        assert self.ppq is not None and self.cmap_id is not None
-        return QuartersToTicks(ppq=self.ppq, uid=f"{self.cmap_id}_inverse")
+        """The inverse of :attr:`cmap`: quarters → the MIDI file's ticks.
+
+        It places a value on the ticks and is attached nowhere, so it is
+        built under a minter of its own and draws no ID from the loader's.
+        """
+        with minting_from(0):
+            return self.cmap.inverse()
 
     @property
     def quarters(self) -> Fraction | None:
@@ -555,7 +559,9 @@ class MtdLoader(AlignmentLoader):
 
         Each alignment row but the last is matched to the onset it writes
         in the MIDI file of *theme_midi*: the onset within half a tick of
-        the row's five-decimal quarters (``6.66667`` is ``20/3``). The last
+        the row's five-decimal quarters (``6.66667`` is ``20/3``) times the
+        file's ticks per quarter, compared exactly, so a row lying exactly
+        half-way between two onsets meets both and is refused. The last
         row is checked to be the end of the last note within half a tick;
         the library has no place for the aligned span's end, so it is not
         kept (its second lies 0.05 seconds past the excerpt's end in all but
@@ -721,10 +727,6 @@ class MtdLoader(AlignmentLoader):
         C-Maps of the MIDI files (in that order), the children through
         which a longer member takes part (in the order of
         :data:`_COMPARED`), the groups (in the order of :data:`ENCODINGS`).
-
-        Raises:
-            ValueError: If the span a MIDI file's child would cover does not
-                end on a tick of the file.
         """
         start = _seconds(meta["StartTime"], "StartTime", stem)
         end = _seconds(meta["EndTime"], "EndTime", stem)
@@ -734,7 +736,9 @@ class MtdLoader(AlignmentLoader):
                 f"({meta['StartTime']})"
             )
         midis = {
-            file.label: self._read_midi(join_source(root, file.member(stem)))
+            file.label: self._read_midi(
+                join_source(root, file.member(stem)), file.member(stem)
+            )
             for file in THEME_FILES
             if file.kind == "MIDI"
         }
@@ -792,7 +796,7 @@ class MtdLoader(AlignmentLoader):
                     whole=longer,
                     covers=shorter,
                     id=mint_timeline_id(_AXES[whole.file.kind][1], self._id_minter),
-                    length=_span(whole, min(one, other), stem),
+                    length=_span(whole, min(one, other)),
                 )
             )
         group_ids = {
@@ -822,14 +826,16 @@ class MtdLoader(AlignmentLoader):
             rows=rows,
         )
 
-    def _read_midi(self, midi: Source) -> ScoreMidiLoader:
+    def _read_midi(self, midi: Source, member: str) -> ScoreMidiLoader:
         """The :class:`~timetoalign.loader.midi.ScoreMidiLoader` that read a MIDI file.
 
         The file is read with ``parser="mido"``, which pairs note-ons with
         note-offs on the file's own axis, ticks, and states its end of
         track; the loader mints the notes' IDs from the file, or, where
-        this loader was given a ``seed``, from a seed of it and the file.
-        The MIDI loader's extraction of the file is this loader's too.
+        this loader was given a ``seed``, from a seed of it and *member*,
+        the file's path below ``MTD/`` (``data_EDM-orig_MID/<stem>.mid``),
+        so the IDs do not depend on where the dataset lies. The MIDI
+        loader's extraction of the file is this loader's too.
 
         Raises:
             ValueError: If the file states no ticks per quarter, or holds a
@@ -837,7 +843,7 @@ class MtdLoader(AlignmentLoader):
         """
         from timetoalign.loader.midi import ScoreMidiLoader
 
-        seed = None if self._seed is None else seed_from(self._seed, _source_text(midi))
+        seed = None if self._seed is None else seed_from(self._seed, member)
         midi_loader = ScoreMidiLoader(parser="mido", seed=seed).load(midi)
         if not midi_loader.ticks_per_beat or midi_loader.end_of_track is None:
             raise ValueError(f"{describe_source(midi)} states no ticks per quarter")
@@ -889,10 +895,12 @@ class MtdLoader(AlignmentLoader):
     ) -> tuple[tuple[int, float], ...]:
         """Each row but the last as ``(onset in ticks, seconds)``.
 
-        A row's quarters, read as the exact decimal it writes, reach the
-        MIDI file's ticks through its C-Map (quarters → ticks) and meet the
-        onset within half a tick (``|tick - quarters * ppq| <= 1/2``). The
-        last row is the end of the last note within half a tick.
+        A row's quarters, read as the exact decimal it writes, times the
+        file's ticks per quarter (the scalar of its C-Map, unrounded: the
+        product is compared, never placed on the ticks) meet the onset
+        within half a tick (``|tick - quarters * ppq| <= 1/2``), so a row
+        exactly half-way between two onsets meets both. The last row is the
+        end of the last note within half a tick.
 
         Raises:
             ValueError: If a row meets no onset or two, or the last row is
@@ -905,7 +913,6 @@ class MtdLoader(AlignmentLoader):
         )
         ppq = midi_file.ppq
         assert ppq is not None and midi_file.midi is not None
-        to_ticks = midi_file.to_ticks
         if len(rows) < 2:
             raise ValueError(f"{describe_source(alignment)} holds fewer than two rows")
         notes = _notes(midi_file.midi)
@@ -916,7 +923,7 @@ class MtdLoader(AlignmentLoader):
         )
         matched: list[tuple[int, float]] = []
         for mid, wav in rows[:-1]:
-            ticks = Fraction(to_ticks(_decimal(mid, alignment)))
+            ticks = _decimal(mid, alignment) * ppq
             # |onset - n/d| <= 1/2, in integers.
             near = 2 * np.abs(onsets * ticks.denominator - ticks.numerator)
             hits = onsets[near <= ticks.denominator]
@@ -931,7 +938,7 @@ class MtdLoader(AlignmentLoader):
             matched.append((int(hits[0]), float(wav)))
         last_mid = rows[-1][0]
         last_end = pc.max(pc.struct_field(notes.column("end"), "numerator")).as_py()
-        last = Fraction(to_ticks(_decimal(last_mid, alignment)))
+        last = _decimal(last_mid, alignment) * ppq
         if abs(last_end - last) > Fraction(1, 2):
             raise ValueError(
                 f"The last alignment row {last_mid} of {describe_source(alignment)} is not "
@@ -1471,26 +1478,18 @@ def _notes(midi: ScoreMidiLoader) -> pa.Table:
     return table.filter(pc.equal(table.column("event_type"), pa.scalar("Note")))
 
 
-def _span(whole: _File, extent: Fraction, stem: str) -> Fraction | float | int:
+def _span(whole: _File, extent: Fraction) -> Fraction | float | int:
     """*extent* (quarters or seconds) as a length on *whole*'s axis.
 
-    On a MIDI file's ticks through its C-Map (quarters → ticks), which
-    must give a whole tick; on the excerpt its float; on MusicXML the
-    exact quarters.
-
-    Raises:
-        ValueError: If the extent ends between two ticks of the MIDI file.
+    On a MIDI file's ticks through the inverse of its C-Map (quarters →
+    ticks), which places the extent on the ticks: an extent ending between
+    two ticks takes the nearer one, a tie the even one (``3.33`` quarters
+    at 480 per quarter, ``1598.4`` ticks, is ``1598``); on the excerpt its
+    float; on MusicXML the exact quarters.
     """
     if whole.ppq is None:
         return express_as(extent, _AXES[whole.file.kind][2])
-    ticks = Fraction(whole.to_ticks(extent))
-    if ticks.denominator != 1:
-        raise ValueError(
-            f"MTD theme {stem}: the {whole.file.label} file's span of {extent} quarters "
-            f"ends between two of its ticks ({ticks} at {whole.ppq} per quarter); its "
-            "axis is the file's ticks"
-        )
-    return int(ticks)
+    return int(whole.to_ticks(extent))
 
 
 def _decimal(text: str, source: Source) -> Fraction:

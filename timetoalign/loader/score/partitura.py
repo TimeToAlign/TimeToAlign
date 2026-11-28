@@ -15,7 +15,7 @@ with suppressed_backend_warnings():
 
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.loader._sources import Source, on_disk, source_record
-from timetoalign.loader.base import LOCATOR
+from timetoalign.loader.base import LOCATOR, locate
 
 from .base import ScoreLoader, _coordinate_struct
 from .store import ScoreStore
@@ -68,11 +68,14 @@ class PartituraLoader(ScoreLoader):
     loader's minter. Partitura's own numbering (``n0``, ``P1-s1-v1-el3``)
     is never an ID.
 
-    Every event names its file's extraction and, as its ``locator``, the ID
-    its note states (as above), else its place in Partitura's reading of
-    the file: ``part:<p> element:<k>``, the part's index and the object's
-    in the part's ``iter_all()``, from 0; a repeat's start and end
-    ``part:<p> repeat:<r> start`` / ``end``.
+    Every event names its file's extraction and, as its ``locator``, its
+    place in Partitura's reading of the file: ``part:<p> element:<k>``, the
+    part's index and the object's in the part's ``iter_all()``, from 0; a
+    repeat's start and end ``part:<p> repeat:<r> start`` / ``end``. Where
+    the file states a key of its own, ``key:<key>`` follows: a note's ID
+    (as above), a measure's number as the file writes it (MusicXML
+    ``number``, MEI ``n``; Partitura's ``Measure.name``), as in
+    ``part:0 element:3 key:12a``.
 
     All TTA timelines start at coordinate 0.  When partitura reports negative
     quarter-beat onsets (anacrusis notes that precede the first full measure),
@@ -536,7 +539,7 @@ class PartituraLoader(ScoreLoader):
 
                 measure_rows.append(
                     {
-                        LOCATOR: places[id(m)],
+                        LOCATOR: locate(places[id(m)], m.name),
                         "name": str(m.number),
                         "temporal_type": "interval",
                         "event_type": "Measure",
@@ -632,7 +635,7 @@ class PartituraLoader(ScoreLoader):
                 stated = getattr(obj, "id", None) if stated_ids else None
                 note_rows.append(
                     {
-                        LOCATOR: stated or places[id(obj)],
+                        LOCATOR: locate(places[id(obj)], stated),
                         # Minted by NoteEventData.from_dicts when None.
                         "id": stated,
                         "name": note_name,

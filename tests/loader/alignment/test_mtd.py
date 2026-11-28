@@ -491,6 +491,29 @@ class TestParticipation:
             found["SCORE PDF"].id,
         ]
 
+    @pytest.mark.parametrize(
+        ("end_time", "excerpt", "ticks"),
+        [("00:02.9033", 2.7033, 1298), ("00:02.896875", 2.696875, 1294)],
+        ids=["nearer-tick", "tie-to-even"],
+    )
+    def test_a_span_between_two_ticks(
+        self, folder: Path, end_time: str, excerpt: float, ticks: int
+    ) -> None:
+        edit(
+            folder,
+            f"data_META/{STEM_0807}.json",
+            '"EndTime": "00:03"',
+            f'"EndTime": "{end_time}"',
+        )
+        found = by_label(
+            MtdLoader.from_file(folder, themes=["MTD0807"]).create_timelines()
+        )
+        assert length(found["excerpt"]) == excerpt
+        (child,) = children(found["EDM-alig MIDI"])
+        assert child.name == "B689 (MTD 0807), EDM-alig MIDI, span of the excerpt"
+        assert length(child) == ticks
+        assert type(length(child)) is int
+
     def test_equal_lengths_take_part_whole(self, folder: Path) -> None:
         notes = notes_of(folder / f"MTD/data_EDM-alig_MID/{STEM_0807}.mid")
         last = notes[-1]
@@ -1217,8 +1240,8 @@ class TestIds:
         timelines = loader.create_timelines()
         found = by_label(timelines)
         for label in ("EDM-orig MIDI", "EDM-corr MIDI", "SCORE MIDI", "EDM-alig MIDI"):
-            midi = zipfile.Path(archive, at=MEMBERS_0807[label])
-            notes = minted(seed_from(0, member_uri(midi)), *["note"] * 10)
+            below_mtd = MEMBERS_0807[label].removeprefix("MTD/")
+            notes = minted(seed_from(0, below_mtd), *["note"] * 10)
             timeline = found[label]
             assert timeline.get_events().table.column("id").to_pylist() == notes, label
         assert [
@@ -1239,6 +1262,19 @@ class TestIds:
         assert [group.id for group in loader.create_groups(timelines)] == group_ids
         assert timelines[0].id == track_id
         assert [row["id"] for row in claims_of(loader)] == expected[25:]
+
+    def test_seeded_ids_do_not_follow_the_folder(
+        self, archive: Path, complete_folder: Path
+    ) -> None:
+        def note_ids(source: Path) -> dict[str, list[str]]:
+            loader = MtdLoader.from_file(source, themes=["MTD0807"], seed=0)
+            found = by_label(loader.create_timelines())
+            return {
+                label: found[label].get_events().table.column("id").to_pylist()
+                for label in ("EDM-orig MIDI", "EDM-corr MIDI", "SCORE MIDI")
+            }
+
+        assert note_ids(complete_folder) == note_ids(archive)
 
     def test_fresh_loaders_mint_equal_ids(self, archive: Path) -> None:
         first = MtdLoader.from_file(archive, movements=[PIANO])
@@ -1361,6 +1397,23 @@ class TestRefusals:
     def test_a_row_off_its_onset(self, folder: Path) -> None:
         edit(folder, ALIGNMENT_0807, "6.66667", "6.70000")
         with pytest.raises(ValueError, match="6.70000;2.20401 .* meets 0 onsets"):
+            MtdLoader.from_file(folder, themes=["MTD0807"])
+
+    def test_a_row_half_way_between_two_onsets(self, folder: Path) -> None:
+        midi = folder / f"MTD/data_EDM-corr_MID/{STEM_0807}.mid"
+        (_, end, pitch), *rest = notes_of(midi)
+        # The first note shortened to one tick, two more at ticks 1 and 2.
+        write_edm_shaped(midi, [(0, 1, pitch), (1, 2, 61), (2, end, 62), *rest])
+        edit(
+            folder,
+            ALIGNMENT_0807,
+            "0.00000;0.12855\n",
+            "0.00000;0.12855\n0.003125;0.13000\n",
+        )
+        with pytest.raises(
+            ValueError,
+            match=r"0\.003125;0\.13000 .* meets 2 onsets .*\['1/480', '1/240'\]",
+        ):
             MtdLoader.from_file(folder, themes=["MTD0807"])
 
     def test_a_last_row_off_the_end(self, folder: Path) -> None:

@@ -8,6 +8,7 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
 
@@ -420,12 +421,37 @@ def test_the_bundle_s_package_is_written_and_read_back(
     assert set(shapes([own, *projected])) == {"projection"}
 
     bundle.to_file(tmp_path / "package" / "package.yaml")
-    table = pq.read_table(tmp_path / "package" / "projections.parquet")
+    registry = pq.read_table(tmp_path / "package" / "registry.parquet")
+    rows = registry.filter(pc.equal(registry.column("kind"), "Projection"))
     written = list(
-        zip(table.column("timeline_id").to_pylist(), table.column("id").to_pylist())
+        zip(rows.column("timeline_id").to_pylist(), rows.column("id").to_pylist())
     )
     assert sorted(written) == sorted(
         [(performance.id, event_id) for event_id in projected] + [(score.id, own)]
+    )
+    content = pq.read_table(tmp_path / "package" / "projections.parquet")
+    assert sorted(content.column("id").to_pylist()) == sorted([own, *projected])
+    # A Projection of claims 2-15 stands for the score note on the other side
+    # of its claim; the score's own and those of the NOMATCH claims of the
+    # inserted notes stand for none.
+    stands_for = (
+        {own: None}
+        | {
+            claim.event_b_id: {"event_id": claim.event_a_id, "timeline_id": score.id}
+            for claim in claims[1:15]
+        }
+        | {claim.event_a_id: None for claim in claims[15:]}
+    )
+    assert {claim.event_b_id for claim in claims[15:]} == {NOMATCH}
+    assert (
+        dict(
+            zip(
+                content.column("id").to_pylist(),
+                content.column("projection_of").to_pylist(),
+                strict=True,
+            )
+        )
+        == stands_for
     )
     read = AlignmentBundle.from_file(tmp_path / "package" / "package.yaml")
     assert [_stated(claim) for claim in read.get_match_claims()] == [

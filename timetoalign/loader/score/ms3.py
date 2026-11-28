@@ -114,7 +114,8 @@ class Ms3Loader(ScoreLoader):
 
     Every event names the extraction of its facet file and, as its
     ``locator``, its data row there: ``row:<i>``, counted from 0 below the
-    header line.
+    header line; a measure's is followed by its own key in the facet, its
+    ``mc`` (``row:0 key:1``).
     """
 
     # Known DCML/ms3 facet names (used for discovery).
@@ -1078,8 +1079,13 @@ class Ms3Loader(ScoreLoader):
                 }
             )
 
-        # Row i of the table is the facet's data row i.
-        self._stamp_rows(measure_rows, source, row_locators(len(df)).to_pylist())
+        # Row i of the table is the facet's data row i; a measure's own key
+        # in the facet is its ``mc``.
+        self._stamp_rows(
+            measure_rows,
+            source,
+            row_locators(len(df), keys=[row["mc"] for row in measure_rows]).to_pylist(),
+        )
         measures_data = MeasureData.from_dicts(
             measure_rows,
             unit=TimeUnit.quarters,

@@ -817,10 +817,12 @@ class TestPackageRoundTrip:
         volume = DmosLoader.from_file(scan).create_timeline(uid="scan", box_ids="m{n}")
         bundle = AlignmentBundle(id="gallica")
         bundle.add_timeline(volume)
-        path = bundle.to_file(tmp_path / "package" / "package.yaml")
+        path = bundle.to_file(tmp_path / "package" / "manifest.yaml")
         assert sorted(entry.name for entry in path.parent.iterdir()) == [
             "boxes.parquet",
-            "package.yaml",
+            "extractions.parquet",
+            "manifest.yaml",
+            "registry.parquet",
         ]
 
         read = AlignmentBundle.from_file(path).get_timeline("scan")

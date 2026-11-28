@@ -9,15 +9,20 @@ from __future__ import annotations
 
 import hashlib
 import importlib.metadata
+import json
+import re
 from pathlib import Path
 
 import mido
 import pyarrow.compute as pc
 import pytest
 
-from timetoalign import __version__
+from timetoalign import AlignmentBundle, __version__
 from timetoalign.loader.alignment.matchfile import MatchfileLoader
+from timetoalign.loader.alignment.tilia import TiliaJsonLoader
+from timetoalign.loader.base import locate, locators
 from timetoalign.loader.midi import PerformanceMidiLoader
+from timetoalign.loader.score import MeasureMapLoader, Music21Loader, PartituraLoader
 from timetoalign.loader.tabular import CsvLoader
 from timetoalign.timelines import ContinuousLogicalTimeline
 from timetoalign.timelines.factory import create_timeline_from_event_data
@@ -204,6 +209,285 @@ class TestLocators:
         assert extraction.parser_version == (
             f"timetoalign {__version__}; pandas {importlib.metadata.version('pandas')}"
         )
+
+
+class TestLocatorText:
+    """One text for every loader: the pointer, then the key the source states."""
+
+    def test_locate(self) -> None:
+        assert locate("row:3") == "row:3"
+        assert locate("row:3", "n12") == "row:3 key:n12"
+        assert locate("p", "a key:b") == "p key:a key:b"
+        assert locate("p", "") == "p"
+        assert locate("p", None) == "p"
+        assert locate("p", float("nan")) == "p"
+        assert locate("p", 12) == "p key:12"
+
+    def test_locators_row_for_row(self) -> None:
+        assert locators(["a", "b", "c"], ["x", None, ""]).to_pylist() == [
+            "a key:x",
+            "b",
+            "c",
+        ]
+        assert locators(["a", "b"], [12, None]).to_pylist() == ["a key:12", "b"]
+
+    def test_a_csv_s_id_column(self, tmp_path: Path) -> None:
+        path = tmp_path / "events.csv"
+        path.write_text(
+            "id,start,end\nn1,0.5,1.0\nn7,1.0,1.5\nn2,2.0,2.5\n", encoding="utf-8"
+        )
+        table = CsvLoader().load(path).events.table
+        assert table.column("locator").to_pylist() == [
+            "row:0 key:n1",
+            "row:1 key:n7",
+            "row:2 key:n2",
+        ]
+
+
+SCORE_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<score-partwise version="3.1">
+  <part-list><score-part id="P1"><part-name>P</part-name></score-part></part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes><divisions>1</divisions>
+        <time><beats>2</beats><beat-type>4</beat-type></time></attributes>
+      <note id="n1"><pitch><step>C</step><octave>4</octave></pitch>
+        <duration>2</duration><type>half</type></note>
+    </measure>
+    <measure number="2a">
+      <note><pitch><step>D</step><octave>4</octave></pitch>
+        <duration>2</duration><type>half</type></note>
+    </measure>
+  </part>
+</score-partwise>
+"""
+
+
+class TestLocatorsOfTheLoaders:
+    """Each loader's locators, written out from the file the test writes."""
+
+    @pytest.fixture
+    def score(self, tmp_path: Path) -> Path:
+        path = tmp_path / "score.musicxml"
+        path.write_text(SCORE_XML, encoding="utf-8")
+        return path
+
+    def test_partitura(self, score: Path) -> None:
+        import partitura
+
+        part = partitura.load_score(str(score)).parts[0]
+        at = {id(obj): k for k, obj in enumerate(part.iter_all())}
+        measures = [f"part:0 element:{at[id(m)]}" for m in part.measures]
+        notes = [f"part:0 element:{at[id(n)]}" for n in part.notes]
+        store = PartituraLoader().load(score).store
+        assert store.measures.table.column("locator").to_pylist() == [
+            f"{measures[0]} key:1",
+            f"{measures[1]} key:2a",
+        ]
+        assert store.notes.table.column("locator").to_pylist() == [
+            f"{notes[0]} key:n1",
+            notes[1],
+        ]
+
+    def test_music21(self, score: Path) -> None:
+        import music21
+
+        flat = music21.converter.parse(str(score)).parts[0].flatten()
+        notes = [
+            f"part:0 element:{k}"
+            for k, obj in enumerate(flat)
+            if isinstance(obj, music21.note.Note)
+        ]
+        store = Music21Loader().load(score).store
+        assert store.measures.table.column("locator").to_pylist() == [
+            "part:0 measure:0 key:1",
+            "part:0 measure:1 key:2",
+        ]
+        assert store.notes.table.column("locator").to_pylist() == notes
+
+    def test_measure_map(self, tmp_path: Path) -> None:
+        rows = [
+            {
+                "ID": "m1",
+                "count": 1,
+                "qstamp": 0,
+                "number": 1,
+                "time_signature": "2/4",
+                "nominal_length": 2,
+                "actual_length": 2,
+                "next": [2],
+            },
+            {"count": 2},
+            {"count": 3},
+        ]
+        path = tmp_path / "piece.mm.json"
+        path.write_text(json.dumps(rows), encoding="utf-8")
+        loader = MeasureMapLoader().load(path)
+        table = loader.store.measures.table
+        (extraction,) = loader.extractions
+        assert table.column("locator").to_pylist() == [
+            "measure:1 key:m1",
+            "measure:2",
+            "measure:3",
+        ]
+        assert table.column("extraction_id").to_pylist() == [extraction.id] * 3
+
+    @pytest.mark.parametrize(
+        ("document", "expected"),
+        [
+            (
+                {
+                    "timelines": {
+                        "t7": {
+                            "kind": "MARKER_TIMELINE",
+                            "components": {"c1": {"time": 1.0}, "c2": {"time": 2.0}},
+                        }
+                    },
+                    "media_metadata": {"media length": 10},
+                },
+                [
+                    "/timelines/t7/components/c1 key:c1",
+                    "/timelines/t7/components/c2 key:c2",
+                ],
+            ),
+            (
+                {
+                    "timelines": [
+                        {
+                            "kind": "MARKER_TIMELINE",
+                            "components": [{"id": "x", "time": 1.0}, {"time": 2.0}],
+                        }
+                    ],
+                    "media_metadata": {"media length": 10},
+                },
+                ["/timelines/0/components/0 key:x", "/timelines/0/components/1"],
+            ),
+        ],
+        ids=["v2", "v1"],
+    )
+    def test_tilia(
+        self, tmp_path: Path, document: dict[str, object], expected: list[str]
+    ) -> None:
+        path = tmp_path / "markers.tla"
+        path.write_text(json.dumps(document), encoding="utf-8")
+        (timeline,) = TiliaJsonLoader().load(path).create_timelines()
+        assert timeline.registry.table.column("locator").to_pylist() == expected
+
+
+MATCH_FILE = VIENNA_DATA_DIR / "Chopin_op10_no3_p01.match"
+
+
+def statements(path: Path, kind: str) -> list[str]:
+    """The IDs of a match file's ``snote(`` or ``note(`` statements, in file order."""
+    pattern = re.compile(rf"(?:^|-){kind}\(([^,)]+)")
+    found = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = pattern.search(line)
+        if match is not None:
+            found.append(match.group(1))
+    return found
+
+
+def id_locator_pairs(bundle: AlignmentBundle) -> dict[str, list[tuple[str, str]]]:
+    """Per timeline of *bundle*, its registry's (id, locator) pairs of its events."""
+    pairs = {}
+    for timeline in bundle.get_timelines(bundle.timeline_ids):
+        table = timeline.registry.table
+        table = table.filter(pc.is_valid(table.column("locator")))
+        pairs[timeline.id] = sorted(
+            zip(
+                table.column("id").to_pylist(),
+                table.column("locator").to_pylist(),
+                strict=True,
+            )
+        )
+    return pairs
+
+
+class TestMatchfileLocatorsAndIds:
+    """Matchfile notes are located by their statement; a repeated ID is minted."""
+
+    @pytest.fixture(scope="class")
+    def bundle(self) -> AlignmentBundle:
+        return MatchfileLoader().load(MATCH_FILE).create_bundle()
+
+    def test_the_locators(self, bundle: AlignmentBundle) -> None:
+        snotes, notes = statements(MATCH_FILE, "snote"), statements(MATCH_FILE, "note")
+        score, performance = bundle.get_timelines(bundle.timeline_ids)
+        by_id = dict(
+            zip(
+                score.registry.table.column("id").to_pylist(),
+                score.registry.table.column("locator").to_pylist(),
+                strict=True,
+            )
+        )
+        assert by_id == {sid: f"snote:{k} key:{sid}" for k, sid in enumerate(snotes)}
+        assert sorted(
+            performance.registry.table.column("locator").to_pylist()
+        ) == sorted(f"note:{k} key:{nid}" for k, nid in enumerate(notes))
+        assert (len(snotes), len(notes)) == (454, 451)
+
+    def test_a_performed_id_held_by_a_score_note_is_minted(
+        self, bundle: AlignmentBundle
+    ) -> None:
+        score, performance = bundle.get_timelines(bundle.timeline_ids)
+        by_locator = dict(
+            zip(
+                performance.registry.table.column("locator").to_pylist(),
+                performance.registry.table.column("id").to_pylist(),
+                strict=True,
+            )
+        )
+        score_ids = set(score.registry.table.column("id").to_pylist())
+        assert by_locator["note:0 key:n0"] == "n0"
+        assert by_locator["note:1 key:n2"].startswith("event_")
+        assert not set(by_locator.values()) & score_ids
+        claim = next(
+            claim for claim in bundle.get_match_claims() if claim.event_a_id == "n2"
+        )
+        assert claim.event_b_id == by_locator["note:1 key:n2"]
+
+    def test_a_second_performance_mints_what_the_first_holds(self) -> None:
+        second = VIENNA_DATA_DIR / "Chopin_op10_no3_p02.match"
+        loader = MatchfileLoader().load(MATCH_FILE, second)
+        score, first, again = loader.create_timelines()
+        ids = [set(t.registry.table.column("id").to_pylist()) for t in (score, first)]
+        held = again.registry.table
+        stated = [
+            locator.split(" key:", 1)[1]
+            for locator in held.column("locator").to_pylist()
+        ]
+        for stated_id, event_id in zip(
+            stated, held.column("id").to_pylist(), strict=True
+        ):
+            if stated_id in ids[0] | ids[1]:
+                assert event_id.startswith("event_"), stated_id
+            else:
+                assert event_id == stated_id
+        assert "n0" in ids[1]
+        assert not (ids[0] | ids[1]) & set(held.column("id").to_pylist())
+
+    def test_the_file_s_own_performed_id(self, tmp_path: Path) -> None:
+        text = MATCH_FILE.read_text(encoding="utf-8")
+        assert text.count("-note(n0,") == 1
+        path = tmp_path / "renamed.match"
+        path.write_text(text.replace("-note(n0,", "-note(p0,"), encoding="utf-8")
+        bundle = MatchfileLoader().load(path).create_bundle()
+        _, performance = bundle.get_timelines(bundle.timeline_ids)
+        rows = performance.registry.table
+        first = dict(
+            zip(rows.column("locator").to_pylist(), rows.column("id").to_pylist())
+        )
+        assert first["note:0 key:p0"] == "p0"
+        (claim,) = [c for c in bundle.get_match_claims() if c.event_a_id == "n1"]
+        assert claim.event_b_id == "p0"
+
+    def test_the_bundle_writes_and_reads_back(
+        self, bundle: AlignmentBundle, tmp_path: Path
+    ) -> None:
+        path = bundle.to_file(tmp_path / "match" / "manifest.yaml", events=True)
+        read = AlignmentBundle.from_file(path)
+        assert id_locator_pairs(read) == id_locator_pairs(bundle)
 
 
 class TestUpdate:

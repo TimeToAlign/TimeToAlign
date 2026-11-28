@@ -21,7 +21,7 @@ from timetoalign.loader._sources import (
     readable,
     source_record,
 )
-from timetoalign.loader.base import LOCATOR
+from timetoalign.loader.base import LOCATOR, locate
 
 from .base import ScoreLoader
 from .store import ScoreStore
@@ -55,12 +55,13 @@ class Music21Loader(ScoreLoader):
     same convention so that score timelines built from either source are
     directly comparable and compatible with ``MatchfileLoader``.
 
-    Every event names its file's extraction and, as its ``locator``, the
-    ``xml:id`` / ``id`` the source states for it, else its place in music21's
-    reading of the file: ``part:<p> element:<k>``, the part's index and the
-    element's in the part's flattened stream (``note:<n>`` added for a
-    chord's n-th note), and for a measure ``part:<p> measure:<i>``, all
-    from 0.
+    Every event names its file's extraction and, as its ``locator``, its
+    place in music21's reading of the file: ``part:<p> element:<k>``, the
+    part's index and the element's in the part's flattened stream
+    (``note:<n>`` added for a chord's n-th note), and for a measure
+    ``part:<p> measure:<i>``, all from 0. Where the source states a key of
+    its own, ``key:<key>`` follows: the ``xml:id`` / ``id`` of a note,
+    control or text, a measure's number (``part:0 measure:0 key:1``).
 
     Known issue: music21 gives a measure without timed content no length
     (the empty measures of an MEI skeleton, which leaves out the measures it
@@ -232,7 +233,7 @@ class Music21Loader(ScoreLoader):
             for i, info in enumerate(measure_info):
                 measure_rows.append(
                     {
-                        LOCATOR: f"part:{part_idx} measure:{i}",
+                        LOCATOR: locate(f"part:{part_idx} measure:{i}", info["mn"]),
                         "name": info["mn"],
                         "temporal_type": "interval",
                         "event_type": "Measure",
@@ -284,7 +285,7 @@ class Music21Loader(ScoreLoader):
                                 obj, qb, dur_qb, mc, mn, mc_onset, part_id
                             )
                         )
-                        note_rows[-1][LOCATOR] = _stated_id(obj) or place
+                        note_rows[-1][LOCATOR] = locate(place, _stated_id(obj))
                     elif isinstance(obj, m21.chord.Chord):
                         for n, note in enumerate(obj.notes):
                             note_rows.append(
@@ -299,8 +300,8 @@ class Music21Loader(ScoreLoader):
                                     chord_id=str(id(obj)),
                                 )
                             )
-                            note_rows[-1][LOCATOR] = (
-                                _stated_id(note) or f"{place} note:{n}"
+                            note_rows[-1][LOCATOR] = locate(
+                                f"{place} note:{n}", _stated_id(note)
                             )
 
                 # Controls
@@ -315,7 +316,7 @@ class Music21Loader(ScoreLoader):
                 ):
                     control_rows.append(
                         {
-                            LOCATOR: _stated_id(obj) or place,
+                            LOCATOR: locate(place, _stated_id(obj)),
                             "id": _stated_id(obj),
                             "name": obj.__class__.__name__,
                             "temporal_type": "instant",
@@ -343,7 +344,7 @@ class Music21Loader(ScoreLoader):
                 elif isinstance(obj, m21.expressions.TextExpression):
                     annotation_rows.append(
                         {
-                            LOCATOR: _stated_id(obj) or place,
+                            LOCATOR: locate(place, _stated_id(obj)),
                             "id": _stated_id(obj),
                             "name": getattr(obj, "content", str(obj)),
                             "temporal_type": "instant",

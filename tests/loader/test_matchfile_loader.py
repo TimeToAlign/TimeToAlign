@@ -327,9 +327,20 @@ class TestMatchfileLoaderSingle:
             m.group(1) for m in map(_DELETION_LINE.match, lines) if m is not None
         ]
         claims = p01_loader._claims
+        # A performed note's event holds the stated ID, or a minted one where
+        # a score note holds it; its locator keeps the stated ID.
+        registry = p01_loader.create_timeline("perf:1").registry.table
+        event_of = {
+            locator.split(" key:", 1)[1]: event_id
+            for locator, event_id in zip(
+                registry.column("locator").to_pylist(),
+                registry.column("id").to_pylist(),
+                strict=True,
+            )
+        }
         assert sorted(
             (c.event_a_id, c.event_b_id) for c in claims if c.is_synchronous
-        ) == sorted(matched)
+        ) == sorted((score_id, event_of[note_id]) for score_id, note_id in matched)
         assert sorted(c.event_a_id for c in claims if c.is_nomatch) == sorted(deleted)
         assert {c.event_b_id for c in claims if c.is_nomatch} == {NOMATCH}
 
@@ -911,7 +922,7 @@ class TestMatchfileLoaderCheckOrAddScoreEvent:
         real_id = next(iter(p01_loader._score_events))
         onset, end = p01_loader._score_events[real_id]
         assert p01_loader._check_or_add_score_event(
-            real_id, onset, end, p01_loader.sources[0]
+            real_id, onset, end, p01_loader.sources[0], "snote:0"
         )
 
     def test_incompatible_event_returns_false(self, p01_loader: MatchfileLoader):
@@ -919,7 +930,7 @@ class TestMatchfileLoaderCheckOrAddScoreEvent:
         real_id = next(iter(p01_loader._score_events))
         onset, end = p01_loader._score_events[real_id]
         assert not p01_loader._check_or_add_score_event(
-            real_id, onset + 99.0, end + 99.0, p01_loader.sources[0]
+            real_id, onset + 99.0, end + 99.0, p01_loader.sources[0], "snote:0"
         )
 
     def test_new_event_added(self, p01_loader: MatchfileLoader):
@@ -927,7 +938,7 @@ class TestMatchfileLoaderCheckOrAddScoreEvent:
         new_id = "n_brand_new_test_event"
         assert new_id not in p01_loader._score_events
         result = p01_loader._check_or_add_score_event(
-            new_id, 42.0, 43.0, p01_loader.sources[0]
+            new_id, 42.0, 43.0, p01_loader.sources[0], "snote:454"
         )
         assert result is True
         assert new_id in p01_loader._score_events
@@ -936,11 +947,17 @@ class TestMatchfileLoaderCheckOrAddScoreEvent:
     def test_new_event_appears_on_timeline(self, p01_loader: MatchfileLoader):
         """Newly added event is retrievable via Timeline.get_event()."""
         new_id = "n_timeline_lookup_test"
-        p01_loader._check_or_add_score_event(new_id, 10.0, 11.0, p01_loader.sources[0])
+        p01_loader._check_or_add_score_event(
+            new_id, 10.0, 11.0, p01_loader.sources[0], "snote:454"
+        )
         score_tl = p01_loader.create_timeline("score")
         event = score_tl.get_event(new_id)
         assert event is not None
         assert event["id"] == new_id
+        (row,) = [
+            row for row in score_tl.registry.table.to_pylist() if row["id"] == new_id
+        ]
+        assert row["locator"] == f"snote:454 key:{new_id}"
 
     def test_to_tta_coord_static(self):
         """_to_tta_coord is a pure offset addition."""

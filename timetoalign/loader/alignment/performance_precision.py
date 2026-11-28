@@ -145,9 +145,11 @@ class PerformancePrecisionLoader(AlignmentLoader):
         seed: The seed of the loader's ID minter (see ``Loader.load``).
 
     Every score note names the ``.solo`` file's extraction and its data
-    row there (``row:<i>``, :class:`SoloLoader`'s rule); every performed
-    note the extraction of its performer's note-level alignment CSV and its
-    data row there, ``row:<i>`` counted from 0 below the header line.
+    row there with its ``note_id`` (``row:<i> key:<note_id>``,
+    :class:`SoloLoader`'s rule); every performed note the extraction of its
+    performer's note-level alignment CSV and its data row there, counted
+    from 0 below the header line, with the row's LABEL
+    (``row:<i> key:<LABEL>``).
     """
 
     _enum_parameters = {"score_unit": TimeUnit, "media_unit": TimeUnit}
@@ -472,7 +474,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
         stem = note_file.stem
 
         # Read all three granularity files up front.
-        granularity_rows: dict[str, list[tuple[int, Fraction, str]]] = {}
+        granularity_rows: dict[str, list[tuple[int, Fraction, str, str]]] = {}
         for gran, suffix in _GRANULARITIES.items():
             path = sibling_source(note_file, f"{stem}{suffix}.csv")
             granularity_rows[gran] = self._read_alignment_csv(path)
@@ -480,7 +482,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
         # Physical timeline length = max aligned TIME of the note level.
         aligned_times = [
             float(time_str)
-            for _m, _off, time_str in granularity_rows["note"]
+            for _m, _off, time_str, _label in granularity_rows["note"]
             if time_str != _DANGLING
         ]
         perf_length = max(aligned_times) if aligned_times else 0.0
@@ -495,9 +497,9 @@ class PerformancePrecisionLoader(AlignmentLoader):
             {
                 "start": float(time_str),
                 "event_type": "Note",
-                **self._stamp(note_file, f"row:{i}"),
+                **self._stamp(note_file, f"row:{i}", label),
             }
-            for i, (_m, _off, time_str) in enumerate(granularity_rows["note"])
+            for i, (_m, _off, time_str, label) in enumerate(granularity_rows["note"])
             if time_str != _DANGLING
         ]
         give_event_ids(perf_events, self._id_minter)
@@ -513,7 +515,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
 
     def _resolve_rows(
         self,
-        granularity_rows: dict[str, list[tuple[int, Fraction, str]]],
+        granularity_rows: dict[str, list[tuple[int, Fraction, str, str]]],
         perf_tl: ContinuousPhysicalTimeline,
         perf_note_ids: list[str],
         starts: list[Fraction],
@@ -537,7 +539,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
         notes = iter(perf_note_ids)
         for gran, rows in granularity_rows.items():
             sides: list[tuple[Fraction, ClaimSide]] = []
-            for measure, offset_wn, time_str in rows:
+            for measure, offset_wn, time_str, _label in rows:
                 quarters = self._resolve_label(measure, offset_wn, starts, m0_downbeat)
                 performed: ClaimSide
                 if time_str == _DANGLING:
@@ -550,15 +552,16 @@ class PerformancePrecisionLoader(AlignmentLoader):
             self._rows.append((gran, perf_tl, sides))
 
     @staticmethod
-    def _read_alignment_csv(path: Source) -> list[tuple[int, Fraction, str]]:
+    def _read_alignment_csv(path: Source) -> list[tuple[int, Fraction, str, str]]:
         """Read a ``LABEL,TIME,FRAME`` alignment CSV.
 
         Returns:
-            A list of ``(measure, offset_in_whole_notes, time_str)`` tuples,
-            one per data row.  ``time_str`` is kept as a string so the
-            dangling ``"N"`` sentinel survives.
+            A list of ``(measure, offset_in_whole_notes, time_str, label)``
+            tuples, one per data row.  ``time_str`` is kept as a string so the
+            dangling ``"N"`` sentinel survives; ``label`` is the row's LABEL
+            verbatim.
         """
-        rows: list[tuple[int, Fraction, str]] = []
+        rows: list[tuple[int, Fraction, str, str]] = []
         with path.open("r", encoding="utf-8", newline="") as handle:
             reader = csv.reader(handle)
             next(reader, None)  # header
@@ -573,6 +576,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
                         int(measure_str),
                         Fraction(int(numerator), int(denominator)),
                         time_str,
+                        label,
                     )
                 )
         return rows

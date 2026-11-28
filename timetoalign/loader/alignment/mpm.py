@@ -103,7 +103,7 @@ from timetoalign.loader._sources import (
     source_parent,
 )
 from timetoalign.loader._xml import XML_ID
-from timetoalign.loader.base import LOCATOR, AlignmentLoader
+from timetoalign.loader.base import LOCATOR, AlignmentLoader, locate
 from timetoalign.loader.physical.audio import AudioLoader
 from timetoalign.maps.convenience import SamplesToSeconds, TicksToQuarters
 from timetoalign.maps.linear import ScalarMap
@@ -225,9 +225,10 @@ class MpmLoader(AlignmentLoader):
 
     Every event names the extraction of the file stating it (a score note
     the ``.msm``, a markup event the ``.mpm``, an observed onset the
-    ``.mpr``) and, as its ``locator``, the ``xml:id`` its element states,
-    else the element's XPath in that file as lxml writes it
-    (``/mpr/audios/audio/alignment/part/note[3]``).
+    ``.mpr``) and, as its ``locator``, its element's XPath in that file as
+    lxml writes it (``/mpr/audios/audio/alignment/part/note[3]``), followed
+    by ``key:<xml:id>`` where the element states its ``xml:id`` (an
+    observed note of the ``.mpr`` states none of its own).
     """
 
     def __init__(self, *, seed: int | None = None) -> None:
@@ -463,7 +464,7 @@ class MpmLoader(AlignmentLoader):
             notes.append(
                 {
                     "xml_id": element.get(XML_ID),
-                    LOCATOR: element.get(XML_ID) or _path(element),
+                    LOCATOR: locate(_path(element), element.get(XML_ID)),
                     "date": int(float(element.get("date"))),
                     "pitch": int(float(element.get("midi.pitch"))),
                     "pitchname": element.get("pitchname"),
@@ -572,7 +573,7 @@ class MpmLoader(AlignmentLoader):
                 "id": element.get(XML_ID),
                 "start": date,
                 "event_type": event_type,
-                **self._stamp(self._sources[2], element.get(XML_ID) or _path(element)),
+                **self._stamp(self._sources[2], _path(element), element.get(XML_ID)),
             }
 
             if tag == "tempo":

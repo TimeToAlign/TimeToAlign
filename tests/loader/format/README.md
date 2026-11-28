@@ -4,7 +4,7 @@ Tests for the format-level loaders in `timetoalign.loader.format`.
 
 ## Test Files
 
-### `test_json_loader.py` (45 tests)
+### `test_json_loader.py` (48 tests)
 
 Tests for `JsonLoader`, the configurable JSON normaliser that produces flat
 PyArrow tables from nested JSON structures.
@@ -36,24 +36,42 @@ PyArrow tables from nested JSON structures.
 - Auto-detection correctly identifies all top-level keys with list-of-dict values
 
 **Locators** (`TestLocators`, a document the test writes into `tmp_path`):
-`{"title": "x", "audio": [{"name": "a", "cueData": {"hotCuePoints":
-[{"t": 1}, {"t": 2}]}}, {"name": "b", "cueData": {"hotCuePoints": [{"t":
-3}]}}], "a/b": [{"x": 1}]}`. Each row's `locator` is the JSON Pointer of
-the object it was read from, written out by hand from the document:
+`{"title": "x", "audio": [{"id": "a1", "name": "a", "cueData":
+{"hotCuePoints": [{"id": "c1", "t": 1}, {"t": 2}]}}, {"name": "b",
+"cueData": {"hotCuePoints": [{"t": 3}]}}], "a/b": [{"x": 1}]}`. Each row's
+`locator` is the JSON Pointer of the object it was read from, followed by
+` key:<id>` where that object states an `id` member of its own, written out
+by hand from the document:
 
-- principal key `audio`: `/audio/0`, `/audio/1`;
+- principal key `audio`: `/audio/0 key:a1`, `/audio/1`;
 - `hotCuePoints`, found by the search, and the dotted path
-  `audio.cueData.hotCuePoints` alike: `/audio/0/cueData/hotCuePoints/0`,
-  `/audio/0/cueData/hotCuePoints/1`, `/audio/1/cueData/hotCuePoints/0`;
+  `audio.cueData.hotCuePoints` alike: `/audio/0/cueData/hotCuePoints/0
+  key:c1`, `/audio/0/cueData/hotCuePoints/1`,
+  `/audio/1/cueData/hotCuePoints/0`. The second cue point states no `id`:
+  the search hands it its parent's fields (`id` `a1` among them), and its
+  locator still names no key, because the key is the object's own;
 - the key `a/b` is escaped as RFC 6901 writes it: `/a~1b/0`.
 
 Read from the file, every row names the loader's one extraction (its source
 the file); read with `load_dict`, the rows hold the locators and no
 `extraction_id` column, and the loader lists no extraction.
 
+**The document's own `locator` and `extraction_id`** (`TestSourceFieldsNamedLikeTheRegistry`).
+The two names are the registry's, so a document's fields of these names
+are kept beside them, never overwritten and never refused: the document
+`{"events": [{"locator": "bar 3", "extraction_id": "run 1", "t": 1},
+{"t": 2}]}` gives the columns `source_locator` `["bar 3", None]` and
+`source_extraction_id` `["run 1", None]` beside the registry's `locator`
+(`/events/0`, `/events/1`) and `extraction_id` (the loader's one
+extraction, twice); read with `load_dict`, `source_extraction_id` holds
+`"run 1"` too and no `extraction_id` column exists. A document stating
+`source_locator` as well (`{"events": [{"locator": "a", "source_locator":
+"b"}]}`) keeps both: `source_locator` `["b"]`, `source_source_locator`
+`["a"]`.
+
 ---
 
-### `test_xml_loader.py` (49 tests)
+### `test_xml_loader.py` (50 tests)
 
 Tests for `XmlLoader`, a generic XML-to-flat-table loader using `xml.etree.ElementTree`.
 
@@ -70,7 +88,7 @@ Tests for `XmlLoader`, a generic XML-to-flat-table loader using `xml.etree.Eleme
 | `TestXmlLoaderStore` | 8 | `store` DictStore integration and iteration |
 | `TestXmlLoaderEdgeCases` | 11 | Error handling, empty/single-element XML, clear/repr, ancestor toggle |
 | `TestLoadElement` | 2 | `load_element()` from an `ElementTree` |
-| `TestLocators` | 3 | Each row's `locator` and extraction (below) |
+| `TestLocators` | 4 | Each row's `locator` and extraction; an attribute named `locator` kept (below) |
 
 **Test Specimens:**
 
@@ -90,13 +108,18 @@ Tests for `XmlLoader`, a generic XML-to-flat-table loader using `xml.etree.Eleme
 - Error handling for malformed XML
 
 **Locators** (`TestLocators`). The document `<root><item xml:id="i1"
-v="1"/><item v="2"/><group><item v="3"/></group></root>`, written into
-`tmp_path`, principal tag `item`: the locators are `i1` (the stated
-`xml:id`), `/root/item[2]` and `/root/group/item` (the elements' paths,
-written out by hand: `root` holds two `item`s, `group` one), in document
-order, with ancestors propagated or not alike. Read from the file, every
-row names the loader's one extraction; read with `load_string`, the rows
-hold the locators and no `extraction_id` column.
+v="1"/><item id="i2" v="2"/><group><item v="3"/></group></root>`, written
+into `tmp_path`, principal tag `item`: the locators are each element's path
+(written out by hand: `root` holds two `item`s, `group` one), followed by
+` key:<key>` where the element states its own key, its `xml:id`, else its
+`id`: `/root/item[1] key:i1`, `/root/item[2] key:i2`, `/root/group/item`,
+in document order, with ancestors propagated or not alike. Read from the
+file, every row names the loader's one extraction; read with
+`load_string`, the rows hold the locators and no `extraction_id` column.
+The element's attribute `locator` is kept as the column `source_locator`
+(`<root><item locator="here" v="1"/><item v="2"/></root>`: `["here",
+None]`), the registry's `locator` beside it (`/root/item[1]`,
+`/root/item[2]`).
 
 ---
 

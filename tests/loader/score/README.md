@@ -862,7 +862,10 @@ them.
 - The store's measure table is the printed one: three rows at 0, 2, 4, `m1` opening and `m2`
   closing the repeat. The flow control written from it plays MC 1 2 1 2 3, Verovio's order.
 - With `options={"expandNever": True}` nothing is expanded: three events, the printed
-  `MeasureMap` on the timeline, the repeat as one jump in its flow control, no FlowMap.
+  `MeasureMap` on the timeline, the repeat as one jump in its flow control, no FlowMap;
+  the store's measure table is the expanding load's in every column but `extraction_id`
+  (each run its own extraction), its locators `m1 key:1`, `m2 key:2`, `m3 key:3` (the
+  measure's `xml:id`, then its `@n`).
 
 **`repeat_endings.mei`** (2/4): `m1`–`m2` a plain repeat, then `m3` (`rptstart`), first ending
 `m4` (`rptend`), second ending `m5`. Verovio 6.4.1 renders m1 m2 m1 m2 m3: no second pass of m3
@@ -870,9 +873,13 @@ and neither ending. The expansion states no length for the printed measures `m4`
 loader reads the printed lengths from a second Verovio rendering with `expandNever`; nothing is
 computed by the loader. Expected: one warning naming the two measures; store metadata
 `omitted_measures == ["m4", "m5"]`; the printed table `m1`…`m5` at 0, 2, 4, 6, 8, each 2 long,
-identical to the table of a load with `expandNever` (whose `omitted_measures` is empty); the
+identical to the table of a load with `expandNever` (whose `omitted_measures` is empty) in
+every column but `extraction_id` (two runs with other options are two extractions; the
+locators, `m1 key:1` … `m5 key:5`, are equal); the
 rendered timeline of length 10 with the `MeasureMap` `m1`, `m2`, `m1-rend2`, `m2-rend2`, `m3`
-and the events `m1n`, `m2n`, `m1n-rend2`, `m2n-rend2`, `m3n` (`m4n`, `m5n` are not rendered). The
+and the events `m1n`, `m2n`, `m1n-rend2`, `m2n-rend2`, `m3n` (`m4n`, `m5n` are not rendered),
+each located by its rendered id and the printed note's key (`m1n key:m1n`, the second pass
+`m1n-rend2 key:m1n`, `m3n key:m3n`). The
 printed table's default flow is MC 1 2 1 2 3 4 3 5, which is not Verovio's order: that
 difference is the defect, and the hardening experiment below is where it is recorded.
 `expandAlways` raises (it writes the expansion into the MEI tree, which then no longer states

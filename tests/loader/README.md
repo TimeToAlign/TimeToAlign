@@ -143,6 +143,72 @@ prove it, on a small MIDI file the test writes with mido into `tmp_path`
 * **A CSV's locator is its data row.** `CsvLoader` over a three-row CSV in
   `tmp_path` gives `row:0`, `row:1`, `row:2`, the parser `CsvLoader`, the
   version naming pandas.
+* **The one text of a locator: the pointer, then the source's own key.**
+  Every loader writes `<pointer>` (the event's structural place, unique in
+  one extraction) and, where the source states a key of its own for the
+  event, ` key:<key>` after it, verbatim and last. One function writes it
+  for every loader (`locate`, row for row `locators` and `row_locators`),
+  and the two forms agree: `locate("row:3")` is `row:3`, `locate("row:3",
+  "n12")` `row:3 key:n12`, a key holding `" key:"` itself is kept whole
+  after the first mark (`locate("p", "a key:b")` is `p key:a key:b`), an
+  empty key or `None` or NaN states none, an integer key is written in its
+  digits (`12` → `key:12`); `locators(["a", "b", "c"], ["x", None, ""])` is
+  `a key:x`, `b`, `c`. A key that repeats leaves the locators unique,
+  because the pointer differs.
+* **A CSV row states its key in its `id` column.** `CsvLoader` (whose
+  `id_column` is `id`) over `id,start,end` rows `n1`, `n7`, `n2` gives
+  `row:0 key:n1`, `row:1 key:n7`, `row:2 key:n2`: the data row leads, in
+  file order, whatever the keys.
+* **Each loader's locator, written out by hand from the file the test
+  writes into `tmp_path`:**
+  * `PartituraLoader` and `Music21Loader` over a MusicXML of one part, two
+    measures numbered `1` and `2a` (the MusicXML `number` attribute), the
+    first note stating `id="n1"`, the second none: Partitura's measures
+    `part:0 element:<k> key:1` and `… key:2a` (`k` Partitura's
+    `iter_all()` index, read in the test from Partitura's own part),
+    its first note `part:0 element:<k> key:n1`, the second
+    `part:0 element:<k>`; music21's measures `part:0 measure:0 key:1` and
+    `part:0 measure:1 key:2` (music21's measure number, `2a` read as `2`
+    with the suffix kept apart), its notes `part:0 element:<k>`, `k` the
+    note's index in music21's flattened part (read in the test from
+    music21), without a key: music21 does not read a MusicXML note's `id`.
+    The pointer always leads, the stated ID never stands alone.
+  * `MeasureMapLoader` over a compressed map of three rows, the first
+    stating `"ID": "m1"`, the others none (counts 1 to 3): `measure:1
+    key:m1`, `measure:2`, `measure:3`; every row names the file's one
+    extraction.
+  * `TiliaJsonLoader` over a v2 file keying its timeline `t7` and its
+    components `c1`, `c2`: `/timelines/t7/components/c1 key:c1` and
+    `/timelines/t7/components/c2 key:c2`, the JSON Pointers of the members
+    in the file; over a v1 file listing one timeline with the components
+    `{"id": "x"}` and `{}`: `/timelines/0/components/0 key:x` and
+    `/timelines/0/components/1`.
+* **Matchfile notes are located by their statement, and a repeated ID is
+  minted.** A match file gives a score note and its performed note the same
+  ID (`n1`), and every performance of a piece the same IDs. Over
+  `Chopin_op10_no3_p01.match` (vienna_1x22), read by the test line by line:
+  every score note's locator is `snote:<k> key:<id>` (`k` its index among
+  the file's `snote(` lines, from 0; the first `snote:0 key:n1`) and every
+  performed note's `note:<k> key:<id>` (`k` its index among the file's
+  `note(` statements, from 0; the first `note:0 key:n0`), so the
+  `(extraction_id, locator)` pairs of the bundle are unique (454 + 451).
+  A performed note keeps the ID it states unless a score note holds it:
+  `n0`, held by no score note, is the first performed note's ID; the
+  performed `n2`, which the score's `n2` holds, is a minted `event_…` ID,
+  and its stated `n2` stays in its locator `note:1 key:n2`; no event ID
+  repeats across the bundle's timelines. A second performance
+  (`…_p02.match`) loaded after the first mints every performed note whose
+  ID the first performance or the score holds (its `n0` among them). Every
+  MatchClaim names the performed note by the ID its event holds (the
+  claims of the matched `n2`: score `n2`, performance the minted ID). The
+  performed ID is the file's as written: a file the test writes from
+  `Chopin_op10_no3_p01.match` with the performed note `n0` renamed `p0`
+  (in its `note(` and nowhere else) gives the first performed note the ID
+  `p0` and the locator `note:0 key:p0`, although Partitura reads it as
+  `np0`, and its MatchClaim names `p0`. The
+  bundle written with `to_file(..., events=True)` to `tmp_path` reads back
+  (`AlignmentBundle.from_file`) with the same event IDs and locators per
+  timeline (the registry's `(id, locator)` pairs equal before and after).
 * **`update` keeps what it finds and marks what is gone.** A MIDI file
   read into a timeline, then rewritten by the test (its last note's two
   messages removed, one note's velocity changed), then
@@ -497,13 +563,22 @@ from the files alone (after `create_bundle`):
 **The bundle's package is written and read back** (`tmp_path`). A
 Projection's ID is unique among all Projections of a package, and the
 loader adds every Projection while its timeline is in the bundle, so each
-is minted by the bundle: the Projections table holds 3439 rows, all on the
-score, its IDs all distinct and each a minted `projection_…` (checked by
-its shape). Ashkenazy's first note-level claim (the first claim stated)
+is minted by the bundle: the package's registry holds 3439 rows of kind
+`Projection`, all on the score, and its pre-parsed Projection table
+(`projections.parquet`) the same 3439 IDs, all distinct and each a minted
+`projection_…` (checked by its shape). Ashkenazy's first note-level claim (the first claim stated)
 names one of them. The written MatchClaim table names `CHUNK_SENTINEL` on
 both sides in `7 × (32 + 376) = 2856` rows and `NOMATCH_SENTINEL` as
 `event_b_id` in `7 × 79 = 553`. `AlignmentBundle.from_file` reads the
 package back with the same 6769 claims.
+
+**Locators.** A performed note's locator is its data row of the
+note-level alignment CSV, counted from 0 below the header, and the row's
+LABEL: Ashkenazy's aligned rows give `row:<i> key:<LABEL>` in file order,
+read off `Alignments/Chopin_Ashkenazy.csv` by the test with `csv.reader`
+(the first `row:0 key:0+11/8`), a dangling row (`TIME` `N`) no note. A
+score note's is the `.solo` row and its `note_id` (`SoloLoader`'s rule,
+`tabular/README.md`).
 
 **Coordinate spot-check:** Ashkenazy's bar-level claim for LABEL `1+0/1`
 is CHUNK on both sides, its anchor at `Fraction(1, 2)` (0.5 quarters) on
@@ -586,7 +661,10 @@ logical units):
 
 * ``score:clt_…`` — `ContinuousLogicalTimeline`, quarters, 251 note
   events with ``start = onset_quarter`` (exact `Fraction`), carrying
-  ``pitch`` (MIDI int) and ``voice`` (int).
+  ``pitch`` (MIDI int) and ``voice`` (int). Each note's locator is its
+  data row of ``part.csv`` and its ``id``: the 251 locators are
+  ``row:<i> key:<id>`` of the file's rows read by the test with
+  ``csv.DictReader`` (``row:0 key:nwqgcz5`` first).
 * ``score:dlt_…`` — `DiscreteLogicalTimeline`, ticks (``divs``), the
   same 251 notes with ``start = onset_div`` (int). A divs→quarters
   C-Map ``LinearMap(scalar=Fraction(1,32), offset=Fraction(-1,2))`` is
@@ -1377,8 +1455,9 @@ minutes, so the axis held is provably the new file's.
 
 ## `ATONLoader` event IDs — validation logic
 
-`ATONLoader.create_timeline` turns every hole block into an event named by
-the block's `@ID`. The SUPRA analysis software
+`ATONLoader.create_timeline` turns every hole block into an event whose
+locator names the block's place and its `@ID` (`hole:<k> key:<@ID>`, the
+k-th block of the file from 0). The SUPRA analysis software
 does not give every hole an ID of its own. It writes `K<key>_N<n>`, counting
 `n` per tracker-bar hole, and it writes key `0` for every hole that is no
 note (the expression tracks, `MIDI_KEY -1`), so holes on different tracker
@@ -1391,8 +1470,10 @@ identical, so the file states distinct holes, never one hole twice.
 
 An `@ID` that one hole holds identifies it: the event's ID is the `@ID`
 verbatim. An `@ID` several holes hold names no one hole: each of them keeps
-it as its `name` and is given an ID minted from the loader's minter
-(`hole_…`). IDs are never composed from the `@ID` and the tracker hole.
+it in its locator and is given an ID minted from the loader's minter
+(`hole_…`). IDs are never composed from the `@ID` and the tracker hole. The
+`@ID` is the source's key of the hole, not a name: the event has no `name`
+(its column, where the events table holds one, is null).
 
 What proves it (`test_aton_loader.py`, class `TestHoleEventIds`):
 
@@ -1403,15 +1484,20 @@ What proves it (`test_aton_loader.py`, class `TestHoleEventIds`):
   and `K0_N1` on 8: `K0_N1` three times). Loaded with `seed=0`, the event
   IDs are, in file order, the minter's 1st `hole_…` ID, `K0_N2`, `K88_N1`,
   `K86_N1`, its 2nd and its 3rd (the minted ones computed by a fresh
-  `IdMinter(0)`); the names are the six `@ID`s as written. The rule is
+  `IdMinter(0)`); their registry rows' locators are `hole:0 key:K0_N1`,
+  `hole:1 key:K0_N2`, `hole:2 key:K88_N1`, `hole:3 key:K86_N1`,
+  `hole:4 key:K0_N1`, `hole:5 key:K0_N1` (the `@ID`s as written, each
+  locator unique by its place), and no event states a name. The rule is
   decided by the file, not by the key `0`: `K0_N2`, held once, keeps it.
 * **IDs that do not collide are the `@ID`s.** `minimal.aton`, whose five IDs
-  are distinct, gives exactly `H1_N1` … `H5_N5`.
+  are distinct, gives exactly `H1_N1` … `H5_N5`, the locators `hole:0
+  key:H1_N1` … `hole:4 key:H5_N5`.
 * **The SUPRA roll loads whole** (slow). `create_timeline` gives 30092
   events with 30092 distinct IDs; exactly 992 of them are minted (`hole_…`,
   13 base-36 characters), which is the number of holes whose `@ID` is
-  shared, and the other 29100 are the `@ID` of their block; the names are
-  the `@ID`s in file order.
+  shared, and the other 29100 are the `@ID` of their block; the locators
+  are `hole:<k> key:<@ID>` in file order (`k` 0 to 30091), 30092 distinct
+  ones.
 * **A hole stated twice is refused.** Two blocks with the same `@ID` on the
   same tracker hole are refused when the timeline is made (`ATON hole
   'K0_N1' is stated twice on tracker hole 6: the file names one hole twice,

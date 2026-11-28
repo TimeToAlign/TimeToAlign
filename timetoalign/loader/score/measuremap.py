@@ -41,6 +41,7 @@ from typing import Any
 
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.loader._sources import Source, describe_source, source_record
+from timetoalign.loader.base import locate
 from timetoalign.timelines.structure import MeasureMap
 
 from .base import ScoreLoader
@@ -68,6 +69,12 @@ class MeasureMapLoader(ScoreLoader):
       the rows are read without it (it names no row) and the measure map
       leaves it out, while ``expanded_data`` and the measure table keep it
       where the file states it
+
+    Every measure names the file's extraction and, as its ``locator``, its
+    place in the expanded map, ``measure:<count>``, followed by
+    ``key:<ID>`` where the file states the measure's ``ID``
+    (``measure:3 key:m3``); a measure a compressed file leaves out states
+    none.
 
     Known limitation: a ``.mm.json`` file states no offset for the parts of
     an inner split bar, so they load as ``IrregularMeasure``s, whereas an
@@ -179,8 +186,23 @@ class MeasureMapLoader(ScoreLoader):
         # Validate the expanded data
         self._validate_measuremap(expanded)
 
-        # Convert to MeasureData rows
+        # Convert to MeasureData rows, each at its place in the expanded
+        # map, with the ID the file states for it.
         rows = self._to_event_rows(expanded)
+        stated = {
+            row["ID"] for row in raw_data if isinstance(row, dict) and "ID" in row
+        }
+        self._stamp_rows(
+            rows,
+            source,
+            [
+                locate(
+                    f"measure:{bar['count']}",
+                    bar["ID"] if bar["ID"] in stated else None,
+                )
+                for bar in expanded
+            ],
+        )
 
         measures_data = MeasureData.from_dicts(
             rows,

@@ -25,6 +25,7 @@ Policy.  Validation logic is documented in ``tests/loader/README.md``.
 
 from __future__ import annotations
 
+import csv
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -243,6 +244,20 @@ def _performer_id(bundle, performer_key: str) -> str:
     return found
 
 
+def test_the_performed_notes_are_located_by_row_and_label(bundle) -> None:
+    """An aligned row's note: ``row:<i> key:<LABEL>``, read off the CSV."""
+    with open(SPECIMEN_DIR / "Alignments" / "Chopin_Ashkenazy.csv", newline="") as f:
+        rows = list(csv.reader(f))[1:]
+    expected = [
+        f"row:{i} key:{label}"
+        for i, (label, time, _frame) in enumerate(rows)
+        if time != "N"
+    ]
+    assert expected[0] == "row:0 key:0+11/8"
+    performed = bundle.timelines[_performer_id(bundle, "Chopin_Ashkenazy")]
+    assert performed.registry.table.column("locator").to_pylist() == expected
+
+
 def _performer_claims(bundle, performer_key: str) -> list[MatchClaim]:
     perf_tl_id = _performer_id(bundle, performer_key)
     return [c for c in bundle.get_match_claims() if c.timeline_b_id == perf_tl_id]
@@ -352,11 +367,14 @@ def test_the_bundle_s_package_is_written_and_read_back(bundle, tmp_path: Path) -
     assert shape(first.event_a_id) == "projection"
 
     bundle.to_file(tmp_path / "package.yaml")
-    table = pq.read_table(tmp_path / "projections.parquet")
+    registry = pq.read_table(tmp_path / "registry.parquet")
+    table = registry.filter(pc.equal(registry.column("kind"), "Projection"))
     ids = table.column("id").to_pylist()
     assert len(set(ids)) == len(ids) == 3439
     assert set(shapes(ids)) == {"projection"}
     assert first.event_a_id in ids
+    content = pq.read_table(tmp_path / "projections.parquet")
+    assert sorted(content.column("id").to_pylist()) == sorted(ids)
     counts = pc.value_counts(table.column("timeline_id")).to_pylist()
     (score_id,) = [
         timeline_id

@@ -195,6 +195,17 @@ def test_score_clt_carries_pitch_and_voice(loader: ParangonadaLoader) -> None:
     assert int(voices[idx]) == 3
 
 
+def test_score_notes_are_located_by_row_and_id(loader: ParangonadaLoader) -> None:
+    score = _find(loader.create_timelines(), "score:clt")
+    with open(_subdir("1971_Curzon") / "part.csv", encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+    expected = [f"row:{i} key:{row['id']}" for i, row in enumerate(rows)]
+    assert expected[0] == "row:0 key:nwqgcz5"
+    assert sorted(score.registry.table.column("locator").to_pylist()) == sorted(
+        expected
+    )
+
+
 def test_divs_to_quarters_cmap_reproduces_all_onsets(
     loader: ParangonadaLoader,
 ) -> None:

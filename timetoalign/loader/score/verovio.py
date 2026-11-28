@@ -26,7 +26,7 @@ from timetoalign.loader._sources import (
     source_record,
 )
 from timetoalign.loader._xml import XML_ID
-from timetoalign.loader.base import EXTRACTION_ID, LOCATOR
+from timetoalign.loader.base import EXTRACTION_ID, LOCATOR, locate
 
 from .base import ScoreLoader
 from .events import ScoreEventType
@@ -517,7 +517,10 @@ class VerovioLoader(ScoreLoader):
     **Locators.** Every event names its file's extraction and, as its
     ``locator``, its ``id``: the rendered element's ``xml:id`` in Verovio's
     MEI (the file's own where it states one, Verovio's for an element it
-    states none of or for a pass of a repeat).
+    states none of or for a pass of a repeat), followed by the key of the
+    printed element it renders: a note's or tempo indication's
+    ``notated_id`` (``n1-rend2 key:n1``; a printed element's equals its
+    ``id``), a measure's ``@n`` where it states one (``m1 key:1``).
 
     **Ids.** Every event keeps its element's ``xml:id`` verbatim. Verovio
     generates ids only where the source has none, from a random seed unless
@@ -738,7 +741,11 @@ class VerovioLoader(ScoreLoader):
             for row in _tempo_rows(tempo, onsets, passes, toolkit, bool(notated))
         ]
         for rows in (note_rows, tempo_rows):
-            self._stamp_rows(rows, source, [row["id"] for row in rows])
+            self._stamp_rows(
+                rows,
+                source,
+                [locate(row["id"], row["notated_id"]) for row in rows],
+            )
         movement = {
             row["id"]: _named_holder(
                 score.movements, score.measures[row["mc"] - 1].movement
@@ -770,17 +777,23 @@ class VerovioLoader(ScoreLoader):
             if tempo_rows
             else ControlEventData.empty()
         )
+        measure_rows = [
+            {
+                **_measure_row(mc, measure.xml_id, measure, start, length),
+                **_repeat_columns(measure),
+                **navigation,
+            }
+            for mc, ((measure, start, length), navigation) in enumerate(
+                zip(printed, _navigation(score.measures)), start=1
+            )
+        ]
+        self._stamp_rows(
+            measure_rows,
+            source,
+            [locate(row["id"], row["mn"]) for row in measure_rows],
+        )
         measures = MeasureData.from_dicts(
-            [
-                {
-                    **_measure_row(mc, measure.xml_id, measure, start, length),
-                    **_repeat_columns(measure),
-                    **navigation,
-                }
-                for mc, ((measure, start, length), navigation) in enumerate(
-                    zip(printed, _navigation(score.measures)), start=1
-                )
-            ],
+            measure_rows,
             unit=TimeUnit.quarters,
             number_type=NumberType.fraction,
             minter=self._id_minter,

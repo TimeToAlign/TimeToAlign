@@ -351,14 +351,15 @@ class MidiLoader(EventLoader):
         One source states its own. Several, whose events share one ticks
         axis, state a fact when every source states it alike; the end of
         track is the latest. A fact the sources state differently is left
-        out, and one ``UserWarning`` names each: a resolution, tempo map
-        or meter of one file is no fact of the others.
+        out, since a resolution, tempo map or meter of one file is no fact
+        of the others, and its key is listed under ``disagreeing_facts``.
+        Nothing warns here: :meth:`MidiStore.create_timeline` warns where a
+        timeline is built without the facts left out.
 
         Returns:
-            The facts of :data:`_AXIS_FACTS` the sources agree on.
-
-        Warns:
-            UserWarning: If the sources state a fact differently.
+            The facts of :data:`_AXIS_FACTS` the sources agree on, and
+            ``disagreeing_facts``, the keys of those they state differently,
+            when there are any.
         """
         sources = self._source_metadata
         if not sources:
@@ -367,6 +368,7 @@ class MidiLoader(EventLoader):
         ends = [meta["end_of_track"] for meta in sources if "end_of_track" in meta]
         if ends:
             axis["end_of_track"] = max(ends)
+        disagreeing: list[str] = []
         for key in _AXIS_FACTS:
             if key == "end_of_track":
                 continue
@@ -374,13 +376,10 @@ class MidiLoader(EventLoader):
             if all(value == values[0] for value in values):
                 if values[0] is not None:
                     axis[key] = values[0]
-                continue
-            warnings.warn(
-                f"{type(self).__name__} holds {len(sources)} sources that state "
-                f"different {key}; the timeline carries none of them",
-                UserWarning,
-                stacklevel=3,
-            )
+            else:
+                disagreeing.append(key)
+        if disagreeing:
+            axis["disagreeing_facts"] = disagreeing
         return axis
 
     @property
@@ -393,13 +392,12 @@ class MidiLoader(EventLoader):
         time-axis facts the sources state (``ticks_per_beat``,
         ``end_of_track``, ``tempo_events``, ``time_signatures``), from
         which it builds the timeline's conversion maps and measure map.
+        A fact several sources state differently is left out, and its key
+        listed under ``disagreeing_facts`` (:meth:`_stated_axis`); reading
+        the store never warns.
 
         Returns:
             A MidiStore with notes and controls separated.
-
-        Warns:
-            UserWarning: If several sources state a fact of the axis
-                differently (the store then holds none for it).
         """
         from timetoalign.loader.midi.store import MidiStore
 
@@ -423,7 +421,8 @@ class MidiLoader(EventLoader):
         units the file states through what it states
         (:meth:`MidiStore.create_timeline`): quarters at the file's
         resolution, seconds from its tempo map, and its bars as a measure
-        map. Every ID it mints comes from the loader's minter.
+        map. It is as long as the file states, its end of track, and
+        locked. Every ID it mints comes from the loader's minter.
 
         Args:
             uid: Unique ID for the parent timeline. Auto-generated if None.
@@ -440,7 +439,8 @@ class MidiLoader(EventLoader):
 
         Warns:
             UserWarning: If several sources state a fact of the axis
-                differently (see :attr:`store`).
+                differently, so that the timeline carries none for it
+                (:meth:`MidiStore.create_timeline`).
         """
         return self.store.create_timeline(
             uid=uid,

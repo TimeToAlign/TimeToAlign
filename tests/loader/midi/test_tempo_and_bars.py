@@ -12,9 +12,10 @@ from typing import Any
 import mido
 import pytest
 
-from timetoalign.core import TimeUnit
+from timetoalign.core import Coordinate, TimeUnit
 from timetoalign.loader.midi import PerformanceMidiLoader, ScoreMidiLoader
 from timetoalign.loader.midi.base import MidiLoader
+from timetoalign.loader.midi.store import MidiStore
 from timetoalign.maps import TableMap
 from timetoalign.timelines import Timeline
 
@@ -77,12 +78,15 @@ def _tempo_map(timeline: Timeline) -> TableMap:
 
 
 def _knots(tempo_map: TableMap) -> list[tuple[int, F]]:
-    """The map's anchors as written: ``to_dict`` reads them back exactly."""
+    """The map's anchors as written: ``to_dict`` reads them back exactly.
+
+    Every seconds value must be written as a Fraction pair of two ints; a
+    float would compare equal to a dyadic Fraction and pass unnoticed.
+    """
     form = tempo_map.to_dict()
-    return [
-        (x, F(*y) if isinstance(y, list) else y)
-        for x, y in zip(form["x_values"], form["y_values"], strict=True)
-    ]
+    for y in form["y_values"]:
+        assert isinstance(y, list) and [type(part) for part in y] == [int, int], y
+    return [(x, F(*y)) for x, y in zip(form["x_values"], form["y_values"], strict=True)]
 
 
 def _rows(timeline: Timeline) -> list[tuple[Any, ...]]:
@@ -161,6 +165,13 @@ class TestTempoMap:
         stamp = timeline.get_timestamp_at(1440)
         exact = stamp.get_unit(TimeUnit.seconds, format="fraction")
         assert exact == F(5, 4) and type(exact) is F
+        # Off the binary grid: 160 * 500000 / (480 * 10**6) = 1/6, which no float
+        # equals. The map computes it exactly; the seconds axis writes it as a float.
+        exact = tempo_map._evaluate(160)
+        assert exact == F(1, 6) and type(exact) is F
+        stamp = timeline.get_timestamp_at(160)
+        written = stamp.get_unit(TimeUnit.seconds, format="fraction")
+        assert written == F(1 / 6) and type(written) is F
 
     def test_default_tempo(
         self, make: Callable[[], MidiLoader], tmp_path: Path
@@ -299,6 +310,11 @@ class TestSpecimens:
             (5, F(25, 2), "4/4", 4, 2),
         ]
         assert _knots(_tempo_map(timeline)) == [(0, 0), (6960, F(29, 4))]
+        # The end of track, one tick after the last note-off (6,959).
+        assert (timeline.length, timeline.is_locked) == (
+            Coordinate(6960, "ticks"),
+            True,
+        )
 
 
 class TestSeveralSources:
@@ -313,17 +329,88 @@ class TestSeveralSources:
         assert _knots(_tempo_map(timeline)) == [(0, 0), (1920, 1)]
         assert _rows(timeline) == [(1, 0, "4/4", 4, 4)]
 
-    def test_disagreeing_tempi(self, tmp_path: Path) -> None:
-        first = _write(tmp_path / "a.mid", 960, tempi=((0, 250_000),))
-        second = _write(tmp_path / "b.mid", 960, tempi=((0, 500_000),))
-        loader = PerformanceMidiLoader().load(first, second)
+    @staticmethod
+    def _disagreeing(tmp_path: Path) -> PerformanceMidiLoader:
+        first = _write(
+            tmp_path / "a.mid", 960, tempi=((0, 250_000),), signatures=((0, 4, 4),)
+        )
+        second = _write(
+            tmp_path / "b.mid", 960, tempi=((0, 500_000),), signatures=((0, 3, 4),)
+        )
+        return PerformanceMidiLoader().load(first, second)
+
+    def test_reading_a_disagreeing_loader_does_not_warn(self, tmp_path: Path) -> None:
+        loader = self._disagreeing(tmp_path)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            repr(loader)
+            len(loader)
+            loader["notes"]
+            store = loader.store
+        assert store.metadata["disagreeing_facts"] == [
+            "tempo_events",
+            "time_signatures",
+        ]
+
+    def test_disagreeing_facts(self, tmp_path: Path) -> None:
+        loader = self._disagreeing(tmp_path)
         with pytest.warns(UserWarning) as caught:
             timeline = loader.create_timeline()
         assert [str(warning.message) for warning in caught] == [
-            "PerformanceMidiLoader holds 2 sources that state different "
-            "tempo_events; the timeline carries none of them"
+            "The 2 MIDI sources of this timeline state different "
+            "tempo_events, time_signatures; the timeline carries none of them"
         ]
+        assert caught[0].filename == __file__
         quarters = timeline.get_conversion_map(TimeUnit.quarters)
         assert quarters is not None and quarters(480) == 1
         assert timeline.get_conversion_map(TimeUnit.seconds) is None
-        assert _rows(timeline) == [(1, 0, "4/4", 4, 2)]
+        assert timeline.measure_map is None
+
+    def test_no_maps_no_warning(self, tmp_path: Path) -> None:
+        loader = self._disagreeing(tmp_path)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            timeline = loader.create_timeline(attach_cmaps=False)
+        assert timeline.n_conversion_maps == 0
+
+
+@pytest.mark.parametrize("make", LOADERS, ids=LOADER_IDS)
+class TestLength:
+    """The timeline is as long as the file's end of track, and locked."""
+
+    @pytest.mark.parametrize("attach_cmaps", [True, False])
+    def test_end_of_track_after_the_last_note(
+        self, make: Callable[[], MidiLoader], tmp_path: Path, attach_cmaps: bool
+    ) -> None:
+        loader = make().load(_write(tmp_path / "long.mid", 1920))
+        timeline = loader.create_timeline(attach_cmaps=attach_cmaps)
+        assert (timeline.length, timeline.is_locked) == (
+            Coordinate(1920, "ticks"),
+            True,
+        )
+
+    def test_the_bars_end_with_the_timeline(
+        self, make: Callable[[], MidiLoader], tmp_path: Path
+    ) -> None:
+        timeline = _timeline(make, _write(tmp_path / "long.mid", 1920))
+        assert timeline.measure_map is not None
+        assert timeline.measure_map.total_actual_length == 4
+
+    def test_the_lock_bites(
+        self, make: Callable[[], MidiLoader], tmp_path: Path
+    ) -> None:
+        timeline = _timeline(make, _write(tmp_path / "long.mid", 1920))
+        row = {"id": "late", "event_type": "Onset", "instant": 1921}
+        with pytest.raises(ValueError):
+            timeline.add_events([row])
+        assert timeline.length == Coordinate(1920, "ticks")
+
+    def test_a_store_without_end_of_track(
+        self, make: Callable[[], MidiLoader], tmp_path: Path
+    ) -> None:
+        loader = make().load(_write(tmp_path / "long.mid", 1920))
+        timeline = MidiStore.from_data(loader.events).create_timeline()
+        assert (timeline.length, timeline.is_locked) == (
+            Coordinate(480, "ticks"),
+            False,
+        )

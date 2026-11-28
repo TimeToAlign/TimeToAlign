@@ -88,17 +88,32 @@ class TestAudio:
         )
 
 
-class TestInferredLengthsStayUnlocked:
+class TestMidiStatesItsLength:
+    """The end of track, read off the bytes with mido (README)."""
+
     def test_performance_midi(self) -> None:
         loader = PerformanceMidiLoader.from_file(
             MIDI / "performance" / "rachmaninoff_perf.mid"
         )
-        assert loader.create_timeline().is_locked is False
+        timeline = loader.create_timeline()
+        assert (timeline.is_locked, timeline.length) == (
+            True,
+            Coordinate(11537, "ticks"),
+        )
 
-    def test_score_midi(self) -> None:
-        loader = ScoreMidiLoader.from_file(MIDI / "score" / "beethoven_op18.mid")
-        assert loader.create_timeline().is_locked is False
+    @pytest.mark.parametrize("parser", ["partitura", "mido"])
+    def test_score_midi(self, parser: str) -> None:
+        loader = ScoreMidiLoader(parser=parser).load(
+            MIDI / "score" / "beethoven_op18.mid"
+        )
+        timeline = loader.create_timeline()
+        assert (timeline.is_locked, timeline.length) == (
+            True,
+            Coordinate(534240, "ticks"),
+        )
 
+
+class TestInferredLengthsStayUnlocked:
     def test_score_without_measures(self) -> None:
         timeline = Ms3Loader.from_file(NOTES, auto_discover=False).create_timeline()
         assert timeline.measure_map is None

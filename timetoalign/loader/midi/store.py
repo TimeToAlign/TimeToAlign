@@ -179,8 +179,16 @@ class MidiStore(EventStore):
         measure map (:meth:`_measure_map`), which the ticks axis reaches
         through a ticks → quarters ``LinearMap`` of its own: the timeline
         writes ``measure_maps`` and the ``ChainMap`` reading them in its
-        manifest. Its length stays what its events give; the measure map
-        may reach beyond it, to the end of track.
+        manifest.
+
+        Where the store states an end of track (``end_of_track``), the
+        timeline is as long as the file states: its length is the end of
+        track, or the last event's end should an event end after it, and
+        the timeline is then locked, so that content added later never
+        lengthens it silently. Without an end of track it keeps the length
+        its last event gives and stays unlocked. The length does not
+        depend on *attach_cmaps*: it is the file's extent, not a
+        conversion.
 
         Args:
             uid: Unique ID for the parent timeline. Auto-generated if None.
@@ -196,8 +204,14 @@ class MidiStore(EventStore):
 
         Returns:
             The ticks timeline.
+
+        Warns:
+            UserWarning: With *attach_cmaps*, if the store lists facts its
+                sources state differently (``disagreeing_facts``, see
+                :meth:`MidiLoader.store
+                <timetoalign.loader.midi.base.MidiLoader.store>`): one
+                warning, naming them, since the timeline carries none.
         """
-        from timetoalign.maps.convenience import TicksToQuarters
         from timetoalign.timelines.factory import create_timeline_from_bundle
 
         timeline = create_timeline_from_bundle(
@@ -209,8 +223,33 @@ class MidiStore(EventStore):
             flatten=flatten,
             minter=minter,
         )
-        if not attach_cmaps:
-            return timeline
+        if attach_cmaps:
+            self._attach_axis(timeline, minter=minter)
+        # After the maps, as a score's measures: the stated extent, locked.
+        end = self.metadata.get("end_of_track")
+        if end is not None:
+            stated = timeline.length
+            if stated is None or stated.value < end:
+                timeline.length = end
+            timeline.lock()
+        return timeline
+
+    def _attach_axis(self, timeline: Timeline, *, minter: IdMinter | None) -> None:
+        """Attach the conversion maps and the measure map the store states.
+
+        Warns, attributed to the caller, once if the store lists facts its
+        sources state differently, naming them.
+        """
+        from timetoalign.maps.convenience import TicksToQuarters
+        from timetoalign.maps.interval import _warn_at_caller
+
+        disagreeing = self.metadata.get("disagreeing_facts")
+        if disagreeing:
+            n_sources = len(self.metadata.get("sources", ()))
+            _warn_at_caller(
+                f"The {n_sources} MIDI sources of this timeline state different "
+                f"{', '.join(disagreeing)}; the timeline carries none of them"
+            )
         for cmap in self.get_cmaps(minter=minter).values():
             timeline.add_conversion_map(cmap)
         measure_map = self._measure_map(minter=minter)
@@ -221,7 +260,6 @@ class MidiStore(EventStore):
                 uid=None if minter is None else minter.mint(CMAP_PREFIX),
             )
             timeline.add_measure_map(measure_map, to_quarters=to_quarters)
-        return timeline
 
     def get_cmaps(self, *, minter: IdMinter | None = None) -> dict[str, ConversionMap]:
         """Get the ConversionMaps the MIDI file states about its ticks axis.

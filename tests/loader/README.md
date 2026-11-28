@@ -1389,11 +1389,18 @@ loader family, each on a real specimen:
 * **The lock bites**: an onset one sample past the end of the samples
   timeline is refused (`ValueError`) and the length stays the file's; with
   `allow_expansion=True` it is added and the length becomes that sample.
-* **Inferred lengths stay unlocked**: `PerformanceMidiLoader`
-  (`rachmaninoff_perf.mid`), `ScoreMidiLoader` (`beethoven_op18.mid`), a
-  `TsvLoader` over WoO 71's notes TSV, and `Ms3Loader` given the notes TSV
-  alone (no measure structure: `measure_map` is `None`). Each length is the
-  last event's end, so none is locked.
+* **MIDI files state their length**: the end of track, the largest sum of
+  one track's delta times (read with mido, not from the loader). Each MIDI
+  loader's timeline has that length and is locked: `PerformanceMidiLoader`
+  on `rachmaninoff_perf.mid`, 11,537 ticks (its last note-off is the end of
+  track too), and `ScoreMidiLoader` on `beethoven_op18.mid`, 534,240 ticks
+  with either parser, longer than its last note-off at 532,776. The rule
+  and its synthetic cases are in `tests/loader/midi/README.md`, "Timeline
+  length".
+* **Inferred lengths stay unlocked**: a `TsvLoader` over WoO 71's notes
+  TSV, and `Ms3Loader` given the notes TSV alone (no measure structure:
+  `measure_map` is `None`). Each length is the last event's end, so
+  neither is locked.
 * **A locked recording gives children from its Regions.** On the
   `Bass Kick.mp3` samples timeline, a Region over its first half
   (`[0, n_samples // 2)`) gives a child at offset 0 of that length in

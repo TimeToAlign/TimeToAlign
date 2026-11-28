@@ -17,7 +17,7 @@ contain those three score-only columns.
 | `test_harmonization.py` | Canonical same-file comparisons between performance and score loaders. |
 | `test_score.py` | Beethoven score loading, empty-file failure, the wider score schema, and the end of track of both parsers. |
 | `test_store.py` | Base and score event-data schemas, nullability, construction, and inheritance. |
-| `test_tempo_and_bars.py` | The tempo map, the bars and the stated facts of synthetic and real files, on all three loaders. |
+| `test_tempo_and_bars.py` | The tempo map, the bars, the timeline's length and the stated facts of synthetic and real files, on all three loaders. |
 | `test_bundle.py` | `MidiStore` splitting, empty stores, extension, mapping protocol, summaries, and timelines. |
 | `conftest.py` | Downloaded MIDI specimen paths and synthetic shared event data. |
 
@@ -34,8 +34,9 @@ cover.
   `[0.0, 240.0, 480.0]`, ends `[None, None, 960.0]`, coordinate range `(0.0, 960.0)`, timeline
   length 960, and group ID `perf:dlt_1`.
 - `supra_raw.mid` produces 30,096 total events: 30,092 notes and 4 control changes. Its coordinate
-  range is `(0.0, 277776.0)`, its created timeline has length 277776, and it constructs a
-  `TimelineGroup` named `supra`.
+  range is `(0.0, 277776.0)`, its created timeline has length 277776 (its end of track, which is
+  also its last note-off; see "Timeline length"), and it constructs a `TimelineGroup` named
+  `supra`.
 
 ## Same-file harmonization
 
@@ -164,8 +165,14 @@ mido in `tmp_path`, and the fact that what is read is written back.
 
 **Tempo map.** The seconds at a tick are the sum over the tempo segments before it of
 Δticks · µs / (ppq · 10⁶). The map's knots are tick 0, every tempo change and the end of track,
-its seconds exact `Fraction`s, so the test compares the knots with `==` on `Fraction` literals,
-and a float slipping in anywhere fails on type as well as value.
+its seconds exact `Fraction`s. Equality alone cannot tell a float from a `Fraction` at the dyadic
+values of these files (`1.5 == Fraction(3, 2)` holds), so the test checks the type as well: every
+seconds value the map writes must be a `[numerator, denominator]` pair of integers, never a JSON
+number, before the knots are compared with `==` on `Fraction` literals. One query lies off the
+binary grid: 160 ticks on the first file are 160 · 500000 / (480 · 10⁶) = 1/6 s, which no float
+equals. The map's own arithmetic (`_evaluate`, the un-expressed lane every reader of a map goes
+through before writing the result on its target axis) must give exactly `Fraction(1, 6)`, of type
+`Fraction`; an interpolation in doubles would give a dyadic ratio near it and fail.
 
 | File | Knots (tick, seconds) | Checks |
 |---|---|---|
@@ -173,11 +180,14 @@ and a float slipping in anywhere fails on type as well as value.
 | ppq 480, no `set_tempo`, end 960 | (0, 0), (960, 1) | the SMF default 500,000 µs per quarter: 960 · 500000 / 480·10⁶ = 1 |
 
 Past the end of track the map extrapolates linearly with the tempo in force there: 2,400 ticks →
-3/2 + 480 · 250000 / 480·10⁶ = 7/4 s on the first file. The public call writes the seconds
-axis's own number type (`float`: 0.5, 1.25, 1.75, each exact in binary); the exact values are
-the anchors, which the manifest writes as `[numerator, denominator]` pairs (`[3, 2]`), and the
-test reads them there, and the timestamp at 1,440 ticks answers `Fraction(5, 4)` seconds when
-asked for a fraction.
+3/2 + 480 · 250000 / 480·10⁶ = 7/4 s on the first file. The public answers are written in the
+seconds axis's own number type, `float`, as every map into seconds answers (the map declares no
+other, since the manifest writes no number type for a map and a restored map would answer
+otherwise): the call gives 0.5, 1.25 and 1.75, each exact in binary, and a timestamp asked for a
+fraction gives the exact value of that float, `Fraction(5, 4)` at 1,440 ticks but
+`Fraction(1/6)` (the double nearest 1/6, not 1/6) at 160 ticks; the test pins both, so that a
+change of this rule shows. The exact values are the anchors, which the manifest writes as
+`[numerator, denominator]` pairs (`[3, 2]`), and the test reads them there.
 
 **Bars.** Bars run from tick 0, each the length of its signature (numerator · 4 / denominator
 quarters); every time signature message starts a new bar, so a bar it interrupts keeps the length
@@ -206,11 +216,21 @@ dictionary: nothing the file states is lost on the way.
 timeline states a fact of that axis only where every file states it alike; the end of track is
 the latest. Two files at 480 ticks per quarter, both at 250,000 µs from tick 0, ending at 960 and
 1,920, give the knots (0, 0), (1920, 1) and one bar (1,920 ticks are four quarters), without a
-warning. Two files that state 250,000 and 500,000 µs give no seconds map at all (falling back to
-the default tempo would state a tempo neither file states) and exactly one `UserWarning`, whose
-text names the loader, the two sources and `tempo_events`; the facts they share still hold: the
-quarters map (480 ticks → 1 quarter) and the one 4/4 bar, cut to 2 quarters by the end of
-track at 960.
+warning. Two files that state 250,000 and 500,000 µs, and 4/4 and 3/4 at tick 0, give no seconds
+map and no measure map at all (falling back to the default tempo or meter would state one neither
+file states); the fact they share still holds: the quarters map (480 ticks → 1 quarter).
+
+The disagreement is told once, where it costs something: when a timeline is built without the
+facts left out. Reading the loader does not warn: `repr(loader)`, `len(loader)`,
+`loader["notes"]` and `loader.store` (which records the keys under `disagreeing_facts`, here
+`["tempo_events", "time_signatures"]`) emit no warning at all, since a notebook displaying a
+loader would otherwise warn on every display. `create_timeline()` emits exactly one
+`UserWarning`, whose text names the number of sources and both keys
+(`The 2 MIDI sources of this timeline state different tempo_events, time_signatures; the
+timeline carries none of them`), attributed to the test's own line (the warning's `filename` is
+the test module): the user sees the call that built the timeline, not a line of the library.
+With `attach_cmaps=False` the timeline carries no maps anyway, so nothing is left out because the
+sources disagree, and no warning is emitted.
 
 **Real file.** `score/beethoven_op18.mid` (480 ticks per quarter) is checked against values read
 from its bytes, not from the loader: the test scans the file's messages with mido itself and the
@@ -227,6 +247,40 @@ signatures at one tick (1/4, 2/2, 1/4 at 30,720, quarter 64) leave the last in f
 by hand five bars, `(1, 0, 1/8, 1/2, 1/2)`, `(2, 1/2, 4/4, 4, 4)`, `(3, 9/2, …)`,
 `(4, 17/2, …)`, `(5, 25/2, 4/4, 4, 2)`, and a seconds map of two knots, (0, 0) and
 (6960, 29/4).
+
+## Timeline length
+
+A MIDI file states its extent: its end of track (above). The timeline a MIDI loader creates is
+as long as the file states, the end of track, and locked, as a score whose measures state its
+length is (`tests/loader/README.md`, "Loaded timelines are locked where the source states their
+length"): content added later must not lengthen a stated extent silently. The length is the
+larger of the end of track and the last event's end; in a valid file no event ends after its
+track does, so it is the end of track. It does not depend on `attach_cmaps`: the extent is a fact
+of the file, not a conversion. The bars end there too, so the measure map's total actual length
+is the timeline's length.
+
+What proves it is a file whose end of track lies after its last note, so the two candidate
+lengths differ, on all three loaders: the synthetic file above with its note from 0 to 480 and
+its meta track ending at 1,920 gives a timeline of length 1,920, locked, with and without
+`attach_cmaps`, and the bars' total length is 4 quarters = 1,920 / 480. The lock bites: an event
+starting at 1,921 is refused with `ValueError`, and the length stays 1,920. A `MidiStore` built
+from the events alone (`MidiStore.from_data(loader.events)`, no metadata) states no end of track:
+its timeline keeps the length its last event gives, 480, and stays unlocked.
+
+The real files' lengths are derived from their bytes, not from the loader: the end of track of a
+file is the largest, over its tracks, of the sum of the track's delta times, read with mido.
+
+| File | Ticks per quarter | End of track | Last note-off | Timeline length |
+|---|---|---|---|---|
+| `performance/supra_raw.mid` | 570 | 277,776 | 277,776 | 277,776 |
+| `score/beethoven_op18.mid` | 480 | 534,240 | 532,776 | 534,240 |
+| `score/beethoven_mtd.mid` | 480 | 6,960 | 6,959 | 6,960 |
+
+`supra_raw.mid` ends its track with its last note-off, so its pinned length (277,776, in
+"Performance loader" above) is unchanged. `beethoven_mtd.mid` closes its track one tick after its
+last note: its length is 6,960 = 29/2 quarters · 480, the bars' total (1/2 + 3 · 4 + 2 quarters).
+`beethoven_op18.mid` and `rachmaninoff_perf.mid` (11,537, equal to its last note-off) are pinned
+in `tests/loader/test_loaded_timelines_locked.py`, `beethoven_mtd.mid` with its bars here.
 
 ## Score loader and stores
 

@@ -37,11 +37,11 @@
 # The manifest names the registry and the MatchClaim table in its
 # `resources`. Several manifests can share their tables in a **package**: a
 # folder whose `package.yaml` lists the manifests and the tables: the
-# registry a folder of parts (one part of the non-event rows and one part
-# per extraction), the Extraction table one file, and the MatchClaim table
-# and every pre-parsed table a folder `tables/<Type>/` of the rows of every
-# manifest. An ID combined with the location of a manifest, or of the
-# package, resolves to what it names.
+# registry one Parquet file holding every row of every manifest, the
+# Extraction table one file, and the MatchClaim table and every pre-parsed
+# table a folder `tables/<Type>/` of the rows of every manifest. An ID
+# combined with the location of a manifest, or of the package, resolves to
+# what it names.
 #
 # This guide writes a bundle with its tables, resolves IDs through its
 # manifest, builds a package of two bundles with `Package`, opens one of its
@@ -293,8 +293,7 @@ read.to_file(copy / "bach.yaml")
 # `write_bundle(bundle, url)` adds a bundle as the manifest at `url`,
 # relative to the package's root. A new package only stages the bundles;
 # `to_file()` writes them all at once, then `package.yaml`, then the
-# registry's part of the non-event rows, into a folder that holds no
-# package yet.
+# registry's non-event rows, into a folder that holds no package yet.
 
 # %%
 package = Package(name="Two pieces")
@@ -307,9 +306,10 @@ files(root)
 
 # %% [markdown]
 # A package writes every event type of its bundles, with no `events=`
-# needed. The registry is the folder `registry/`: `non_events.parquet`,
-# the non-event rows, and one part per extraction, named after it. Every other table has one folder
-# under `tables/` but the Extraction table, one file; each write adds one
+# needed. The registry is one file at the root, `registry.parquet`, holding
+# every row: the non-event rows first, then the event rows of both pieces.
+# Every other table has one folder under `tables/` but the Extraction table,
+# one file; each write adds one
 # file per pre-parsed type and one of MatchClaims, named from its content,
 # holding the rows of every bundle it writes. `package.yaml` lists the
 # manifests and the tables.
@@ -319,20 +319,22 @@ print(package_path.read_text(encoding="utf-8"), end="")
 
 # %% [markdown]
 # Each manifest names the registry and the MatchClaim folder, relative to
-# itself, with the timelines whose rows it keeps. A folder has no size and
-# no digest: the rows of other manifests share its files.
+# itself, with the timelines whose rows it keeps. Neither has a size or a
+# digest: the rows of other manifests share them.
 
 # %%
 show(root / "bach" / "manifest.yaml", "resources")
 
 # %% [markdown]
-# Each registry part holds the rows of one extraction, here one per score
-# and recording; the one file of notes holds the notes of both scores, and
-# the one file of MatchClaims the claims of both pieces.
+# The registry holds the event rows of the four timelines of both pieces;
+# the one file of notes holds the notes of both scores, and the one file of
+# MatchClaims the claims of both pieces.
 
 # %%
 {
-    "registry": values_per_file(root / "registry", "timeline_id"),
+    "registry": sorted(
+        {row["timeline_id"] for row in event_rows(root / "registry.parquet")}
+    ),
     "Note": values_per_file(root / "tables" / "Note", "id"),
     "MatchClaim": values_per_file(root / "tables" / "MatchClaim", "timeline_a_id"),
 }
@@ -420,7 +422,7 @@ except ValueError as refusal:
 # package: the last note, which the detector missed, relates to the third
 # onset. `write_bundle()` on a package lying on disk writes at once and
 # replaces the manifest at that URL. The rows of its timelines leave the
-# files holding them: its registry parts are rewritten with its rows, the
+# files holding them: the registry is rewritten whole with its rows, the
 # pre-parsed and MatchClaim files keep the other manifests' rows alone, and
 # one new file per type holds the bundle's rows. As with a single
 # MatchClaim table, every claim the package held for the manifest must
@@ -451,10 +453,10 @@ opened.write_bundle(from_package, "bach/manifest.yaml")
 }
 
 # %% [markdown]
-# A bundle read from a package names the package's folders. `to_file()`
-# writes a manifest's tables as single files and refuses to write rows into
-# a folder, which other manifests share; it names `Package.write_bundle`
-# instead.
+# A bundle read from a package names the package's tables, which other
+# manifests share. `to_file()` writes a manifest's tables as single files
+# beside it and refuses to write into a package's tables; it names
+# `Package.write_bundle` instead.
 
 # %%
 elsewhere = FILES / "elsewhere"

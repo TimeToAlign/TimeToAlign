@@ -2259,11 +2259,12 @@ the time of the run, compared with the extraction the bundle holds.
 ### Several resources of one type, and folders (`TestSeveralResourcesOfAType`, `TestFolderResources`)
 
 A manifest may name several resources of one table type, each listing its
-own timelines, and a resource whose URL ends in `/` names a folder whose
-files the manifests of a package may share. The library reads every
-resource of a type and, from a folder, only the rows of the timelines the
-resource lists. It writes one table per type and writes nothing into a
-folder.
+own timelines. In a package its manifests share the registry, one Parquet
+file, and the MatchClaim table, a folder (a URL ending in `/`). The library
+reads every resource of a type and, from a package's table, only the rows of
+the timelines the resource lists. It writes one table per type, never a
+package's table from a manifest alone, and a registry naming a folder is
+neither read nor written: the format has none.
 
 - **Two Registry resources are both read.** The synthetic package written,
   then its registry split by timeline into `pcm.parquet` (the non-event
@@ -2280,9 +2281,9 @@ folder.
   URL); the Registry entry is the one entry `resource_p`, timelines
   `["audio", "pcm"]`, size and SHA-256 its file's; `resource_a` is gone. A
   reader that kept one entry alone would hold two or three Projections.
-- **A folder holds the rows of two manifests; each reads its own.**
+- **A package's tables hold the rows of two manifests; each reads its own.**
   TimeToShare's package fixture `shared`: `bach` and `handel` both name
-  `../registry/` and `../tables/MatchClaim/`. Its `expected.yaml` states
+  `../registry.parquet` and `../tables/MatchClaim/`. Its `expected.yaml` states
   each resource's row IDs, and the bundles read hold exactly those: `bach`
   the MatchClaims `claim_1`, `claim_2`, `claim_5` and, on `dpt_1`, the
   Projections `projection_1` (0), `projection_2` (44100), `projection_7`
@@ -2297,16 +2298,28 @@ folder.
   the ID `claim_10` and `timeline_b_id` `clt_2` (Handel's score). Reading
   `bach` the row is refused: a `KeyError` naming `clt_2`; reading `handel`
   likewise, naming `dpt_1`.
-- **A bundle read with a folder resource is not written alone.** Each of
-  the two bundles read, written into a fresh directory, raises
-  `NotImplementedError` naming its first folder resource of a table type
-  it writes and the way to write it, `The resource 'resource_1' names the
-  folder '../tables/MatchClaim/' for its MatchClaim rows:
-  AlignmentBundle.to_file writes a manifest's tables as single files beside
-  it and does not write into a folder, whose files other manifests may
-  share; write the bundle into its package with Package.write_bundle.`;
-  with that resource left out, the same sentence names `resource_2`, the
-  folder `'../registry/'` and its Registry rows; the directory stays empty.
+- **A bundle read through a package is not written alone.** Each of the
+  two bundles read, written into a fresh directory, raises
+  `NotImplementedError` naming its first package table of a type it writes
+  and the way to write it, `The resource 'resource_1' names the folder
+  '../tables/MatchClaim/' for its MatchClaim rows: AlignmentBundle.to_file
+  writes a manifest's tables as single files beside it and does not write
+  into a package's tables, which other manifests may share; write the
+  bundle into its package with Package.write_bundle.`; with that resource
+  left out, the same sentence names `resource_2`, the package table
+  `'../registry.parquet'` and its Registry rows (a file, which a write
+  alone would replace with the bundle's rows, losing the other
+  manifest's); the directory and its parent hold nothing new.
+- **A registry naming a folder is not read.** TimeToShare's rejection
+  `registry_folder` (the shared rows moved to `registry/registry.parquet`,
+  `package.yaml` and the manifests naming `registry/` and `../registry/`):
+  `AlignmentBundle.from_file` of `bach` raises `ValueError` `The registry
+  '../registry/' names a folder: a registry is one Parquet file, which
+  holds every row.`; `Package.from_file` opens the package, and its
+  `bundle("bach/manifest.yaml")` raises the same; `write_bundle` of a bundle
+  into the opened package raises it for `'registry/'`, every file keeping
+  its bytes. A bundle built in code naming a Registry folder is refused by
+  `to_file` the same way, before any file.
 
 ### Conformance with TimeToShare's fixture package
 
@@ -2350,8 +2363,8 @@ by hand in TimeToShare's emission script.
 
 Every event a bundle's timelines hold can be written into the registry and
 the pre-parsed table of its kind, and a package is a folder of manifests
-sharing one registry (`registry/`: a part of its non-event rows and one part
-per extraction), one Extraction table and one folder of files per pre-parsed
+sharing one registry (`registry.parquet` at its root: one file holding
+every row, the non-event rows first), one Extraction table and one folder of files per pre-parsed
 kind and of MatchClaims, which `package.yaml` lists. A manifest never names
 an event ID: the events lie in the tables alone. What would show the
 feature broken: an event left out or written into the manifest, a further
@@ -2500,8 +2513,9 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
   pre-parsed table, states `timetoshare:type` (`Registry`, `Note`) and
   `timetoshare:version` `0.2.0` and nothing else in its schema metadata;
   every column chunk is zstd with statistics and with an offset and a
-  column index (the page index); a part of a package's registry declares
-  `timeline_id` (its column 3) as its sorting column. A table of 65,537
+  column index (the page index). A package's registry, written by
+  TimeToShare's `write_registry`, states `timetoshare:type` `Registry` and
+  `timetoshare:version` `0.2.0` and nothing else. A table of 65,537
   Beat rows written (`_write_package_file`) writes two row groups, of
   65,536 and 1 rows. A table without its type in the metadata is refused
   (`A package table names its type in its metadata ('timetoshare:type').`)
@@ -2556,30 +2570,33 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
   name="Pieces")`, `write_bundle(a, "a/manifest.yaml")`,
   `write_bundle(b, "b/manifest.yaml")`, `to_file(dir/"package.yaml")`: the
   folder holds exactly `package.yaml`, both manifests, the registry
-  `registry/non_events.parquet` and one part per extraction,
-  `registry/<extraction ID>.parquet` (four: `a_score`'s, `a_pcm`'s,
-  `a_seg`'s and `b_score`'s), `tables/extractions.parquet` (the four), and
+  `registry.parquet`, `tables/extractions.parquet` (the four extractions,
+  `a_score`'s, `a_pcm`'s, `a_seg`'s and `b_score`'s), and
   one file per pre-parsed kind and of MatchClaims,
   `tables/<Type>/part_<13 base-36 characters>.parquet` (`Beat`, `Box`,
   `MatchClaim`, `Note`, `Projection`), the Beat and the Note file holding
   both bundles' rows. `package_problems` reports nothing. `package.yaml`
-  lists the two manifests (YAML) and the entries `Registry` `registry/`,
+  lists the two manifests (YAML) and the entries `Registry` `registry.parquet`,
   `Extraction` `tables/extractions.parquet`, then one folder per kind in
   the order first written, Parquet; `Package.from_file` reads the same
-  `manifests` and `tables`. Each manifest's resources name `../registry/`
+  `manifests` and `tables`. Each manifest's resources name `../registry.parquet`
   (its timelines holding events) and `../tables/MatchClaim/` (its
   MatchClaims' timelines; `a` alone), Parquet, without size or integrity,
   and each bundle's `resources` are then its manifest's. Every file states
-  its type and the version `0.2.0`; each registry part holds its
-  extraction's rows alone, the part of the non-event rows exactly
-  TimeToShare's `non_event_rows` of the package. Read through `Package.bundle`, each
+  its type and the version `0.2.0`. The registry holds the non-event rows
+  first, exactly TimeToShare's `non_event_rows` of the package, then the
+  event rows in the format's order, by `timeline_id`, exact `start` and `id`
+  (probed once, pinned: `a_bar` `a_n3` at 17/2 on its root's axis;
+  `a_pcm` `a_o1`; `a_score` `a_n1` and its Projection, both at 0, by ID,
+  then `a_b1` at 1/3 and `a_n2` at 3/2; `a_seg` `a_rect`; `b_score` `b_n1`
+  at 0 and `b_b1` at 1/2), each row naming its root's extraction. Read through `Package.bundle`, each
   manifest's timelines hold the rows written (keyed by ID) and `a` its
   MatchClaim.
 - **One file per kind, however many bundles.** `e` (`e_score`, quarters,
   fraction, length 4, the Note `e_n1` at 0 and the Beat `e_b1` at 1/4),
   `a` and `b` staged in this order into a new package: exactly one file
-  per pre-parsed kind and of MatchClaims, and one registry part per
-  extraction (five). The Note file's rows are the bundles' in the order
+  per pre-parsed kind and of MatchClaims, and the one registry file (its
+  event rows naming the five extractions). The Note file's rows are the bundles' in the order
   staged, each bundle's in its registry's order: `e_n1`; `a_n3`, `a_n1`,
   `a_n2` (`a_score`'s extraction) and `a_o1` (`a_pcm`'s), the two
   extractions in the order of their IDs; `b_n1`. Staging `a` again at its
@@ -2587,8 +2604,8 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
 - **Re-writing one bundle keeps the other's rows.** The package opened
   from its file; `a` read through it, a Note `a_n4` (start 2) added to
   `a_score`, written back at `a/manifest.yaml` (at once: the package lies
-  on disk): `b`'s registry part keeps its bytes, `a`'s parts hold `a`'s
-  rows (`a_n4` among them, in `a_score`'s part, rewritten whole); the Beat
+  on disk): the registry, rewritten whole, holds `b`'s event rows value
+  for value as before and `a`'s rows (`a_n4` among them); the Beat
   and the Note file of both keep their names and hold `b`'s rows alone
   (`b_b1`; `b_n1`), the other three former files (`a`'s rows alone) are
   gone, `a`'s five new files beside them; the Extraction table holds the
@@ -2598,11 +2615,11 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
   count and SHA-256.
 - **A file shared with another manifest is rewritten, its rows kept.**
   TimeToShare's fixture `packages/0.2.0/shared` copied; `bach` read through
-  the package and written back at its URL: the registry part of `bach`'s
-  extraction, `registry/extraction_1.parquet`, is rewritten whole with the
-  rows read back (`projection_1`, `projection_2`, `projection_9`,
-  `projection_7`, sorted by exact start), `handel`'s part
-  `extraction_2.parquet` keeps its bytes; the pre-parsed Projection files
+  the package and written back at its URL: the registry is rewritten whole,
+  `bach`'s event rows those read back (`projection_1`, `projection_2`,
+  `projection_9`, `projection_7`, sorted by exact start), `handel`'s
+  event rows value for value as the fixture holds them; the pre-parsed
+  Projection files
   keep only `handel`'s rows in their order (`tables/Projection/part_a.parquet`
   `projection_5`, `projection_3`, `projection_4`; `part_b.parquet`
   `projection_6`, `projection_8`), the MatchClaim file `claim_3`,
@@ -2617,9 +2634,8 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
   lists `bach/manifest.yaml` and `handel/manifest.yaml`, the registry, the
   Extraction table and the two folders; each manifest read through it holds
   the MatchClaims and Projections `expected.yaml` states.
-- **A single shared registry is filtered.** The fixture copied, the
-  registry's parts joined into one file `registry.parquet`, `package.yaml`
-  and both manifests naming it: through `Package.bundle` each manifest
+- **A shared registry is filtered.** The fixture's registry is one file
+  holding both manifests' rows: through `Package.bundle` each manifest
   reads exactly its rows (as above); the same manifest read alone
   (`AlignmentBundle.from_file` of a copy of it outside the package) refuses
   the other manifest's rows, the registry check's `unknown_timeline`.
@@ -2627,7 +2643,7 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
   bundle `c` holding a Note `a_n1` on `c_score` (`The event 'a_n1' of
   timeline 'c_score' of the manifest 'c/manifest.yaml' cannot join the
   package: its ID is held by the event of timeline 'a_score' in
-  'registry/<a_score's extraction>.parquet'; nothing is renamed.`); a
+  'registry.parquet'; nothing is renamed.`); a
   bundle holding a timeline `a_pcm` (`timeline 'a_pcm' of the manifest
   'c/manifest.yaml' cannot join the package: its id 'a_pcm' is already held
   by a timeline of the manifest 'a/manifest.yaml'`); a MatchClaim of `a`'s
@@ -2712,12 +2728,17 @@ The bundle `b` holds `b_score` (quarters, fraction, length 8) with the Note
   more ...`). The package then lists no manifest and stays unwritten.
 - **A write cut short leaves no hidden file once the package is opened.**
   A package of `a` written; a hidden part `.part_<13>.parquet` placed in
-  `tables/Note/`, in a folder of a new type `tables/Chord/` and in
-  `registry/`: `Package.from_file` removes all three, every other file
-  keeps its bytes and the package check reports nothing.
+  `tables/Note/` and in a folder of a new type `tables/Chord/`, and the
+  hidden names of the registry, `.registry.parquet` and
+  `..registry.parquet`, beside it: `Package.from_file` removes all four,
+  every other file keeps its bytes and the package check reports nothing.
 - **A bundle of the package is written through it.** A bundle read through
-  `Package.bundle` and written with `to_file` alone is refused
-  (`NotImplementedError`, naming its folder and `Package.write_bundle`).
+  `Package.bundle`, a bundle written into a package with `write_bundle`
+  (its resources then the manifest's), and a merge of a bundle read
+  through the package (`AlignmentBundle.from_bundles`), each written with
+  `to_file(events=True)` alone (so that it writes its registry), are refused (`NotImplementedError`, naming the package
+  table `'../registry.parquet'` and `Package.write_bundle`), nothing
+  written.
 
 - **A column two manifests hold in two widths is widened.** The bundle of
   `s1` (`velocity` 100 as `int8`) at `v1/manifest.yaml` and the bundle of

@@ -39,6 +39,7 @@ from timetoalign.alignment import (
     MatchClaim,
     MatchClaimField,
     MatchGraph,
+    Package,
 )
 from timetoalign.core import (
     NOMATCH,
@@ -2265,7 +2266,7 @@ class TestFolderResources:
                     "resource_2",
                     "Registry",
                     timelines[1],
-                    "../registry/",
+                    "../registry.parquet",
                     PARQUET_MEDIA_TYPE,
                 ),
             ]
@@ -2295,18 +2296,18 @@ class TestFolderResources:
             )
 
     @pytest.mark.parametrize("manifest", ["bach", "handel"])
-    def test_a_bundle_read_with_a_folder_is_not_written(
+    def test_a_bundle_read_through_a_package_is_not_written_alone(
         self, tmp_path: Path, manifest: str
     ) -> None:
         bundle = AlignmentBundle.from_file(_SHARED / manifest / "manifest.yaml")
         target = tmp_path / "out"
         target.mkdir()
 
-        def refusal(resource: str, url: str, kind: str) -> str:
+        def refusal(resource: str, held: str, url: str, kind: str) -> str:
             return (
-                f"The resource '{resource}' names the folder '{url}' for its {kind} "
+                f"The resource '{resource}' names the {held} '{url}' for its {kind} "
                 "rows: AlignmentBundle.to_file writes a manifest's tables as single "
-                "files beside it and does not write into a folder, whose files "
+                "files beside it and does not write into a package's tables, which "
                 "other manifests may share; write the bundle into its package "
                 "with Package.write_bundle."
             )
@@ -2314,11 +2315,59 @@ class TestFolderResources:
         with pytest.raises(NotImplementedError) as refused:
             bundle.to_file(target / "manifest.yaml")
         assert str(refused.value) == refusal(
-            "resource_1", "../tables/MatchClaim/", "MatchClaim"
+            "resource_1", "folder", "../tables/MatchClaim/", "MatchClaim"
         )
         bundle.resources = [r for r in bundle.resources if r.type == "Registry"]
         with pytest.raises(NotImplementedError) as refused:
             bundle.to_file(target / "manifest.yaml")
-        assert str(refused.value) == refusal("resource_2", "../registry/", "Registry")
+        assert str(refused.value) == refusal(
+            "resource_2", "package table", "../registry.parquet", "Registry"
+        )
         assert sorted(p.name for p in tmp_path.iterdir()) == ["out"]
         assert list(target.iterdir()) == []
+
+    def test_a_registry_naming_a_folder_is_not_read(self, tmp_path: Path) -> None:
+        copy = shutil.copytree(
+            package_fixture_path("rejections", "registry_folder"), tmp_path / "old"
+        )
+        manifest = copy / "bach" / "manifest.yaml"
+
+        def message(url: str) -> str:
+            return (
+                f"The registry '{url}' names a folder: a registry is one Parquet "
+                "file, which holds every row."
+            )
+
+        with pytest.raises(ValueError) as refused:
+            AlignmentBundle.from_file(manifest)
+        assert str(refused.value) == message("../registry/")
+        package = Package.from_file(copy / "package.yaml")
+        with pytest.raises(ValueError) as refused:
+            package.bundle("bach/manifest.yaml")
+        assert str(refused.value) == message("../registry/")
+        before = {
+            path.relative_to(copy).as_posix(): path.read_bytes()
+            for path in sorted(copy.rglob("*"))
+            if path.is_file()
+        }
+        score = ContinuousLogicalTimeline(length=Fraction(4), uid="new_score")
+        score.add_events([{"id": "new_n1", "event_type": "Note", "start": 0}])
+        bundle = AlignmentBundle(id="new")
+        bundle.add_timeline(score)
+        with pytest.raises(ValueError) as refused:
+            package.write_bundle(bundle, "new/manifest.yaml")
+        assert str(refused.value) == message("registry/")
+        assert package.manifests == ["bach/manifest.yaml", "handel/manifest.yaml"]
+        after = {
+            path.relative_to(copy).as_posix(): path.read_bytes()
+            for path in sorted(copy.rglob("*"))
+            if path.is_file()
+        }
+        assert after == before
+        # A bundle built in code naming a registry folder.
+        bundle.resources = [Resource("registry", "Registry", ("new_score",), "reg/")]
+        (tmp_path / "alone").mkdir()
+        with pytest.raises(ValueError) as refused:
+            bundle.to_file(tmp_path / "alone" / "manifest.yaml", events=True)
+        assert str(refused.value) == message("reg/")
+        assert list((tmp_path / "alone").iterdir()) == []

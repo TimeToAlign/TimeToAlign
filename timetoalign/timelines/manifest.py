@@ -644,7 +644,7 @@ class Resource(_OpenObject):
         not a single file.
 
         Examples:
-            >>> Resource("resource_1", "Registry", (), "registry/").names_folder
+            >>> Resource("resource_1", "MatchClaim", (), "match_claims/").names_folder
             True
             >>> Resource("resource_1", "Registry", (), "registry.parquet").names_folder
             False
@@ -943,7 +943,7 @@ def _repeated(value: str | None, n: int) -> pa.Array:
 
 
 def _sorted_rows(rows: pa.Table) -> pa.Table:
-    """Registry rows in memory sorted as a writer sorts each part: by
+    """Event rows of a registry in memory, sorted: by
     ``extraction_id``, then ``timeline_id`` (by code point), then ``start``
     by exact value (one timeline lies on one axis, :func:`_start_order`),
     then ``id``."""
@@ -1283,8 +1283,8 @@ def event_tables(registry: EventRegistry, *, events: bool) -> EventTables:
     (the rows recording a child's place are the manifest's, never written),
     each in the Registry columns on the axis of its timeline's root, its
     numbers in the package form
-    (:func:`~timetoalign.core.time.package_numbers`), sorted as a writer
-    sorts the parts of a registry; each kind's content (every column of
+    (:func:`~timetoalign.core.time.package_numbers`), sorted by
+    extraction, timeline, exact start and ID (:func:`_sorted_rows`); each kind's content (every column of
     its events but the registry's, its name among them, a column none of a
     timeline's events of the kind holds a value in left out), keyed by
     ``id`` and without positions, as its pre-parsed table, the columns of

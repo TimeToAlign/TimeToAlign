@@ -221,6 +221,12 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
     _carried_tables: dict[str, Path] = field(
         default_factory=dict, init=False, repr=False, compare=False
     )
+    # The IDs of the registry and MatchClaim resources the bundle shares with
+    # the other manifests of a package (read through it, or written into
+    # it): ``to_file`` never writes over them alone.
+    _shared_tables: frozenset[str] = field(
+        default_factory=frozenset, init=False, repr=False, compare=False
+    )
 
     # The manifest's statements and provenance as the file writes them, and
     # the prefixes its ``@context`` declares beyond the catalogue's.
@@ -3205,7 +3211,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
 
         Raises:
             ValueError: If a resource lies elsewhere than on disk relative
-                to the manifest, a table breaks a rule (a
+                to the manifest, a registry resource names a folder (a
+                registry is one Parquet file), a table breaks a rule (a
                 ``timetoshare.tables.TableError`` for the registry, the
                 Extraction table and, when its events are read, the
                 Projection table; a number off its row's number type), an
@@ -3247,9 +3254,10 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
         other kinds), every other kind the bundle's timelines hold as well.
         The manifest names the registry and the MatchClaim table, never an
         event: its events lie in the tables alone, and ``events`` writes no
-        event rows into it. A bundle of a package's manifest (one whose
-        resources name folders) is written into its package with
-        :meth:`Package.write_bundle
+        event rows into it. A bundle of a package's manifest (read through
+        its package or written into one), whose registry and MatchClaim
+        table the package's other manifests share, is written into its
+        package with :meth:`Package.write_bundle
         <timetoalign.alignment.Package.write_bundle>`.
 
         Raises:
@@ -3257,7 +3265,8 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
                 <timetoalign.timelines.manifest.ManifestFileMixin.to_file>`
                 and :meth:`_write_tables` refuse.
             NotImplementedError: As :meth:`_write_tables` refuses a table
-                resource naming a folder, before any file is written.
+                resource naming a folder or a package's table, before any
+                file is written.
         """
         return super().to_file(
             path,
@@ -3321,10 +3330,13 @@ class AlignmentBundle(_IdScope, MutableStatementsMixin, ManifestFileMixin, _Open
             Whether a table was written.
 
         Raises:
-            NotImplementedError: If the registry's or the MatchClaim table's
-                entry names a folder, naming the entry, before any file is
-                written.
-            ValueError: As :meth:`MatchClaimField.to_parquet` refuses the
+            NotImplementedError: If the MatchClaim table's entry names a
+                folder, or the registry's or the MatchClaim table's entry
+                names a table the bundle shares with the other manifests of
+                a package, naming the entry, before any file is written.
+            ValueError: If the registry's entry names a folder (a registry
+                is one file), before any file is written; as
+                :meth:`MatchClaimField.to_parquet` refuses the
                 MatchClaim table, or as
                 :func:`~timetoalign.timelines.manifest.event_tables` refuses
                 an event ID held by two timelines, or if a new entry's id is

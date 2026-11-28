@@ -22,7 +22,7 @@ from timetoalign.core.fields import field_metadata
 from timetoalign.core.ids import IdMinter
 from timetoalign.core.time import RATIONAL_STRUCT_TYPE
 from timetoalign.maps import LinearMap
-from timetoalign.storage import EventData
+from timetoalign.storage import EventData, Extraction
 from timetoalign.timelines import ContinuousLogicalTimeline, DiscretePhysicalTimeline
 
 
@@ -403,8 +403,9 @@ class TestRefusals:
                 [{"event_type": "Projection", "id": "p", "start": 2, "pitch": 60}]
             )
         assert str(refused.value) == (
-            "A Projection holds its ID, its position and projection_of, nothing "
-            "else of the event it stands for; the row also gives ['pitch']"
+            "A Projection holds its ID, its position and projection_of (and, read "
+            "from a source file, its locator and extraction_id), nothing else of "
+            "the event it stands for; the row also gives ['pitch']"
         )
         assert len(timeline.events) == 0
 
@@ -589,3 +590,89 @@ class TestGetOrAdd:
                 timeline.add_projections(rows)
             assert str(raised.value) == message
             assert len(timeline.events) == 2
+
+
+class TestASourcesLocatorAndExtraction:
+    """``add_projections`` puts a row's locator and extraction into its registry row."""
+
+    @staticmethod
+    def _extraction(id: str) -> Extraction:
+        return Extraction(
+            id=id,
+            source="a.json",
+            source_integrity={"algorithm": "SHA-256", "digest": "00"},
+            parser="P",
+            parser_version="1",
+            date="2026-11-28T00:00:00Z",
+        )
+
+    @staticmethod
+    def _row(start: int, locator: str, **row) -> dict:
+        return {
+            "event_type": "Projection",
+            "start": start,
+            "locator": locator,
+            "extraction_id": "extraction_maps",
+            **row,
+        }
+
+    @staticmethod
+    def _registry(timeline) -> dict[str, tuple]:
+        table = timeline.registry.table
+        return {
+            row["id"]: (row["locator"], row["extraction_id"])
+            for row in table.select(["id", "locator", "extraction_id"]).to_pylist()
+        }
+
+    def test_kept_where_the_projection_is_added(self) -> None:
+        timeline = _samples()
+        maps = self._extraction("extraction_maps")
+        n1 = EventReference(timeline_id="clt_6", event_id="n1")
+        (first,) = timeline.add_projections(
+            [self._row(22050, "row:0 key:n1", projection_of=n1)], extractions=[maps]
+        )
+        assert self._registry(timeline) == {first: ("row:0 key:n1", "extraction_maps")}
+        assert timeline.registry.extractions == [maps]
+
+        # Reused as it is held: its locator is never restated.
+        assert timeline.add_projections(
+            [self._row(22050, "row:5 key:n1", projection_of=n1)]
+        ) == [first]
+        # Two rows of one call standing for one new thing: the first row's.
+        second, again = timeline.add_projections(
+            [self._row(44100, "row:1"), self._row(44100, "row:2")]
+        )
+        assert second == again != first
+        assert self._registry(timeline) == {
+            first: ("row:0 key:n1", "extraction_maps"),
+            second: ("row:1", "extraction_maps"),
+        }
+
+        # An extraction given to a call adding nothing is not held.
+        timeline.add_projections(
+            [self._row(22050, "row:0 key:n1", projection_of=n1)],
+            extractions=[self._extraction("extraction_other")],
+        )
+        assert timeline.registry.extractions == [maps]
+
+        # Without a locator, the registry row names none.
+        (third,) = timeline.add_projections(
+            Projection(start=Coordinate(66150, TimeUnit.samples))
+        )
+        assert self._registry(timeline)[third][0] is None
+        assert len(timeline.events) == 3
+
+    def test_one_locator_for_two_projections_is_refused(self) -> None:
+        timeline = _samples()
+        maps = self._extraction("extraction_maps")
+        timeline.add_projections([self._row(22050, "row:0")], extractions=[maps])
+        timeline.add_projections(Projection(start=Coordinate(1, TimeUnit.samples)))
+        with pytest.raises(ValueError) as refused:
+            timeline.add_projections(
+                [self._row(44100, "row:9"), self._row(66150, "row:9")]
+            )
+        assert str(refused.value) == (
+            "locator 'row:9' is given to 2 events of extraction 'extraction_maps'; "
+            "a locator names one event of its source"
+        )
+        assert len(timeline.events) == 2

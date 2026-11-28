@@ -50,6 +50,7 @@ from timetoalign.core import (
 )
 from timetoalign.core.ids import reset_content_minters
 from timetoalign.maps import ScalarMap, TableMap
+from timetoalign.storage import Extraction
 from timetoalign.timelines import Timeline, TimelineGroup
 from timetoalign.timelines.types import (
     ContinuousLogicalTimeline,
@@ -1471,6 +1472,75 @@ class TestCreateMatchClaims:
             "timeline_id": "audio",
             "event_id": "o1",
         }
+
+    def test_a_position_s_source_goes_into_its_projection(self) -> None:
+        bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()
+        maps = Extraction(
+            id="extraction_maps",
+            source="a.json",
+            source_integrity={"algorithm": "SHA-256", "digest": "00"},
+            parser="P",
+            parser_version="1",
+            date="2026-11-28T00:00:00Z",
+        )
+        audio_tl.add_events([{"id": "o1", "event_type": "Note", "instant": 5.0}])
+        score_tl.add_events(
+            [
+                {
+                    "id": "s1",
+                    "event_type": "Note",
+                    "instant": 1.0,
+                    "locator": "row:0 key:s1",
+                    "extraction_id": maps.id,
+                }
+            ],
+            extractions=[maps],
+        )
+
+        def located(locator: str) -> list:
+            return [
+                (
+                    "o1",
+                    "audio",
+                    {"start": 10.0, "locator": locator, "extraction_id": maps.id},
+                    "score",
+                )
+            ]
+
+        def registry() -> list[tuple]:
+            table = score_tl.registry.table.select(["id", "locator", "extraction_id"])
+            return [tuple(row.values()) for row in table.to_pylist()]
+
+        (claim,) = bundle.create_match_claims(located("row:3 key:o1"))
+        assert registry() == [
+            ("s1", "row:0 key:s1", maps.id),
+            (claim.event_b_id, "row:3 key:o1", maps.id),
+        ]
+        # The Projection reused keeps its own locator.
+        (again,) = bundle.create_match_claims(located("row:4 key:o1"))
+        assert again.event_b_id == claim.event_b_id
+        assert registry() == [
+            ("s1", "row:0 key:s1", maps.id),
+            (claim.event_b_id, "row:3 key:o1", maps.id),
+        ]
+
+        # An extraction the timeline's family does not hold: nothing added,
+        # on either timeline, though the first pair's Projection comes first.
+        unknown = {"start": 30.0, "locator": "row:1", "extraction_id": "extraction_x"}
+        with pytest.raises(ValueError) as refused:
+            bundle.create_match_claims(
+                [
+                    ("o1", "audio", {"start": 20.0}, "score"),
+                    ("s1", "score", unknown, "audio"),
+                ]
+            )
+        assert str(refused.value) == (
+            "A side on timeline 'audio' names the extraction 'extraction_x' for "
+            "its Projection, which is neither given (extractions=) nor held by "
+            "the timeline's family; nothing is added."
+        )
+        assert (len(score_tl.events), len(audio_tl.events)) == (2, 1)
+        assert len(bundle.match_claim_table) == 2
 
     def test_an_unknown_event_id_adds_nothing(self) -> None:
         bundle, score_tl, _, audio_tl, _ = _make_cross_group_bundle()

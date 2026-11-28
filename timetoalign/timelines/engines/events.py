@@ -75,7 +75,9 @@ else:
     _Host = object
 
 #: The keys a Projection row may hold a value under: its ID, its type, its
-#: position and the event it stands for.
+#: position, the event it stands for and, for a Projection read from a source
+#: file, its place there and the extraction that read it (registry columns,
+#: never repeated content of the event it stands for).
 _PROJECTION_KEYS = frozenset(
     {
         "id",
@@ -86,6 +88,8 @@ _PROJECTION_KEYS = frozenset(
         "end",
         "duration",
         "projection_of",
+        "locator",
+        "extraction_id",
     }
 )
 
@@ -111,7 +115,8 @@ def _check_projection_row(row: dict[str, Any], timeline_id: str) -> None:
     )
     if extra:
         raise ValueError(
-            f"A Projection holds its ID, its position and projection_of, nothing "
+            f"A Projection holds its ID, its position and projection_of (and, "
+            f"read from a source file, its locator and extraction_id), nothing "
             f"else of the event it stands for; the row also gives {extra}"
         )
     reference = row.get("projection_of")
@@ -495,7 +500,9 @@ class EventsMixin(_Host):
         position and ``projection_of``, the event of another timeline it
         stands for, as a dict ``{"timeline_id": ..., "event_id": ...}`` or an
         :class:`~timetoalign.core.EventReference` (``None`` where none is
-        known); it repeats nothing else of that event.
+        known); it repeats nothing else of that event. Read from a source
+        file, it names its ``locator`` and ``extraction_id`` as every row
+        does (below).
 
         A Box (``event_type`` ``"Box"``) is an area of the image the
         timeline runs along: its shape, in the image's space, and the
@@ -744,6 +751,7 @@ class EventsMixin(_Host):
         allow_expansion: bool = False,
         *,
         seed: int | None = None,
+        extractions: Iterable[Extraction] = (),
     ) -> list[str]:
         """Add Projections to the timeline, reusing those it already holds.
 
@@ -758,6 +766,14 @@ class EventsMixin(_Host):
         Everything else is added, its id kept or minted (``projection_…``,
         by :meth:`add_events`).
 
+        A row read from a source file may name its ``locator`` and its
+        ``extraction_id`` (an extraction given in *extractions* or held by
+        the timeline's family), as :meth:`add_events` takes them: they go
+        into the added Projection's registry row. They do not tell
+        Projections apart: a Projection the timeline holds already is
+        returned as it is, its own locator and extraction kept, and of rows
+        of one call standing for one thing the first row's are kept.
+
         Args:
             projections: :class:`~timetoalign.core.Projection` objects or
                 their event rows (one or a list).
@@ -765,6 +781,9 @@ class EventsMixin(_Host):
                 added exceeds its length.
             seed: The seed of the minter of the missing IDs, as
                 :meth:`add_events` takes it.
+            extractions: The extractions the rows' ``extraction_id`` names,
+                as :meth:`add_events` takes them; one no added row names is
+                not held.
 
         Returns:
             The ID of the Projection standing for each row, in row order.
@@ -856,7 +875,11 @@ class EventsMixin(_Host):
                 first[key] = len(added)
                 ids.append(len(added))
                 added.append(row)
-        minted = self.add_events(added, allow_expansion, seed=seed) if added else []
+        minted = (
+            self.add_events(added, allow_expansion, seed=seed, extractions=extractions)
+            if added
+            else []
+        )
         return [minted[entry] if isinstance(entry, int) else entry for entry in ids]
 
     def _manifest_projection_ids(self) -> tuple[pa.Array, pa.Array]:

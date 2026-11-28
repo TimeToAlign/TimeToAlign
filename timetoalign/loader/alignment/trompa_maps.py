@@ -206,8 +206,15 @@ class MapsLoader(AlignmentLoader):
           hold (``projection_of`` null) and a NOMATCH claim from it. The
           Projection keeps the file's id; where trompa-align gives two
           inserted notes one id (it spells the pitch only), each Projection
-          is minted an id of its own and the claim keeps the file's id as
-          the event's name.
+          is minted an id of its own.
+
+        Every Projection added names where the file states it: its locator
+        is ``row:<i> key:<xml_id>`` (the row counted from 0 in the file's
+        list, then the id the row lists;
+        :func:`~timetoalign.loader.base.locate`), and its extraction is this
+        loader's run over the file (:attr:`extractions`), both in the
+        timeline's registry. So the file's id of an inserted note is kept in
+        the locator where the Projection's id cannot hold it.
 
         ``performance`` keeps one Projection per score note and onset: a
         second call on the same timelines reuses every Projection the first
@@ -242,21 +249,25 @@ class MapsLoader(AlignmentLoader):
             for xml_id in _ids(row)
             if xml_id.startswith(_INSERTED_ID_PREFIX)
         )
+        source = self._sources[0]
         pairs: list[tuple[ClaimSide, Timeline, ClaimSide, Timeline]] = []
-        for row in rows:
+        for index, row in enumerate(rows):
             onset = Coordinate(row["obs_mean_onset"], TimeUnit.seconds)
             for xml_id in _ids(row):
+                # Where the file states the onset: its row, the id it lists there.
+                stated = {"start": onset, **self._stamp(source, f"row:{index}", xml_id)}
                 if not xml_id.startswith(_INSERTED_ID_PREFIX):
-                    performed = NOMATCH if onset.value < 0 else {"start": onset}
+                    performed = NOMATCH if onset.value < 0 else stated
                     pairs.append((xml_id, score, performed, performance))
                 elif inserted[xml_id] == 1:
                     pairs.append(
-                        ({"id": xml_id, "start": onset}, performance, NOMATCH, score)
+                        ({"id": xml_id, **stated}, performance, NOMATCH, score)
                     )
                 else:
-                    stated = {"start": onset, "name": xml_id}
                     pairs.append((stated, performance, NOMATCH, score))
-        return _claims_between_events(pairs, provenance=provenance)
+        return _claims_between_events(
+            pairs, provenance=provenance, extractions=[self._extraction_of(source)]
+        )
 
     def create_bundle(
         self,

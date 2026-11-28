@@ -3784,6 +3784,24 @@ these lazily on first use and caches them until the table changes.
   event, each found by its claim), and the audio and score timelines hold
   as many events after the second call as after the first (2 each); the
   claims are new statements (four different ids).
+- **A position's source goes into its Projection.** A side stating a
+  position may name where a source file states it (`locator`,
+  `extraction_id`), as an event row does. `score` holds `s1`, added with
+  the locator `row:0 key:s1` and the extraction `extraction_maps`, so its
+  family holds that extraction; `audio` holds `o1`. The pair `o1` ↔ score
+  10.0 located `row:3 key:o1` in `extraction_maps` adds a Projection whose
+  registry row holds exactly that locator and extraction ID (`score`'s
+  registry rows, in order: `(s1, row:0 key:s1, extraction_maps)`, `(<the
+  Projection>, row:3 key:o1, extraction_maps)`). The same pair located
+  `row:4 key:o1` names the same Projection and leaves the registry rows as
+  they were: a Projection reused keeps its own locator. A call whose first
+  pair would add a Projection on `score` and whose second names an
+  extraction `audio`'s family does not hold (`extraction_x`) is refused
+  before anything is added, the message asserted whole (`A side on
+  timeline 'audio' names the extraction 'extraction_x' for its Projection,
+  which is neither given (extractions=) nor held by the timeline's family;
+  nothing is added.`): `score` still holds 2 events, `audio` 1, the
+  MatchClaim table 2 claims.
 - **Equality includes the claims.** Two bundles built alike, each after
   `reset_content_minters()` so that their groups and MatchClaims mint the
   same ids, are equal; one

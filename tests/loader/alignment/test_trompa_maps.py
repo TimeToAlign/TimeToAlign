@@ -276,18 +276,64 @@ def test_every_stated_row_gives_its_claims(score: Timeline, stated_path: Path) -
         assert claim.start_anchor.coordinate_b == Coordinate(seconds, TimeUnit.seconds)
 
     # The file gives both inserted notes one id, so each Projection is minted
-    # its own and the claim keeps the file's id as the event's name.
+    # its own; the file's id is in its locator, not a name of the claim.
     for n, claim in enumerate(claims[15:], start=15):
         assert claim.is_synchronous is False
         assert (claim.start_anchor, claim.end_anchor) == (None, None)
         assert (claim.timeline_a_id, claim.timeline_b_id) == (performance.id, score.id)
         assert (claim.event_a_id, claim.event_b_id) == (ids[n - 1], NOMATCH)
-        assert claim.event_a_name == INSERTED
+        assert claim.event_a_name is None
 
     # One Projection per performed note: 14 of score notes, 2 of none.
     assert len(projections) == 16
     assert [row["projection_of"] for row in projections[14:]] == [None, None]
     assert [row["start"]["value"] for row in projections[14:]] == [2.75, 4.75]
+
+
+#: The locators of the Projections the second fixture adds, in their order.
+STATED_LOCATORS = [
+    "row:1 key:ch1a",
+    "row:1 key:ch1b",
+    "row:1 key:ch1c",
+    "row:1 key:b1",
+    "row:2 key:n2",
+    "row:2 key:b2",
+    "row:3 key:n3",
+    "row:3 key:b3",
+    "row:4 key:b4",
+    "row:5 key:n5",
+    "row:6 key:n6",
+    "row:7 key:n7",
+    "row:7 key:b5",
+    "row:8 key:n7",
+    f"row:9 key:{INSERTED}",
+    f"row:10 key:{INSERTED}",
+]
+
+
+def _located(timeline: Timeline) -> list[tuple[str, str | None, str | None]]:
+    """``(id, locator, extraction_id)`` of each registry row of *timeline*."""
+    table = timeline.registry.table.select(["id", "locator", "extraction_id"])
+    return [tuple(row.values()) for row in table.to_pylist()]
+
+
+def test_every_projection_names_where_the_file_states_it(
+    score: Timeline, stated_path: Path
+) -> None:
+    performance = _seconds_timeline()
+    loader = MapsLoader.from_file(stated_path)
+    loader.create_match_claims(score, performance)
+    (extraction,) = loader.extractions
+    assert (extraction.parser, extraction.source) == (
+        "MapsLoader",
+        stated_path.as_posix(),
+    )
+    ids = performance.events.table.column("id").to_pylist()
+    assert _located(performance) == [
+        (event_id, locator, extraction.id)
+        for event_id, locator in zip(ids, STATED_LOCATORS, strict=True)
+    ]
+    assert performance.registry.extractions == [extraction]
 
 
 def test_a_single_inserted_note_keeps_its_id(score: Timeline, tmp_path: Path) -> None:
@@ -305,6 +351,7 @@ def test_a_single_inserted_note_keeps_its_id(score: Timeline, tmp_path: Path) ->
         None,
         121275,
     )
+    assert _located(performance)[-1][:2] == (INSERTED, f"row:7 key:{INSERTED}")
 
 
 @pytest.mark.parametrize("single", [False, True], ids=["repeated-id", "kept-id"])
@@ -322,9 +369,11 @@ def test_a_second_call_reuses_every_projection(
 
     first = loader.create_match_claims(score, performance)
     held = performance.events.table.to_pylist()
+    located = _located(performance)
     again = loader.create_match_claims(score, performance)
     assert stated(again) == stated(first)
     assert performance.events.table.to_pylist() == held
+    assert _located(performance) == located
     assert len(held) == (15 if single else 16)
     if single:
         assert [first[-1].event_a_id, again[-1].event_a_id] == [INSERTED, INSERTED]
@@ -411,7 +460,8 @@ def test_the_bundle_s_package_is_written_and_read_back(
         Projection(start=Coordinate(Fraction(3, 2), TimeUnit.quarters))
     )
     performance = _samples_timeline()
-    bundle = MapsLoader.from_file(stated_path).create_bundle(score, performance)
+    loader = MapsLoader.from_file(stated_path)
+    bundle = loader.create_bundle(score, performance)
     claims = bundle.get_match_claims()
     projected = [claim.event_b_id for claim in claims[1:15]] + [
         claim.event_a_id for claim in claims[15:]
@@ -420,28 +470,56 @@ def test_the_bundle_s_package_is_written_and_read_back(
     assert own not in projected
     assert set(shapes([own, *projected])) == {"projection"}
 
-    bundle.to_file(tmp_path / "package" / "package.yaml")
-    registry = pq.read_table(tmp_path / "package" / "registry.parquet")
+    (maps,) = loader.extractions
+    package = tmp_path / "package"
+    bundle.to_file(package / "package.yaml")
+    registry = pq.read_table(package / "registry.parquet")
     rows = registry.filter(pc.equal(registry.column("kind"), "Projection"))
-    written = list(
-        zip(rows.column("timeline_id").to_pylist(), rows.column("id").to_pylist())
+    extractions = {
+        row["id"]: row
+        for row in pq.read_table(package / "extractions.parquet").to_pylist()
+    }
+    tool = next(row["extraction_id"] for row in rows.to_pylist() if row["id"] == own)
+    assert (extractions[tool]["source"], extractions[maps.id]["source"]) == (
+        None,
+        stated_path.as_uri(),
     )
-    assert sorted(written) == sorted(
-        [(performance.id, event_id) for event_id in projected] + [(score.id, own)]
+    assert extractions[maps.id]["parser"] == "MapsLoader"
+    # Where each of the 17 came from: the 16 of the performance located in
+    # the MAPS file, in the order they were added; the score's own made in
+    # code, without a locator.
+    inserted = {claim.event_a_id for claim in claims[15:]}
+    assert sorted(
+        (
+            row["timeline_id"],
+            row["id"],
+            row["locator"],
+            row["extraction_id"],
+            row["location"],
+        )
+        for row in rows.to_pylist()
+    ) == sorted(
+        [
+            (
+                performance.id,
+                event_id,
+                locator,
+                maps.id,
+                None if event_id in inserted else "projections.parquet",
+            )
+            for event_id, locator in zip(projected, STATED_LOCATORS, strict=True)
+        ]
+        + [(score.id, own, None, tool, "projections.parquet")]
     )
-    content = pq.read_table(tmp_path / "package" / "projections.parquet")
-    assert sorted(content.column("id").to_pylist()) == sorted([own, *projected])
+    content = pq.read_table(package / "projections.parquet")
     # A Projection of claims 2-15 stands for the score note on the other side
-    # of its claim; the score's own and those of the NOMATCH claims of the
-    # inserted notes stand for none.
-    stands_for = (
-        {own: None}
-        | {
-            claim.event_b_id: {"event_id": claim.event_a_id, "timeline_id": score.id}
-            for claim in claims[1:15]
-        }
-        | {claim.event_a_id: None for claim in claims[15:]}
-    )
+    # of its claim; the score's own stands for none. Those of the NOMATCH
+    # claims of the inserted notes stand for none and come from the MAPS
+    # file: nothing beyond their position to store, they stay re-parsable.
+    stands_for = {own: None} | {
+        claim.event_b_id: {"event_id": claim.event_a_id, "timeline_id": score.id}
+        for claim in claims[1:15]
+    }
     assert {claim.event_b_id for claim in claims[15:]} == {NOMATCH}
     assert (
         dict(
@@ -453,10 +531,13 @@ def test_the_bundle_s_package_is_written_and_read_back(
         )
         == stands_for
     )
-    read = AlignmentBundle.from_file(tmp_path / "package" / "package.yaml")
+    read = AlignmentBundle.from_file(package / "package.yaml")
     assert [_stated(claim) for claim in read.get_match_claims()] == [
         _stated(claim) for claim in claims
     ]
+    read_performance = read.get_timeline(performance.id)
+    assert sorted(_located(read_performance)) == sorted(_located(performance))
+    assert read_performance.registry.extractions == [maps]
 
 
 # endregion

@@ -522,12 +522,29 @@ stated all the same.
     null) at 2.75 and 4.75 seconds (the Projections' `start`, as floats; the
     claims hold no coordinate). The file
     gives both notes one id, which can name neither event, so the timeline
-    mints theirs and the claim keeps the file's id as `event_a_name`
-    (`trompa-align_inserted_Cs4`). The performance holds 16 Projections.
+    mints theirs; the claim states no name (`event_a_name` null): the
+    file's id is kept in each Projection's locator (next item), not in the
+    MatchClaim table. The performance holds 16 Projections.
+* **Every Projection names where the file states it** (second fixture, a
+  seconds timeline). The performance's registry rows, in row order, hold
+  the locators `row:<i> key:<xml_id>`, the row counted from 0 in the
+  file's list and the id the row lists there (`locate`'s form): `row:1
+  key:ch1a`, `row:1 key:ch1b`, `row:1 key:ch1c`, `row:1 key:b1`, `row:2
+  key:n2`, `row:2 key:b2`, `row:3 key:n3`, `row:3 key:b3`, `row:4 key:b4`,
+  `row:5 key:n5`, `row:6 key:n6`, `row:7 key:n7`, `row:7 key:b5`, `row:8
+  key:n7`, `row:9 key:trompa-align_inserted_Cs4`, `row:10
+  key:trompa-align_inserted_Cs4`: 16 distinct locators, so the repeated
+  `n7` and the two inserted notes sharing one id are told apart by their
+  row, and row 0 (the unperformed `n4`) adds none. Every row names one
+  extraction, the loader's one (`loader.extractions`, parser `MapsLoader`,
+  source the file's path), which `performance.registry.extractions`
+  holds. A loader dropping the locator, numbering rows from 1 or giving
+  the inserted notes the key in `name` instead fails here.
 * **A single inserted note keeps its id.** Adding one inserted row (2.75 s)
   to the first fixture on the samples timeline gives a last claim naming the
   Projection `trompa-align_inserted_Cs4` itself (no name), at sample 121275,
-  `projection_of` null: an id the file gives once identifies one note.
+  `projection_of` null, its locator `row:7 key:trompa-align_inserted_Cs4`:
+  an id the file gives once identifies one note.
 * **The kinds are logged.** One INFO record names the file and the counts,
   14 score notes at a time of the recording, 1 not performed, 2 performed
   notes not in the score; one WARNING names `n7` in rows 8 and 9. The exact
@@ -549,21 +566,36 @@ stated all the same.
   16 and 17) hold 16 distinct minted IDs, none the score's. `to_file` writes
   the package to `tmp_path`; its registry (`registry.parquet`) holds the 17
   IDs as rows of kind `Projection`, the score's own on the score and the 16
-  others on the performance, and its pre-parsed Projection table
-  (`projections.parquet`) the same 17 IDs; `projection_of` names, for a
-  Projection of claims 2–15, the score note on the other side of its claim
-  (its `event_id` and the score's `timeline_id`), and none for the score's
-  own and for those of claims 16 and 17, whose other side is
-  `NOMATCH_SENTINEL`;
+  others on the performance. The registry's 17 Projection rows name where
+  each came from: the 16 of the performance their locators of the item
+  above and the MAPS file's extraction, the score's own no locator and the
+  extraction of events made in code (its row of `extractions.parquet` has
+  no `source`; the MAPS extraction's row has the file's `file:` URI and
+  parser `MapsLoader`). The pre-parsed Projection table
+  (`projections.parquet`) holds the 15 Projections that state something
+  beyond their position: the score's own (its extraction names no source
+  file, so the package is its only record) and the 14 of claims 2–15, whose
+  `projection_of` names the score note on the other side of its claim (its
+  `event_id` and the score's `timeline_id`); the score's own names none.
+  The two Projections of the inserted notes (claims 16 and 17, whose other
+  side is `NOMATCH_SENTINEL`) hold no `projection_of` and come from a source
+  file, so they stay re-parsable: the table does not hold them and their
+  registry `location` is null, while the 15 others' is
+  `projections.parquet`.
   `AlignmentBundle.from_file` reads it back with the 17 claims stating the
   same events and anchors.
+  Read back, the performance's registry holds the same 16 `(id, locator,
+  extraction_id)` triples and `registry.extractions` the loader's
+  extraction, field for field.
 * **A second call reuses every Projection.** The loader makes its claims
   through the library's one projection operation, which keeps one Projection
   per score note and position on the performance timeline. Calling
   `create_match_claims` twice on the second fixture with one samples
   timeline gives claims stating the same events and anchors both times
   (the 16 Projections named alike), and the performance
-  timeline holds the same 16 rows after the second call as after the first.
+  timeline holds the same 16 rows after the second call as after the first,
+  and the same registry rows (each reused Projection keeps its locator and
+  extraction, none is restated).
   The same holds with row 11 left out, so that the inserted id is given once
   and kept: 15 rows, and both calls' last claim names
   `trompa-align_inserted_Cs4` (the second time as the event the timeline

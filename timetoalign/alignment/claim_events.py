@@ -39,6 +39,11 @@ from timetoalign.timelines.statements import _day
 if TYPE_CHECKING:
     from timetoalign.alignment.bundle import AlignmentBundle
     from timetoalign.alignment.claims import MatchClaim, MatchClaimField
+    from timetoalign.storage import Extraction
+
+#: The keys of a side stating a position that name where a source file
+#: states it: the registry columns of the Projection standing there.
+_SOURCE_KEYS = ("locator", "extraction_id")
 
 
 def _event_coordinate(raw: Any) -> Any:
@@ -254,7 +259,8 @@ class _Side(NamedTuple):
     where the side states a position a Projection stands at; ``chunk`` the
     placed ``start`` and ``end`` of a CHUNK side (a synchronous claim between
     two positions, where no Projection stands); all ``None`` for the
-    NOMATCH sentinel.
+    NOMATCH sentinel. ``source`` holds the ``locator`` and ``extraction_id``
+    the side states for its Projection (``None`` where it states neither).
     """
 
     timeline: Any
@@ -262,6 +268,15 @@ class _Side(NamedTuple):
     projection: Projection | None
     name: str | None
     chunk: tuple[Coordinate, Coordinate | None] | None = None
+    source: dict[str, Any] | None = None
+
+    @property
+    def projection_row(self) -> Projection | dict[str, Any]:
+        """The Projection to add, as its row where the side names its source."""
+        assert self.projection is not None
+        if not self.source:
+            return self.projection
+        return {**self.projection.to_event_row(), **self.source}
 
 
 def _claims_between_events(
@@ -271,6 +286,7 @@ def _claims_between_events(
     certainty: float = 1.0,
     provenance: Provenance | None = None,
     earlier: MatchClaimField | None = None,
+    extractions: Iterable[Extraction] = (),
 ) -> list[MatchClaim]:
     """MatchClaims between events, a Projection or CHUNK standing for a side without one.
 
@@ -284,7 +300,10 @@ def _claims_between_events(
     - an event dict stating a position: ``start``, and ``end`` for a span,
       each a number on the timeline's axis or a :class:`Coordinate` in any
       unit one of the timeline's C-Maps converts, and optionally ``name``
-      (the claim's name of the event). A **Projection** stands for the
+      (the claim's name of the event), ``locator`` and ``extraction_id``
+      (where a source file states the position, and the extraction that
+      read it: the Projection's registry row, as
+      :meth:`Timeline.add_events` takes them). A **Projection** stands for the
       side there (:meth:`Timeline.add_projections`, get-or-add): under the
       dict's ``id`` (an event the timeline does not hold, ``projection_of``
       null), or, without one, under the id of a Projection the timeline
@@ -307,7 +326,14 @@ def _claims_between_events(
     A side's ``name`` is the claim's name of the Projection: the name the
     first claim on a Projection recorded (in *earlier*, else in this call)
     is the one every later claim on it shows. A CHUNK side is no element,
-    so its name is the one its pair states.
+    so its name is the one its pair states. A side's ``locator`` and
+    ``extraction_id`` go into the Projection it adds; a Projection reused
+    keeps its own (:meth:`Timeline.add_projections`), and a side naming a
+    held event or a CHUNK side adds none, so they name nothing there. An
+    extraction a side names that is neither in *extractions* nor held by
+    its timeline's family is refused before anything is added; a locator
+    naming two events of one extraction is refused as
+    :meth:`Timeline.add_projections` refuses it, timeline by timeline.
 
     Every pair is resolved and every position placed and checked before any
     Projection is added: a float on a samples axis, a span running
@@ -330,6 +356,9 @@ def _claims_between_events(
         provenance: How the claims were made and who believes them.
         earlier: MatchClaims already stated, whose names of Projections
             the new claims keep.
+        extractions: The extractions the sides' ``extraction_id`` names
+            (or held by the timelines' families already); one no added
+            Projection names is not held.
 
     Returns:
         The claims, in pair order, each holding the id minted at its
@@ -347,8 +376,9 @@ def _claims_between_events(
             its timeline can reach (the end of a locked timeline, or an end
             its parent cannot contain), a held event is named with a span
             not its own, a position cannot be placed on its timeline's
-            axis, or a float start, end or duration is one its timeline
-            cannot store.
+            axis, a float start, end or duration is one its timeline
+            cannot store, or a side names an extraction neither given nor
+            held by its timeline's family.
         TypeError: If a side is neither a string nor a dict.
     """
     from timetoalign.alignment.claims import MatchClaim
@@ -428,18 +458,28 @@ def _claims_between_events(
         resolved.append(sides)
 
     # Every side is checked; now each timeline's Projections are added at once.
-    projected: dict[int, tuple[Any, list[Projection]]] = {}
+    projected: dict[int, tuple[Any, list[_Side]]] = {}
     for sides in resolved:
         for side in sides:
             if side.projection is not None:
                 projected.setdefault(id(side.timeline), (side.timeline, []))[1].append(
-                    side.projection
+                    side
                 )
-    for _, projections in projected.values():
-        _refuse_unstorable(_projection_values(projections))
+    for _, projecting in projected.values():
+        _refuse_unstorable(
+            _projection_values(
+                [side.projection for side in projecting if side.projection is not None]
+            )
+        )
+    extractions = tuple(extractions)
+    _refuse_unknown_extractions(projected.values(), extractions)
     projection_ids = {
-        key: iter(timeline.add_projections(projections))
-        for key, (timeline, projections) in projected.items()
+        key: iter(
+            timeline.add_projections(
+                [side.projection_row for side in projecting], extractions=extractions
+            )
+        )
+        for key, (timeline, projecting) in projected.items()
     }
     # A CHUNK side's timeline is made to reach its position, as a Projection
     # there would make it (checked above: the timeline can be made to hold it).
@@ -488,6 +528,40 @@ def _claims_between_events(
             )
         )
     return claims
+
+
+def _refuse_unknown_extractions(
+    projected: Iterable[tuple[Any, list[_Side]]], extractions: Sequence[Extraction]
+) -> None:
+    """Refuse a side naming an extraction neither given nor held, before anything is added.
+
+    A Projection's ``extraction_id`` names an extraction of *extractions* or
+    one its timeline's family holds (:meth:`Timeline.add_events` refuses any
+    other); checked for every timeline first, so that a refusal leaves every
+    timeline unchanged, not only those whose Projections come later.
+
+    Raises:
+        ValueError: Naming the timeline and the first such extraction ID.
+    """
+    given = {extraction.id for extraction in extractions}
+    for timeline, sides in projected:
+        named = {
+            str(side.source["extraction_id"])
+            for side in sides
+            if side.source is not None and "extraction_id" in side.source
+        } - given
+        if not named:
+            continue
+        held = {
+            extraction.id for extraction in timeline._tree_root().registry.extractions
+        }
+        unknown = sorted(named - held)
+        if unknown:
+            raise ValueError(
+                f"A side on timeline {quote_id(timeline.id)} names the extraction "
+                f"{quote_id(unknown[0])} for its Projection, which is neither given "
+                f"(extractions=) nor held by the timeline's family; nothing is added."
+            )
 
 
 def _resolved_side(
@@ -566,7 +640,8 @@ def _resolved_side(
         duration=duration,
         projection_of=reference,
     )
-    return _Side(timeline, None, projection, _event_name(side))
+    source = {key: side[key] for key in _SOURCE_KEYS if side.get(key) is not None}
+    return _Side(timeline, None, projection, _event_name(side), source=source or None)
 
 
 def _as_given(value: Any, placed: Coordinate) -> str:

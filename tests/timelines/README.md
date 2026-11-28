@@ -3048,8 +3048,9 @@ write fractions):
   - an ID held by any event of the timeline (a Note's ID reused by a
     Projection);
   - a row giving a property the Projection does not have (`pitch`):
-    `A Projection holds its ID, its position and projection_of, nothing else
-    of the event it stands for; the row also gives ['pitch']`;
+    `A Projection holds its ID, its position and projection_of (and, read
+    from a source file, its locator and extraction_id), nothing else of the
+    event it stands for; the row also gives ['pitch']`;
   - a `projection_of` that is not an event reference (the joined string
     `"clt_6:x1azmn68"`);
   - a `projection_of` naming the timeline the Projection is added to (a
@@ -3096,6 +3097,26 @@ and the number of rows the timeline holds afterwards, never a count of calls:
   (`Projection id 'p' is given twice for different positions in one call on
   timeline 'dpt_1'`), and a row that is no Projection (`add_projections adds
   Projections, not a row of type 'Note'`).
+- **A source's locator and extraction go into the registry row.** An
+  `Extraction` `extraction_maps` (source `a.json`, parser `P` 1). On the
+  samples timeline, `add_projections` of a row standing for `clt_6:n1` at
+  sample 22050 with `locator` `row:0 key:n1` and `extraction_id`
+  `extraction_maps`, given `extractions=[that extraction]`, returns one ID;
+  the timeline's registry row of it holds that locator and that
+  extraction ID, and `registry.extractions` holds the extraction, equal
+  field for field. The same thing stood for again with the locator `row:5
+  key:n1` returns the same ID and leaves the registry row as it was (the
+  Projection held is returned as it is, its locator never restated); two
+  rows of one call standing for one new thing (no event, sample 44100),
+  located `row:1` and `row:2`, give one ID whose locator is `row:1`, the
+  first row's. An extraction given to a call that adds nothing
+  (`extraction_other`, the first row again) is not held:
+  `registry.extractions` still holds `extraction_maps` alone. Two new
+  Projections at different positions given one locator of one extraction
+  are refused atomically, with the registry's message (`locator 'row:9' is
+  given to 2 events of extraction 'extraction_maps'; …`, asserted whole),
+  the timeline keeping its 2 events. A Projection added without a locator
+  names none: its registry row's locator is null.
 
 ---
 

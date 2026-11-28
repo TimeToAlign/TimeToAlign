@@ -3001,8 +3001,8 @@ write fractions):
   one call are distinct (each test asserts it where it reads them).
 - **A new Projection's ID is unique in its manifest** (the timeline's tree
   and every tree of the groups and bundles holding it, as a bundle writes
-  one Projections table for all of them; TimeToShare's table check keys
-  the ID alone), given or minted. In a bundle holding `dpt_1` and `clt_6`
+  the Projections of all of them into one registry; TimeToShare's table
+  check keys the ID alone), given or minted. In a bundle holding `dpt_1` and `clt_6`
   (both roots), a Projection added to `dpt_1` with `seed=7` holds the
   minter's first ID; one added to `clt_6` with `seed=7` would hold the same
   and is refused, atomically (`clt_6` still holds 0 events), naming both
@@ -3108,7 +3108,8 @@ x_min`, where `o(T)` is the x at which the timeline stands in its image: the
 **One check, every entry path.** A Box reaches a timeline's events as a
 `Box` scalar, as a dict row (`add_events`, `Timeline.from_events`), as an
 event row of a manifest (`Timeline.from_dict`, which an `AlignmentBundle`
-read uses too) and as a row of a package's Box table (`boxes.parquet`). Every
+read uses too) and as a package's registry row with its row of the
+pre-parsed Box table (`registry.parquet`, `boxes.parquet`). Every
 one of these paths passes the same rules, in this order, for all rows before
 any is added: exactly one shape; a duration; `start = x_min − o(T)`;
 `duration = x_max − x_min`. The Box's own rules (one shape, its duration) are
@@ -3226,9 +3227,11 @@ refusal leaves `seg_2` with no event and its length 867):
   `Box 'rect_h2' starts at 1 on timeline 'seg_2', but its shape starts at x
   385 and the timeline stands at x 7 of its image (meta["box"]): its start
   is 378.`; its `bounding_box` set to null, the one-shape sentence.
-- **A package.** A bundle holding `seg_2` writes `boxes.parquet` beside its
-  manifest; the table's `start` of `rect_h2` changed to 1 (the package
-  form of an int, numerator 1, denominator and value null) is refused by
+- **A package.** A bundle holding `seg_2` writes `registry.parquet` (the
+  positions) and `boxes.parquet` (the shapes) beside its manifest; the
+  registry's `start` of the Box's row `rect_h2` changed to 1 (the package
+  form of an int, numerator 1, denominator and value null; the registry's
+  other rows, its non-event rows, unchanged) is refused by
   `AlignmentBundle.from_file` with the start sentence above for start 1,
   and its `duration` changed to 10 with the duration sentence (inside
   pydantic's report: the package reader builds the `Box` itself).
@@ -3615,8 +3618,10 @@ each `start.value`, `duration.value` and shape number of the type the axis
 declares (`int` on pixels, `Fraction` on fractions), and so do the Boxes
 read back after (a) the timeline's dict form, `Timeline.from_dict(
 page.to_dict(events=True))`, and (b) the package: an `AlignmentBundle`
-holding the page written with `to_file` (`boxes.parquet` beside the
-manifest) and read with `AlignmentBundle.from_file`. What would show it
+holding the page written with `to_file` into a folder as `manifest.yaml`
+(the folder then holds exactly `boxes.parquet`, `extractions.parquet`,
+`manifest.yaml` and `registry.parquet`) and read with
+`AlignmentBundle.from_file`. What would show it
 broken: a Box read back unequal to the one added (an ID, a number or its
 type changed on the way), or a form that loses the Boxes.
 

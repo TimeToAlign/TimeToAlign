@@ -1057,8 +1057,10 @@ not held there: its ID (`None` until a timeline mints one), its position on
 the timeline's axis (`start`, and `duration`, `None` for an instant) and
 `projection_of`, an `EventReference` `{timeline_id, event_id}` or `None`. It
 repeats nothing else of its source. These tests prove the scalar holds
-exactly that and the paired `ProjectionField` stores it as TimeToShare's
-Projections table does, without losing a value; adding Projections to a
+exactly that and the paired `ProjectionField` stores it without losing a
+value, and that it reads as a package holds it (its position in the
+registry, its `projection_of` in the pre-parsed Projection table); adding
+Projections to a
 timeline is tested in `tests/timelines/test_projections.py`.
 
 **What proves it:**
@@ -1250,7 +1252,7 @@ silent rounding the refusal exists to prevent.
 ### `test_coordinate_cell.py` - A coordinate cell names its own axis
 
 **Purpose:** A table whose rows lie on different timelines (the MatchClaim
-table, the Projections table) cannot record one unit and number type in its
+table, a field of Projections of several timelines) cannot record one unit and number type in its
 field metadata, so each cell carries them: `COORDINATE_CELL_TYPE` is the
 number struct above followed by `unit` and `number_type`. In memory the cell
 keeps both sides of its number; a package's tables write it in TimeToShare's

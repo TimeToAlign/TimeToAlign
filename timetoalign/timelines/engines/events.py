@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -58,7 +58,12 @@ from timetoalign.storage.events import (
     projection_ids,
     refuse_shared_projection_ids,
 )
-from timetoalign.storage.registry import SEGMENT_KIND, EventRegistry, number_cells
+from timetoalign.storage.registry import (
+    SEGMENT_KIND,
+    EventRegistry,
+    Extraction,
+    number_cells,
+)
 from timetoalign.storage.schema import get_base_field_names
 
 from .children import placed_on
@@ -294,7 +299,7 @@ def family_projection_ids(
     """The Projection IDs every timeline of the families of *roots* holds.
 
     Read column-wise, never as Python objects: the families of a manifest
-    hold one Projections table between them.
+    are written into one registry, their Projections among its rows.
 
     Args:
         roots: Root timelines, each family once.
@@ -461,6 +466,7 @@ class EventsMixin(_Host):
         allow_expansion: bool = False,
         *,
         seed: int | None = None,
+        extractions: Iterable[Extraction] = (),
     ) -> list[str]:
         """Add events to the timeline.
 
@@ -500,13 +506,21 @@ class EventsMixin(_Host):
         shape ``meta["box"]`` states, 0 where it states none. A shape given
         as the memory cell of its column is read through the shape's
         constructor, as every shape's numbers are (never rounded). A Box row
-        may state ``unit``, ``number_type`` and ``timeline_id``, as a
-        package's Box table does: they must name this timeline and its axis,
-        and are not stored.
+        may state ``unit``, ``number_type`` and ``timeline_id``: they must
+        name this timeline and its axis, and are not stored.
 
         An :class:`~timetoalign.core.Event` object (a
         :class:`~timetoalign.core.Projection`, a :class:`~timetoalign.core.Box`)
         may be given in place of its row, alone or in the list.
+
+        Rows read from a source file name what read them: a row's
+        ``extraction_id`` names an :class:`~timetoalign.storage.Extraction`
+        given in *extractions* (or held by the timeline's family already)
+        and its ``locator`` the event's place in the source. Both go into
+        the event's registry row (:attr:`registry`), not into
+        :attr:`events`. The extractions the rows name are held with them;
+        if the rows are refused, none of them is held. A row naming no
+        extraction names the family's extraction of events made in code.
 
         Args:
             rows: Event dictionaries or events (one or a list).
@@ -517,6 +531,8 @@ class EventsMixin(_Host):
                 - start, end: coordinates (for interval events)
             allow_expansion: If True, expand timeline if events exceed length.
             seed: The seed of the minter of the missing IDs.
+            extractions: The extractions the rows' ``extraction_id`` names;
+                one the rows do not name is not held.
 
         Returns:
             The IDs of the added events, in the order of *rows*.
@@ -529,8 +545,11 @@ class EventsMixin(_Host):
                 ``number_type`` or ``timeline_id`` names another), a number of
                 its shape is one the axis cannot hold exactly, or its start
                 contradicts its shape, a
-                position cannot be converted, or the events exceed the length
-                and expansion is not allowed. Nothing is added then.
+                position cannot be converted, the events exceed the length
+                and expansion is not allowed, a row names an extraction
+                neither given nor held, an extraction given is held under
+                its ID with other content, or a locator names two events of
+                one extraction. Nothing is added then.
 
         Examples:
             >>> from timetoalign.timelines import ContinuousPhysicalTimeline
@@ -563,6 +582,9 @@ class EventsMixin(_Host):
         given_ids = [row.get("id") for row in rows]
         rows = self._rows_with_ids(rows, seed)
         added = self._event_data_of(rows)
+        if extractions:
+            # Held with the rows, by the registry, once nothing refuses them.
+            added = added.with_extractions(*extractions)
         self._refuse_boxes_off_their_shapes(added, given_ids)
 
         # The farthest end, in this timeline's number type: exact on an
@@ -579,8 +601,8 @@ class EventsMixin(_Host):
 
         The one check of a Box row, whatever brought it (a
         :class:`~timetoalign.core.Box`, a dict, a manifest's event rows, a
-        package's Box table): in this order, every Box row holds exactly one
-        shape, a duration, a ``start`` equal to ``x_min - o`` (*o* the x at
+        package's registry rows with its pre-parsed Box table): in this
+        order, every Box row holds exactly one shape, a duration, a ``start`` equal to ``x_min - o`` (*o* the x at
         which this timeline stands in its image, :func:`_image_origin`) and
         a duration equal to the shape's x extent (``x_max - x_min``), each
         compared exactly on an exact axis (:func:`compare_number_column`),
@@ -842,8 +864,8 @@ class EventsMixin(_Host):
 
         The manifest is this timeline's tree and every tree the groups and
         bundles holding it hold, as for every other ID of the manifest
-        (``_manifest_ids``): the package written from a bundle holds one
-        Projections table for all of them.
+        (``_manifest_ids``): the package written from a bundle holds the
+        Projections of all of them in one registry.
 
         Returns:
             The IDs and, row for row, the ID of the timeline holding each.

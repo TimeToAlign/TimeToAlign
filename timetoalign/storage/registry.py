@@ -50,7 +50,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 from urllib.parse import quote
 
 import numpy as np
@@ -66,7 +66,13 @@ from timetoalign.core.time import (
     compare_number_column,
 )
 
-from .events import TIMELINE_ID, EventData, _column_refusal, joined_tables
+from .events import (
+    TIMELINE_ID,
+    EventData,
+    _column_refusal,
+    _extreme_coordinate,
+    joined_tables,
+)
 from .schema import make_base_schema
 
 if TYPE_CHECKING:
@@ -74,11 +80,16 @@ if TYPE_CHECKING:
 
 __all__ = [
     "EXTRACTION_SCHEMA",
+    "NOT_CONTENT_COLUMNS",
     "REGISTRY_SCHEMA",
     "SEGMENT_KIND",
     "EventRegistry",
     "Extraction",
+    "RegistryFamily",
+    "RegistryHost",
+    "WrittenEvents",
     "extraction_table",
+    "member_uri",
 ]
 
 
@@ -93,6 +104,9 @@ extraction, is never written to a package and no view of the registry
 
 _UNTYPED_KIND = "Event"
 """The kind of an event stating no event type: the ``Event`` base's."""
+
+_BOX_KIND = "Box"
+"""The kind of a Box, an area of the image a timeline runs along."""
 
 REGISTRY_SCHEMA = pa.schema(
     [
@@ -123,11 +137,15 @@ _REGISTRY_COLUMNS = tuple(REGISTRY_SCHEMA.names)
 #: does: given in an EventData, they are moved into the registry row.
 _RESERVED_COLUMNS = ("locator", "extraction_id")
 
-#: The columns of an event that are its position or registry data, never
-#: its content (:meth:`EventRegistry.content`).
-_NOT_CONTENT = frozenset(
+NOT_CONTENT_COLUMNS = frozenset(
     {"start", "end", "duration", "instant", "temporal_type", "event_type", "name"}
 )
+"""The columns of an event that are its registry row's, never its content.
+
+Its position, its type and its name: an event's content
+(:meth:`EventRegistry.content`, a pre-parsed table) is every other column
+but ``id``, which keys it.
+"""
 
 EXTRACTION_SCHEMA = pa.schema(
     [
@@ -168,17 +186,28 @@ def _extraction_id(*parts: object) -> str:
     return IdMinter(seed_from(_EXTRACTION_PREFIX, *parts)).mint(_EXTRACTION_PREFIX)
 
 
-def _member_uri(member: zipfile.Path) -> str:
+def member_uri(member: zipfile.Path) -> str:
     """The ``jar:`` URI of a member of a ZIP archive opened from its path.
 
+    ``jar:<archive file URI>!/<member>``, the archive's absolute path and
+    the member's POSIX path (without a closing ``/``) both percent-encoded:
+    for instance ``jar:file:///data/melod%20y.zip!/works/1.ttl``.
+
+    Args:
+        member: A member of a ZIP archive.
+
+    Returns:
+        The member's URI.
+
     Raises:
-        ValueError: If the archive was opened from a file object.
+        ValueError: If the archive was opened from a file object: it has no
+            path, so the member has no URI.
     """
     filename = member.root.filename
     if filename is None:
         raise ValueError(
-            f"the ZIP archive of member '{member.at}' was opened from a file object: "
-            "it has no URI; give the extraction's source"
+            f"The ZIP archive of member '{member.at}' was opened from a file object: "
+            "it has no path, so the member has no URI; open the archive from its path."
         )
     return f"jar:{Path(filename).absolute().as_uri()}!/{quote(member.at.rstrip('/'))}"
 
@@ -317,7 +346,7 @@ class Extraction:
                 file object and *source* is None: it has no URI.
         """
         if isinstance(path, zipfile.Path):
-            source = _member_uri(path) if source is None else source
+            source = member_uri(path) if source is None else source
             opened = path.open("rb")
         else:
             source = Path(path).as_posix() if source is None else source
@@ -539,6 +568,20 @@ def _repeated(ids: pa.Array, timeline_id: str) -> str | None:
     )
 
 
+def _flat(array: pa.Array | pa.ChunkedArray) -> pa.Array:
+    """*array* as one array, its chunks joined."""
+    return array.combine_chunks() if isinstance(array, pa.ChunkedArray) else array
+
+
+def _flags(mask: object) -> np.ndarray:
+    """The boolean *mask* (an array, chunked or not) as NumPy flags, null False."""
+    if isinstance(mask, pa.ChunkedArray):
+        mask = mask.combine_chunks()
+    if not isinstance(mask, pa.Array):
+        raise TypeError(f"a mask is an array of booleans, not {type(mask).__name__}")
+    return np.asarray(mask.fill_null(False).to_numpy(zero_copy_only=False), dtype=bool)
+
+
 def _repeated_string(value: str, n: int) -> pa.Array:
     """The string *value* on *n* rows, one buffer for all (never a Python list)."""
     return pa.repeat(pa.scalar(value, pa.string()), n)
@@ -630,6 +673,28 @@ def _refuse_repeated_locators(rows: pa.Table, held: pa.Table | None = None) -> N
 # endregion
 
 
+class RegistryHost(Protocol):
+    """What a family's registry asks of a timeline whose rows it takes in.
+
+    A timeline holding its events in a registry
+    (:class:`~timetoalign.timelines.Timeline`) is its host: rows read from a
+    package (:meth:`EventRegistry.add_rows`) are held within its length and
+    its Boxes checked against their shapes, as the rows it adds itself are.
+    """
+
+    def _ensure_capacity(
+        self, required_end: Any, allow_expansion: bool = False
+    ) -> None:
+        """Hold the timeline long enough to reach *required_end*, or refuse."""
+        ...
+
+    def _refuse_boxes_off_their_shapes(
+        self, added: EventData, given_ids: Sequence[str | None]
+    ) -> None:
+        """Refuse a Box of *added* that contradicts its shape."""
+        ...
+
+
 class _Family:
     """The events of one family of timelines (a root and its descendants).
 
@@ -645,7 +710,9 @@ class _Family:
     family as it was.
     """
 
-    def __init__(self, timeline_id: str, data: EventData) -> None:
+    def __init__(
+        self, timeline_id: str, data: EventData, host: RegistryHost | None = None
+    ) -> None:
         self.root_id = timeline_id
         self.unit: TimeUnit = data.unit
         self.number_type: NumberType = data.number_type
@@ -660,6 +727,10 @@ class _Family:
         # Per timeline: the events that copy another event of the family (a
         # child cut from a region), by ID, to the ID of the event copied.
         self.copies: dict[str, dict[str, str]] = {}
+        # The timelines holding their events here, by ID, where one was given.
+        self.hosts: dict[str, RegistryHost] = (
+            {} if host is None else {timeline_id: host}
+        )
         # The family this one joined, once it joined a parent's.
         self.merged_into: _Family | None = None
         self.version = 0
@@ -1116,8 +1187,9 @@ class _Family:
             self.contents.setdefault(kind, []).extend(contents)
         for timeline_id, copies in other.copies.items():
             self.copies.setdefault(timeline_id, {}).update(copies)
+        self.hosts.update(other.hosts)
         other.merged_into = self
-        other.parts, other.rows, other.paths = {}, {}, {}
+        other.parts, other.rows, other.paths, other.hosts = {}, {}, {}, {}
         other._changed()
         self._changed()
 
@@ -1153,6 +1225,7 @@ class _Family:
         self._set_part(new_id, self.parts[new_id])
         self.paths = renamed(self.paths)
         self.copies = renamed(self.copies)
+        self.hosts = renamed(self.hosts)
         rows = renamed(self.rows)
         moved = rows[new_id]
         index = moved.schema.get_field_index("timeline_id")
@@ -1170,21 +1243,90 @@ class _Family:
 
     # region Rows read from a package
 
-    def add_rows(
-        self,
-        rows: pa.Table,
-        contents: Mapping[str, pa.Table | Callable[[], pa.Table]],
-        extractions: Iterable[Extraction],
-        *,
-        registered: bool,
-    ) -> None:
-        """Hold registry rows on the root's axis, their contents read lazily."""
-        rows = _as_registry(rows)
-        extractions = list(extractions)
+    def state(self) -> tuple[Any, ...]:
+        """What :meth:`restore` puts back: every holding of the family, copied."""
+        return (
+            dict(self.parts),
+            dict(self.rows),
+            dict(self.paths),
+            dict(self.extractions),
+            self.tool,
+            {kind: list(entries) for kind, entries in self.contents.items()},
+            self.registered,
+            {timeline_id: dict(copies) for timeline_id, copies in self.copies.items()},
+        )
+
+    def restore(self, state: tuple[Any, ...]) -> None:
+        """Put back the holdings :meth:`state` copied."""
+        (
+            self.parts,
+            self.rows,
+            self.paths,
+            self.extractions,
+            self.tool,
+            self.contents,
+            self.registered,
+            self.copies,
+        ) = state
+        self._changed()
+
+    def not_stated_already(self, rows: pa.Table) -> pa.Table:
+        """*rows* (registry rows) but those the family holds already.
+
+        A row whose ID the family holds on the same timeline, as the same
+        kind at the same root position (``start`` and ``duration`` compared
+        exactly, cell for cell), is the event a manifest's own event rows
+        state: the held one is kept and the row passed over. A row whose ID
+        the family holds otherwise is kept here, for :meth:`add_rows` to
+        refuse.
+        """
+        held = self.table()
+        if not held.num_rows or not rows.num_rows:
+            return rows
+        held_ids = held.column("id").combine_chunks()
+        hits = _filled(
+            pc.is_in(rows.column("id"), value_set=held_ids), pa.scalar(False)
+        )
+        if not pc.any(hits).as_py():
+            return rows
+        at = pc.index_in(rows.column("id"), value_set=held_ids)
+        same = _flags(hits)
+        for name in ("timeline_id", "kind"):
+            same &= _flags(pc.equal(rows.column(name), held.column(name).take(at)))
+        for name in ("start", "duration"):
+            mine = rows.column(name).combine_chunks()
+            theirs = held.column(name).combine_chunks().take(at)
+            both_null = _flags(pc.and_(mine.is_null(), theirs.is_null()))
+            equal = _flags(
+                pc.and_(
+                    pc.equal(
+                        pc.struct_field(mine, "numerator"),
+                        pc.struct_field(theirs, "numerator"),
+                    ),
+                    pc.equal(
+                        pc.struct_field(mine, "denominator"),
+                        pc.struct_field(theirs, "denominator"),
+                    ),
+                )
+            )
+            same &= both_null | equal
+        return rows.filter(pa.array(~same))
+
+    def refuse_rows(
+        self, rows: pa.Table, extractions: Sequence[Extraction]
+    ) -> pa.Array | None:
+        """Refuse registry *rows* the family cannot hold; nothing changes.
+
+        Returns:
+            The timeline of each row, row for row, or None for no rows.
+
+        Raises:
+            KeyError: If a row names a timeline the family does not hold.
+            ValueError: As :meth:`add_rows` refuses.
+        """
         self.refuse_extractions(extractions)
         if not rows.num_rows:
-            self._record(extractions)
-            return
+            return None
         timelines = rows.column("timeline_id").combine_chunks()
         if timelines.null_count:
             raise ValueError(
@@ -1244,7 +1386,72 @@ class _Family:
                     _collision(event_id, holder, str(timelines[at].as_py()))
                 )
         _refuse_repeated_locators(rows, self.table())
-        # Nothing is refused past here.
+        return timelines
+
+    def fit_lengths(self, rows: pa.Table, timelines: pa.Array) -> None:
+        """Hold each host timeline of *rows* long enough for its rows.
+
+        The largest end of each timeline's rows (``start + duration``, the
+        ``start`` of an instant), decided exactly on an exact axis, made
+        local by the offsets of the timeline's ancestors, is held by the
+        timeline as the end of rows it adds (:meth:`RegistryHost._ensure_capacity`).
+        A timeline without a host is not held.
+
+        Raises:
+            ValueError: If a row ends past the length of a locked timeline;
+                the timelines before it are grown already.
+        """
+        number_type = self.number_type
+        for timeline_id, at in _runs(timelines):
+            host = self.hosts.get(str(timeline_id))
+            if host is None:
+                continue
+            part = rows.take(pa.array(at, pa.int64()))
+            start = part.column("start").combine_chunks()
+            duration = part.column("duration").combine_chunks()
+            ends = combine_number_columns(start, duration, "add", number_type)
+            ends = pc.if_else(duration.is_valid(), ends, start)
+            values = pc.struct_field(ends, "value")
+            if values.null_count == len(values):
+                continue
+            end = _extreme_coordinate(
+                pa.chunked_array([ends]),
+                pa.chunked_array([values]),
+                pc.max(values),
+                number_type,
+                max,
+            )
+            for offset in self.paths[str(timeline_id)]:
+                end = end - offset
+            host._ensure_capacity(end)
+
+    def add_rows(
+        self,
+        rows: pa.Table,
+        contents: Mapping[str, pa.Table | Callable[[], pa.Table]],
+        extractions: Iterable[Extraction],
+        *,
+        registered: bool,
+    ) -> None:
+        """Hold registry rows on the root's axis, their contents read lazily.
+
+        Rows the family holds already are passed over
+        (:meth:`not_stated_already`); the others are checked
+        (:meth:`refuse_rows`), held within the lengths of their timelines
+        (:meth:`fit_lengths`) and taken in; a timeline taking a Box checks
+        its Boxes against their shapes, every row read with its content,
+        and a refusal there puts the family back as it was.
+        """
+        rows = self.not_stated_already(_as_registry(rows))
+        extractions = list(extractions)
+        timelines = self.refuse_rows(rows, extractions)
+        if timelines is None:
+            self._record(extractions)
+            self._changed()
+            return
+        self.fit_lengths(rows, timelines)
+        before = self.state()
+        # Nothing is refused past here but a Box, which puts the family back.
         self._record(extractions)
         for kind, content in contents.items():
             self.contents.setdefault(kind, []).append(content)
@@ -1257,6 +1464,23 @@ class _Family:
         if registered:
             self.registered = True
         self._changed()
+        is_box = _filled(
+            pc.equal(rows.column("kind"), pa.scalar(_BOX_KIND)), pa.scalar(False)
+        )
+        try:
+            for timeline_id in pc.unique(pc.filter(timelines, is_box)).to_pylist():
+                host = self.hosts.get(str(timeline_id))
+                if host is None:
+                    continue
+                # A Box read passes the check every Box added passes: its
+                # shape read with it, never trusted over its position.
+                events = self.events_of(str(timeline_id))
+                host._refuse_boxes_off_their_shapes(
+                    events, events.table.column("id").to_pylist()
+                )
+        except BaseException:
+            self.restore(before)
+            raise
 
     def content_of(self, kind: str) -> pa.Table | None:
         """The registered content of *kind*, every table of it read and joined once."""
@@ -1511,6 +1735,82 @@ def _as_registry(rows: pa.Table) -> pa.Table:
 
 
 @dataclass(frozen=True)
+class RegistryFamily:
+    """One family of timelines a registry reads: its root and its axis.
+
+    Attributes:
+        root_id: The ID of the family's root timeline.
+        unit: The unit of the family's axis, every timeline's.
+        number_type: Its number type, every timeline's.
+        timelines: The IDs of its timelines, in the order they joined (the
+            root first).
+    """
+
+    root_id: str
+    unit: TimeUnit
+    number_type: NumberType
+    timelines: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class WrittenEvents:
+    """What a writer stores of a registry's events (:meth:`EventRegistry.written`).
+
+    Attributes:
+        rows: The registry rows (:data:`REGISTRY_SCHEMA`), positions on the
+            axis of each family's root as storage cells, the families in
+            order, each family's rows in its order (its timelines in
+            joining order); no row records a child's place, and every row
+            names its extraction.
+        contents: The content of each timeline's events of each kind, keyed
+            ``(timeline_id, kind)``, the families and their timelines in
+            order and the kinds of a timeline sorted: ``id`` first, then
+            every column but :data:`NOT_CONTENT_COLUMNS` in which one of
+            these events holds a value, row for row the timeline's events of
+            that kind in their order.
+        extractions: The extractions the rows name (``extraction_id`` and
+            ``vanished_in``), sorted by ID.
+        families: The families the rows are of, in order.
+    """
+
+    rows: pa.Table
+    contents: Mapping[tuple[str, str], pa.Table]
+    extractions: tuple[Extraction, ...]
+    families: tuple[RegistryFamily, ...]
+
+    def family_of(self, timeline_id: str) -> RegistryFamily:
+        """The family holding the timeline *timeline_id*.
+
+        Raises:
+            KeyError: If no family holds it.
+        """
+        for family in self.families:
+            if timeline_id in family.timelines:
+                return family
+        raise KeyError(
+            f"No family holds the timeline {quote_id(timeline_id)}. Available "
+            f"timelines: {[tid for family in self.families for tid in family.timelines]}"
+        )
+
+
+def _places(
+    ids: pa.Array | pa.ChunkedArray, kinds: pa.Array | pa.ChunkedArray, family: _Family
+) -> pa.Array:
+    """Row for row, whether a row records a child's place in *family*: a
+    ``Segment`` row whose ID is a timeline of the family. A ``Segment`` row
+    of any other ID is an event like every other."""
+    return _flat(
+        _filled(
+            pc.and_(
+                pc.equal(kinds, pa.scalar(SEGMENT_KIND)),
+                pc.is_in(ids, value_set=pa.array(list(family.paths), pa.string())),
+            ),
+            pa.scalar(False),
+        )
+    )
+
+
+@dataclass(frozen=True)
 class _Criteria:
     """One filter of a view: every condition given must hold."""
 
@@ -1590,15 +1890,22 @@ class EventRegistry:
     rows recording where a child lies (:data:`SEGMENT_KIND`) are no events
     and no view shows them.
 
-    The registry of one family (a timeline's ``_registry``) also takes rows
-    in: :meth:`add`, :meth:`add_rows`, :meth:`update`. Those are the doors
-    of loaders and package readers.
+    Rows come in through the doors of package readers and loaders, on a
+    view too: :meth:`add_rows` (rows read from a package), :meth:`update`
+    (a parser's new run, :meth:`update_target` the timeline it updates);
+    writers read through :meth:`written`. A timeline adds its own rows
+    through :meth:`Timeline.add_events
+    <timetoalign.timelines.Timeline.add_events>`.
 
     Args:
         timeline_id: The ID of the root timeline of a new family.
         data: The root's events, on its axis; their class is the class of
             the family's events. The extractions it carries
             (:attr:`EventData.extractions`) are held with them.
+        host: The timeline holding its events here
+            (:class:`RegistryHost`): rows read for it are held within its
+            length and its Boxes checked. None for a registry standing
+            alone.
 
     Raises:
         ValueError: If *data* holds one event ID twice, or names an
@@ -1623,6 +1930,7 @@ class EventRegistry:
         view = cls.__new__(cls)
         view._sources = tuple(sources)
         view._cache = None
+        view._sources_cache = None
         return view
 
     @classmethod
@@ -1636,9 +1944,14 @@ class EventRegistry:
             source for registry in registries for source in registry._sources
         )
 
-    def __init__(self, timeline_id: str, data: EventData) -> None:
-        self._sources: tuple[_Source, ...] = (_Source(_Family(timeline_id, data)),)
+    def __init__(
+        self, timeline_id: str, data: EventData, *, host: RegistryHost | None = None
+    ) -> None:
+        self._sources: tuple[_Source, ...] = (
+            _Source(_Family(timeline_id, data, host)),
+        )
         self._cache: tuple[tuple[int, ...], pa.Table] | None = None
+        self._sources_cache: tuple[tuple[int, ...], pa.Table] | None = None
 
     def __len__(self) -> int:
         """The number of events of this view."""
@@ -1831,15 +2144,119 @@ class EventRegistry:
             for name in joined.column_names
             if name == "id"
             or (
-                name not in _NOT_CONTENT
+                name not in NOT_CONTENT_COLUMNS
                 and joined.column(name).null_count < joined.num_rows
             )
         ]
         return joined.select(names)
 
+    def written(self, kinds: str | Iterable[str] | None = None) -> WrittenEvents:
+        """What a writer stores of the events of the families this view reads.
+
+        Every family this view reads, whole (a package holds a family whole:
+        a child's events lie on its root's axis), its rows and contents read
+        when asked. The rows recording where a child lies (a ``Segment`` row
+        named by a timeline of the family) are left out; a user's
+        ``Segment`` row, an event like any other, is kept, naming the
+        family's extraction of events made in code
+        (:meth:`Extraction.of_tool`) where it names none.
+
+        Args:
+            kinds: Keep the rows and contents of these kinds only; every
+                kind when None.
+
+        Returns:
+            The rows, the contents per timeline and kind, the extractions
+            the rows name and the families
+            (:class:`WrittenEvents`).
+        """
+        wanted = _frozen(kinds)
+        row_parts: list[pa.Table] = []
+        contents: dict[tuple[str, str], pa.Table] = {}
+        found: dict[str, Extraction] = {}
+        families: list[RegistryFamily] = []
+        for family, _ in self._families():
+            families.append(
+                RegistryFamily(
+                    root_id=family.root_id,
+                    unit=family.unit,
+                    number_type=family.number_type,
+                    timelines=tuple(family.parts),
+                )
+            )
+            held = family.table()
+            if held.num_rows:
+                kept = pc.invert(
+                    _places(held.column("id"), held.column("kind"), family)
+                )
+                if wanted is not None:
+                    kept = pc.and_(
+                        kept,
+                        pc.is_in(
+                            held.column("kind"), value_set=pa.array(sorted(wanted))
+                        ),
+                    )
+                rows = held.filter(kept)
+                unnamed = rows.column("extraction_id").is_null()
+                if pc.any(unnamed).as_py():
+                    tool = family.tool or Extraction.of_tool(scope=family.root_id)
+                    found.setdefault(tool.id, tool)
+                    at = rows.schema.get_field_index("extraction_id")
+                    rows = rows.set_column(
+                        at,
+                        rows.schema.field(at),
+                        _filled(rows.column("extraction_id"), pa.scalar(tool.id)),
+                    )
+                row_parts.append(rows)
+            for timeline_id in family.parts:
+                table = family.events_of(timeline_id).table
+                if not table.num_rows:
+                    continue
+                kinds_of = _filled(
+                    _strings(table, "event_type"), pa.scalar(_UNTYPED_KIND)
+                )
+                own = pc.invert(_places(_strings(table, "id"), kinds_of, family))
+                for kind in sorted(
+                    str(value) for value in pc.unique(kinds_of.filter(own)).to_pylist()
+                ):
+                    if wanted is not None and kind not in wanted:
+                        continue
+                    rows = table.filter(
+                        pc.and_(own, pc.equal(kinds_of, pa.scalar(kind)))
+                    )
+                    n = rows.num_rows
+                    contents[(timeline_id, kind)] = rows.select(
+                        [
+                            name
+                            for name in rows.column_names
+                            if name == "id"
+                            or (
+                                name not in NOT_CONTENT_COLUMNS
+                                and rows.column(name).null_count < n
+                            )
+                        ]
+                    )
+            for extraction_id, extraction in family.extractions.items():
+                found.setdefault(extraction_id, extraction)
+        table = (
+            pa.concat_tables(row_parts) if row_parts else REGISTRY_SCHEMA.empty_table()
+        )
+        named = {
+            str(value)
+            for column in ("extraction_id", "vanished_in")
+            for value in pc.unique(table.column(column)).to_pylist()
+            if value is not None
+        }
+        return WrittenEvents(
+            rows=table,
+            contents=contents,
+            extractions=tuple(found[key] for key in sorted(named) if key in found),
+            families=tuple(families),
+        )
+
     # endregion
 
-    # region Taking rows in (one family)
+    # region Taking rows in
 
     def add(
         self,
@@ -1857,10 +2274,12 @@ class EventRegistry:
         *extraction*, else the family's tool extraction
         (:meth:`Extraction.of_tool`, one per family). The extractions *data*
         carries (:attr:`EventData.extractions`) that the rows name are held
-        with them.
+        with them. Taken by the registry of one family (a timeline's
+        ``_registry``), not by a view.
 
         Raises:
             KeyError: If the family holds no timeline *timeline_id*.
+            TypeError: If this registry is a view.
             ValueError: If *data* lies on another axis than the family's, an
                 event ID of it is held in the family or twice in *data*, a
                 row names an extraction neither held, nor *extraction*, nor
@@ -1880,45 +2299,226 @@ class EventRegistry:
     ) -> None:
         """Hold registry rows already on the root's axis, as read from a package.
 
-        The rows' content is read lazily: the family's events are built
-        from its rows and *contents* (per kind, a table keyed by ``id`` or a
-        callable giving one) when a timeline's events are first read,
-        positions made local (the root position less the offsets of the
-        timeline's ancestors), each timeline's in the order of its rows.
+        Each row joins the family of the timeline it names, among the
+        families this registry (a view too: a timeline's, a group's, a
+        bundle's) reads. A row the family holds already, on the same
+        timeline, of the same kind, at the same root position (``start`` and
+        ``duration`` compared cell for cell), is passed over: it is the
+        event a manifest states inline. Each timeline taking rows is held
+        long enough for them, as for the rows it adds itself (an unlocked
+        timeline grows to the last end, made local by its ancestors'
+        offsets; a locked one refuses). The rows' content is read lazily:
+        the family's events are built from its rows and *contents* (per
+        kind, a table keyed by ``id`` or a callable giving one) when a
+        timeline's events are first read, positions made local (the root
+        position less the offsets of the timeline's ancestors), each
+        timeline's in the order of its rows; a timeline taking a Box reads
+        its events at once and checks every Box against its shape, as a Box
+        added is checked.
 
         Args:
             rows: Registry rows (:data:`REGISTRY_SCHEMA`'s columns; a column
                 absent is null), ``start`` and ``duration`` as storage cells.
-            contents: The content of each kind, keyed by ``id``.
-            extractions: The extractions the rows name.
-            registered: The rows are a package's: the family never joins a
-                parent afterwards.
+            contents: The content of each kind, keyed by ``id``; every
+                family taking rows reads it (each its own events' rows).
+            extractions: The extractions the rows name; each family taking
+                rows holds them all.
+            registered: The rows are a package's: a family taking them never
+                joins a parent afterwards.
 
         Raises:
-            KeyError: If a row names a timeline the family does not hold.
-            ValueError: If a row lies on another axis than the family's,
+            KeyError: If a row names a timeline no family of this registry
+                holds.
+            ValueError: If a row lies on another axis than its family's,
                 names an extraction not given or held, holds an ID held in
-                the family or twice, or a locator naming two events of one
-                extraction; nothing changes then.
+                the family or twice, a locator naming two events of one
+                extraction, ends past the length of a locked timeline, or a
+                Box contradicts its shape. Nothing changes then, but the
+                lengths of timelines grown before a refusal.
         """
-        self._family.add_rows(rows, contents or {}, extractions, registered=registered)
+        rows = _as_registry(rows)
+        families = [family for family, _ in self._families()]
+        extractions = list(extractions)
+        if len(families) == 1:
+            families[0].add_rows(
+                rows, contents or {}, extractions, registered=registered
+            )
+            return
+        timelines = rows.column("timeline_id").combine_chunks()
+        if timelines.null_count:
+            raise ValueError(
+                "a registry row of an event names no timeline; an event lies on "
+                "one timeline"
+            )
+        holder: dict[str, _Family] = {
+            timeline_id: family for family in families for timeline_id in family.parts
+        }
+        unknown = pc.filter(
+            timelines,
+            pc.invert(
+                pc.is_in(timelines, value_set=pa.array(list(holder), pa.string()))
+            ),
+        )
+        if len(unknown):
+            raise KeyError(
+                f"A registry row names the timeline {quote_id(unknown[0].as_py())}, "
+                f"which no family of this registry holds. Available timelines: "
+                f"{list(holder)}"
+            )
+        by_family: dict[int, tuple[_Family, list[np.ndarray]]] = {}
+        for timeline_id, at in _runs(timelines):
+            family = holder[str(timeline_id)]
+            by_family.setdefault(id(family), (family, []))[1].append(at)
+        states: list[tuple[_Family, tuple[Any, ...]]] = []
+        try:
+            for family, positions in by_family.values():
+                states.append((family, family.state()))
+                family.add_rows(
+                    rows.take(pa.array(np.sort(np.concatenate(positions)), pa.int64())),
+                    contents or {},
+                    extractions,
+                    registered=registered,
+                )
+        except BaseException:
+            for family, state in reversed(states):
+                family.restore(state)
+            raise
 
-    def update(self, timeline_id: str, data: EventData, extraction: Extraction) -> None:
-        """Update the rows of *timeline_id* from *data*, a parser's new run.
+    def update_target(
+        self,
+        data: EventData,
+        extraction: Extraction,
+        *,
+        timeline_id: str | None = None,
+    ) -> str | None:
+        """The timeline :meth:`update` would update from *data*, or None.
 
-        Rows are matched by ``locator`` (a column of *data*) among the rows
-        made by extractions of the same source as *extraction*: a matched
-        row keeps its ID and takes the new row's content, position and
-        *extraction*; a new row matching none is added; an old row of that
-        source no longer found is kept, naming *extraction* in
-        ``vanished_in``. Nothing is deleted.
+        The timeline of this registry holding most of the rows that *data*'s
+        locators name among the rows made by extractions of the same source
+        file as *extraction* (ties: the timeline met first); where they name
+        none, the timeline *timeline_id* (else the one *data* is a table of)
+        if a family of this registry holds it. Read column-wise: one table
+        of each held extraction's ID and source, and set lookups.
+
+        Raises:
+            ValueError: If *data* gives no locators (a column ``locator``).
+        """
+        if "locator" not in data.table.column_names:
+            raise ValueError(
+                "an update matches rows by their locator: the rows give none "
+                "(a column 'locator')"
+            )
+        held = self.table
+        sources = self._extraction_sources()
+        same_source = sources.column("id").filter(
+            _filled(
+                pc.equal(
+                    sources.column("source"), pa.scalar(extraction.source, pa.string())
+                ),
+                pa.scalar(False),
+            )
+            if extraction.source is not None
+            else sources.column("source").is_null()
+        )
+        locators = pc.drop_null(_strings(data.table, "locator"))
+        candidates = held.filter(
+            _filled(
+                pc.and_(
+                    pc.is_in(held.column("extraction_id"), value_set=same_source),
+                    pc.is_in(held.column("locator"), value_set=locators),
+                ),
+                pa.scalar(False),
+            )
+        )
+        if candidates.num_rows:
+            counted = (
+                candidates.select(["timeline_id"])
+                .group_by("timeline_id", use_threads=False)
+                .aggregate([("timeline_id", "count")])
+                .sort_by([("timeline_id_count", "descending")])
+            )
+            return str(counted.column("timeline_id")[0].as_py())
+        fallback = data._timeline_id if timeline_id is None else timeline_id
+        if fallback is not None and any(
+            fallback in family.parts for family, _ in self._families()
+        ):
+            return fallback
+        return None
+
+    def update(
+        self,
+        data: EventData,
+        extraction: Extraction,
+        *,
+        timeline_id: str | None = None,
+    ) -> str:
+        """Update the rows of a timeline of this registry from *data*, a parser's new run.
+
+        *data* holds the rows of one extraction, local to the timeline they
+        were read for, each with its ``locator`` (a column). The timeline
+        updated is :meth:`update_target`'s. Its rows are matched by the full
+        ``locator`` among the rows made by extractions of the same source as
+        *extraction*: a matched row keeps its ID and takes the new row's
+        content, position and *extraction*; a new row matching none is
+        added; an old row of that source no longer found is kept, naming
+        *extraction* in ``vanished_in``. Nothing is deleted. A view (a
+        timeline's, a group's, a bundle's) updates the family holding the
+        timeline.
+
+        Args:
+            data: The rows read again, with their locators.
+            extraction: The run that read them.
+            timeline_id: The timeline updated where no locator matches.
+
+        Returns:
+            The ID of the timeline updated.
 
         Raises:
             ValueError: If *data* gives no locators or one locator twice,
+                matches no timeline of this registry (by locator or by ID),
                 lies on another axis, or an added row's ID is held; nothing
                 changes then.
         """
-        self._family.update(timeline_id, data, extraction)
+        target = self.update_target(data, extraction, timeline_id=timeline_id)
+        if target is None:
+            named = data._timeline_id if timeline_id is None else timeline_id
+            raise ValueError(
+                f"the rows of extraction {quote_id(extraction.id)} "
+                f"({extraction.source}) match no timeline of the registry, by "
+                f"locator or by ID ({named}); nothing is updated"
+            )
+        family = next(
+            family for family, _ in self._families() if target in family.parts
+        )
+        family.update(target, data, extraction)
+        return target
+
+    def _extraction_sources(self) -> pa.Table:
+        """Every extraction the families of this registry hold: ``id`` and ``source``.
+
+        Built once per state of the families (each family's version and
+        number of extractions), then reused.
+        """
+        families = [family for family, _ in self._families()]
+        key = tuple(
+            value
+            for family in families
+            for value in (id(family), family.version, len(family.extractions))
+        )
+        cached = self._sources_cache
+        if cached is not None and cached[0] == key:
+            return cached[1]
+        ids: list[str] = []
+        sources: list[str | None] = []
+        for family in families:
+            for extraction_id, extraction in family.extractions.items():
+                ids.append(extraction_id)
+                sources.append(extraction.source)
+        table = pa.table(
+            {"id": pa.array(ids, pa.string()), "source": pa.array(sources, pa.string())}
+        )
+        self._sources_cache = (key, table)
+        return table
 
     # endregion
 

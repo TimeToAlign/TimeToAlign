@@ -13,16 +13,26 @@ import pytest
 
 import timetoalign
 from timetoalign.alignment import AlignmentBundle
-from timetoalign.core import Coordinate, IdCoordinate, NumberType, TimeUnit
+from timetoalign.core import (
+    BoundingBox,
+    Box,
+    Coordinate,
+    IdCoordinate,
+    NumberType,
+    TimeUnit,
+)
+from timetoalign.loader import _sources
 from timetoalign.storage import EventData, EventRegistry, Extraction
 from timetoalign.storage.registry import (
     EXTRACTION_SCHEMA,
     REGISTRY_SCHEMA,
     extraction_table,
+    member_uri,
 )
 from timetoalign.timelines import (
     ContinuousLogicalTimeline,
     ContinuousPhysicalTimeline,
+    DiscreteGraphicalTimeline,
     DiscreteLogicalTimeline,
     Timeline,
     TimelineGroup,
@@ -365,7 +375,7 @@ class TestRootPositions:
             NumberType.fraction,
         )
 
-        timeline._registry.update("clt_t", again, second)
+        timeline.registry.update(again, second, timeline_id="clt_t")
 
         assert _ids(timeline.events.table) == ["n1", "b1", "n2"]
         assert _ids(timeline.registry.table) == ["n1", "b1", "n2"]
@@ -723,7 +733,7 @@ class TestUpdate:
             ],
         )
         second = Extraction(**{**second.__dict__, "id": "extraction_second"})
-        timeline._registry.update("clt_u", again, second)
+        timeline.registry.update(again, second, timeline_id="clt_u")
 
         table = timeline.registry.table
         assert _ids(table) == ["n1", "n2", "n3", "k1", "x3"]
@@ -764,7 +774,7 @@ class TestUpdate:
         )
 
         with pytest.raises(ValueError) as refusal:
-            timeline._registry.update("clt_u", data, extraction)
+            timeline.registry.update(data, extraction, timeline_id="clt_u")
 
         assert str(refusal.value) == (
             "an update matches rows by their locator: the rows give none (a column "
@@ -792,7 +802,7 @@ class TestUpdate:
         second = Extraction(**{**second.__dict__, "id": "extraction_second"})
 
         with pytest.raises(ValueError) as refusal:
-            timeline._registry.update("clt_u", again, second)
+            timeline.registry.update(again, second, timeline_id="clt_u")
 
         assert str(refusal.value) == (
             "locator 'm0' is given to 2 events of extraction 'extraction_second'; "
@@ -836,6 +846,432 @@ class TestUpdate:
         timeline._registry.add("clt_u", again, extraction=_package_extraction())
 
         assert _ids(timeline.registry.table) == ["n1", "n2", "n3", "y1"]
+
+    def _under_a_root(self, tmp_path: Path) -> tuple[Timeline, Timeline, Extraction]:
+        """``clt_root`` with the child ``clt_u`` at 2 holding the first run's rows."""
+        timeline, first = self._first(tmp_path)
+        root = _quarters("clt_root", 16)
+        root.add_child(timeline, offset=2)
+        return root, timeline, first
+
+    def _second(
+        self, tmp_path: Path, rows: list[tuple[str, str, Any, int]]
+    ) -> tuple[Extraction, EventData]:
+        second, again = self._run(self._source(tmp_path), rows)
+        return Extraction(**{**second.__dict__, "id": "extraction_second"}), again
+
+    def test_an_update_through_a_view_finds_its_timeline(self, tmp_path: Path) -> None:
+        root, timeline, first = self._under_a_root(tmp_path)
+        second, again = self._second(
+            tmp_path,
+            [
+                ("x0", "m0", 0, 61),
+                ("x2", "m2", Fraction(5, 2), 64),
+                ("x3", "m3", 3, 65),
+            ],
+        )
+        before = root.registry.table
+
+        assert root.registry.update_target(again, second) == "clt_u"
+        assert root.registry.table.equals(before)
+        assert root.registry.update(again, second) == "clt_u"
+
+        assert _ids(timeline.registry.table) == ["n1", "n2", "n3", "x3"]
+        assert timeline.events.table.column("pitch").to_pylist() == [61, 62, 64, 65]
+        assert _starts(timeline.events.table) == [0, 1, Fraction(5, 2), 3]
+        assert _starts(timeline.registry.table) == [2, 3, Fraction(9, 2), 5]
+        assert timeline.registry.table.column("vanished_in").to_pylist() == [
+            None,
+            "extraction_second",
+            None,
+            None,
+        ]
+
+    def test_the_timeline_holding_most_matched_rows_is_updated(
+        self, tmp_path: Path
+    ) -> None:
+        path = self._source(tmp_path)
+        first, held_u = self._run(path, [("u2", "m2", 0, 60)])
+        first = Extraction(**{**first.__dict__, "id": "extraction_first"})
+        _, held_v = self._run(path, [("v0", "m0", 0, 60), ("v1", "m1", 1, 62)])
+        root = _quarters("clt_root", 16)
+        u = _quarters("clt_u", 4)
+        v = _quarters("clt_v", 4)
+        root.add_child(u, offset=0)
+        root.add_child(v, offset=8)
+        u._registry.add("clt_u", held_u, extraction=first)
+        v._registry.add("clt_v", held_v, extraction=first)
+        second, again = self._second(
+            tmp_path, [("x0", "m0", 0, 61), ("x1", "m1", 1, 63), ("x2", "m2", 2, 65)]
+        )
+
+        assert root.registry.update(again, second) == "clt_v"
+
+        assert _ids(v.registry.table) == ["v0", "v1", "x2"]
+        assert _ids(u.registry.table) == ["u2"]
+
+    def test_rows_of_another_source_fall_back_on_the_id(self, tmp_path: Path) -> None:
+        root, timeline, _ = self._under_a_root(tmp_path)
+        other = tmp_path / "other.txt"
+        other.write_bytes(b"xyz")
+        extraction, again = self._run(other, [("z0", "m0", 4, 70)])
+
+        assert root.registry.update_target(again, extraction) is None
+        before = root.registry.table
+        with pytest.raises(ValueError) as refusal:
+            root.registry.update(again, extraction)
+        assert str(refusal.value) == (
+            f"the rows of extraction {extraction.id!r} ({extraction.source}) match no "
+            "timeline of the registry, by locator or by ID (None); nothing is updated"
+        )
+        assert root.registry.table.equals(before)
+
+        assert root.registry.update(again, extraction, timeline_id="clt_u") == "clt_u"
+
+        assert _ids(timeline.registry.table) == ["n1", "n2", "n3", "z0"]
+        assert timeline.registry.table.column("vanished_in").to_pylist() == [None] * 4
+
+
+class TestWritten:
+    @staticmethod
+    def _with_a_segment_event() -> tuple[Timeline, Timeline, Timeline, Timeline]:
+        root, a, g, b = _family()
+        b.add_events([{"id": "s1", "event_type": "Segment", "start": 1}])
+        return root, a, g, b
+
+    def test_rows_contents_extractions_families(self) -> None:
+        root, a, _, _ = self._with_a_segment_event()
+
+        written = root.registry.written()
+
+        tool = root._registry._family.tool
+        assert tool is not None
+        assert _ids(written.rows) == ["r1", "a1", "a2", "g1", "b1", "s1"]
+        assert written.rows.column("extraction_id").to_pylist() == [tool.id] * 6
+        assert _starts(written.rows) == [
+            Fraction(1, 2),
+            Fraction(7, 3),
+            2,
+            Fraction(13, 4),
+            Fraction(41, 10),
+            5,
+        ]
+        assert list(written.contents) == [
+            ("clt_root", "Beat"),
+            ("clt_a", "Beat"),
+            ("clt_g", "Note"),
+            ("clt_b", "Beat"),
+            ("clt_b", "Segment"),
+        ]
+        assert written.contents[("clt_g", "Note")].to_pylist() == [
+            {"id": "g1", "pitch": 60}
+        ]
+        assert written.contents[("clt_a", "Beat")].to_pylist() == [
+            {"id": "a1"},
+            {"id": "a2"},
+        ]
+        assert written.extractions == (tool,)
+        (family,) = written.families
+        assert (family.root_id, family.unit, family.number_type, family.timelines) == (
+            "clt_root",
+            TimeUnit.quarters,
+            NumberType.fraction,
+            ("clt_root", "clt_a", "clt_g", "clt_b"),
+        )
+        assert written.family_of("clt_g") == family
+        with pytest.raises(KeyError) as refusal:
+            written.family_of("clt_nowhere")
+        assert str(refusal.value) == (
+            "\"No family holds the timeline 'clt_nowhere'. Available timelines: "
+            "['clt_root', 'clt_a', 'clt_g', 'clt_b']\""
+        )
+
+    def test_kinds_and_views(self) -> None:
+        root, a, _, _ = self._with_a_segment_event()
+
+        notes = root.registry.written("Note")
+
+        assert _ids(notes.rows) == ["g1"]
+        assert list(notes.contents) == [("clt_g", "Note")]
+        assert a.registry.written().rows.equals(root.registry.written().rows)
+
+    def test_a_bundle_writes_each_family(self) -> None:
+        root, *_ = _family()
+        bundle = _bundle(root)
+
+        written = bundle.registry.written()
+
+        assert _ids(written.rows) == ["r1", "a1", "a2", "g1", "b1", "o1"]
+        assert [
+            (family.root_id, family.unit, family.number_type)
+            for family in written.families
+        ] == [
+            ("clt_root", TimeUnit.quarters, NumberType.fraction),
+            ("audio", TimeUnit.seconds, NumberType.float),
+        ]
+        assert written.family_of("audio").timelines == ("audio",)
+
+
+class TestAddRows:
+    @staticmethod
+    def _timelines() -> tuple[Timeline, Timeline, Timeline, AlignmentBundle]:
+        root = _quarters("clt_p", 4)
+        child = _quarters("clt_pc", 2)
+        root.add_child(child, offset=1)
+        seconds = ContinuousPhysicalTimeline(length=1.0, uid="cpt_s", locked=False)
+        bundle = AlignmentBundle(id="b")
+        bundle.add_timeline(root)
+        bundle.add_timeline(seconds)
+        return root, child, seconds, bundle
+
+    @staticmethod
+    def _p1(start: Any = Fraction(5, 2)) -> pa.Table:
+        return _registry_rows(
+            [
+                {
+                    "id": "p1",
+                    "kind": "Note",
+                    "timeline_id": "clt_pc",
+                    "start": start,
+                    "duration": Fraction(1, 2),
+                    "extraction_id": "extraction_p",
+                }
+            ],
+            "quarters",
+            "fraction",
+        )
+
+    @staticmethod
+    def _o1(extraction_id: str = "extraction_p") -> pa.Table:
+        return _registry_rows(
+            [
+                {
+                    "id": "o1",
+                    "kind": "Onset",
+                    "timeline_id": "cpt_s",
+                    "start": 2.5,
+                    "extraction_id": extraction_id,
+                }
+            ],
+            "seconds",
+            "float",
+        )
+
+    def test_rows_join_their_families_through_a_view(self) -> None:
+        _, child, seconds, bundle = self._timelines()
+        rows = pa.concat_tables([self._p1(), self._o1()])
+
+        bundle.registry.add_rows(
+            rows,
+            {"Note": pa.table({"id": ["p1"], "pitch": [62]})},
+            [_package_extraction()],
+        )
+
+        assert _ids(child.events.table) == ["p1"]
+        assert _starts(child.events.table) == [Fraction(3, 2)]
+        assert child.events.table.column("pitch").to_pylist() == [62]
+        assert _values(seconds.events.table) == [2.5]
+        assert child.length is not None and child.length.value == 2
+        assert seconds.length is not None and seconds.length.value == 2.5
+        assert child.registry.extractions == [_package_extraction()]
+        assert seconds.registry.extractions == [_package_extraction()]
+
+    def test_a_locked_timeline_refuses_a_row_past_its_length(self) -> None:
+        locked = ContinuousLogicalTimeline(
+            length=2, unit="quarters", number_type="fraction", uid="clt_l", locked=True
+        )
+        rows = self._p1()
+        rows = rows.set_column(
+            rows.schema.get_field_index("timeline_id"),
+            "timeline_id",
+            pa.array(["clt_l"]),
+        )
+
+        with pytest.raises(ValueError) as refusal:
+            locked.registry.add_rows(rows, {}, [_package_extraction()])
+
+        assert str(refusal.value) == (
+            "Adding content ending at 3 exceeds timeline length 2. Timeline is "
+            "locked. Use allow_expansion=True to override."
+        )
+        assert len(locked.registry) == 0
+        assert len(locked.events) == 0
+
+    def test_a_row_stated_already_is_passed_over(self) -> None:
+        root, child, _, _ = self._timelines()
+        root.registry.add_rows(self._p1(), {}, [_package_extraction()])
+        before = root.registry.table
+
+        root.registry.add_rows(self._p1(), {}, [_package_extraction()])
+
+        assert root.registry.table.equals(before)
+        with pytest.raises(ValueError) as refusal:
+            root.registry.add_rows(self._p1(start=3), {}, [_package_extraction()])
+        assert str(refusal.value) == (
+            "Event id 'p1' is already held by an event of timeline 'clt_pc'"
+        )
+        assert root.registry.table.equals(before)
+
+    def test_a_refusal_in_one_family_changes_none(self) -> None:
+        _, _, seconds, bundle = self._timelines()
+        rows = pa.concat_tables([self._o1(), self._p1()])
+        rows = rows.set_column(
+            rows.schema.get_field_index("extraction_id"),
+            "extraction_id",
+            pa.array(["extraction_p", "extraction_nowhere"]),
+        )
+
+        with pytest.raises(ValueError) as refusal:
+            bundle.registry.add_rows(rows, {}, [_package_extraction()])
+
+        assert str(refusal.value) == (
+            "a registry row names the extraction 'extraction_nowhere', which is "
+            "given with none of the extractions"
+        )
+        assert len(bundle.registry) == 0
+        assert len(seconds.events) == 0
+
+    def test_a_row_of_a_timeline_the_view_does_not_hold(self) -> None:
+        _, _, _, bundle = self._timelines()
+        rows = self._p1()
+        rows = rows.set_column(
+            rows.schema.get_field_index("timeline_id"),
+            "timeline_id",
+            pa.array(["clt_nowhere"]),
+        )
+
+        with pytest.raises(KeyError) as refusal:
+            bundle.registry.add_rows(rows, {}, [_package_extraction()])
+
+        assert str(refusal.value) == (
+            "\"A registry row names the timeline 'clt_nowhere', which no family of "
+            "this registry holds. Available timelines: ['clt_p', 'clt_pc', 'cpt_s']\""
+        )
+
+    @staticmethod
+    def _box_rows(start: int) -> tuple[pa.Table, dict[str, pa.Table], list[Extraction]]:
+        """The registry rows and Box content of ``rect_h2`` on ``seg_2``, its start *start*."""
+        made = DiscreteGraphicalTimeline(
+            length=867,
+            uid="seg_2",
+            meta={"box": {"x": 7, "y": 0, "width": 867, "height": 270}},
+        )
+        made.add_events(
+            Box.from_shape(
+                BoundingBox.from_xywh(385, 46, 139, 20, unit="pixels"),
+                origin=7,
+                id="rect_h2",
+            )
+        )
+        rows = made.registry.table
+        cells = pa.array(
+            [{"value": float(start), "numerator": start, "denominator": 1}],
+            REGISTRY_SCHEMA.field("start").type,
+        )
+        rows = rows.set_column(
+            rows.schema.get_field_index("start"), REGISTRY_SCHEMA.field("start"), cells
+        )
+        return rows, {"Box": made.registry.content("Box")}, made.registry.extractions
+
+    def test_a_box_read_is_checked_against_its_shape(self) -> None:
+        seg_2 = DiscreteGraphicalTimeline(
+            length=867,
+            uid="seg_2",
+            meta={"box": {"x": 7, "y": 0, "width": 867, "height": 270}},
+        )
+        rows, contents, extractions = self._box_rows(1)
+
+        with pytest.raises(ValueError) as refusal:
+            seg_2.registry.add_rows(rows, contents, extractions)
+
+        assert str(refusal.value) == (
+            "Box 'rect_h2' starts at 1 on timeline 'seg_2', but its shape starts at "
+            'x 385 and the timeline stands at x 7 of its image (meta["box"]): its '
+            "start is 378."
+        )
+        assert len(seg_2.registry) == 0
+        assert len(seg_2.events) == 0
+        assert seg_2.registry.extractions == []
+
+        seg_2.registry.add_rows(*self._box_rows(378))
+
+        assert _ids(seg_2.events.table) == ["rect_h2"]
+
+    def test_a_registry_standing_alone_checks_no_box(self) -> None:
+        rows, contents, extractions = self._box_rows(1)
+        registry = EventRegistry(
+            "seg_2", EventData.empty(TimeUnit.pixels, NumberType.int)
+        )
+
+        registry.add_rows(rows, contents, extractions)
+
+        assert _ids(registry.table) == ["rect_h2"]
+
+
+class TestAddEvents:
+    @staticmethod
+    def _extraction(tmp_path: Path, version: str) -> Extraction:
+        path = tmp_path / "score.txt"
+        path.write_bytes(b"abc")
+        return Extraction.of_source(path, parser="P", parser_version=version)
+
+    @staticmethod
+    def _rows(extraction_id: str, *ids: str) -> list[dict[str, Any]]:
+        return [
+            {
+                "id": event_id,
+                "event_type": "Note",
+                "start": index,
+                "extraction_id": extraction_id,
+                "locator": f"m{index}",
+            }
+            for index, event_id in enumerate(ids)
+        ]
+
+    def test_extractions_are_held_with_the_rows(self, tmp_path: Path) -> None:
+        e1 = self._extraction(tmp_path, "1")
+        e2 = self._extraction(tmp_path, "2")
+        timeline = _quarters("clt_e", 8)
+
+        assert timeline.add_events(
+            self._rows(e1.id, "n1", "n2"), extractions=[e1, e2]
+        ) == [
+            "n1",
+            "n2",
+        ]
+
+        assert timeline.registry.extractions == [e1]
+        assert (
+            timeline.registry.table.column("extraction_id").to_pylist() == [e1.id] * 2
+        )
+        assert timeline.registry.table.column("locator").to_pylist() == ["m0", "m1"]
+        assert "extraction_id" not in timeline.events.table.column_names
+        assert "locator" not in timeline.events.table.column_names
+        assert e2.id not in timeline._registry._family.extractions
+
+    def test_refused_rows_hold_no_extraction(self, tmp_path: Path) -> None:
+        e1 = self._extraction(tmp_path, "1")
+        e3 = self._extraction(tmp_path, "3")
+        timeline = _quarters("clt_e", 8)
+        timeline.add_events(self._rows(e1.id, "n1"), extractions=[e1])
+
+        with pytest.raises(ValueError):
+            timeline.add_events(self._rows(e3.id, "n1"), extractions=[e3])
+
+        assert e3.id not in timeline._registry._family.extractions
+        assert timeline.registry.extractions == [e1]
+
+    def test_an_extraction_neither_given_nor_held_is_refused(self) -> None:
+        timeline = _quarters("clt_e", 8)
+
+        with pytest.raises(ValueError) as refusal:
+            timeline.add_events(self._rows("extraction_nowhere", "n1"))
+
+        assert str(refusal.value) == (
+            "the rows name the extraction 'extraction_nowhere', which this family "
+            "does not hold: give it with the rows (EventData.with_extractions)"
+        )
+        assert len(timeline.events) == 0
 
 
 class TestExtractions:
@@ -919,6 +1355,20 @@ class TestExtractions:
             with pytest.raises(ValueError, match="opened from a file object"):
                 Extraction.of_source(inside, **run)
             assert Extraction.of_source(inside, source="score.txt", **run) == named
+
+    def test_one_jar_uri(self, tmp_path: Path) -> None:
+        archive = tmp_path / "set.zip"
+        with zipfile.ZipFile(archive, "w") as handle:
+            handle.writestr("inner/sc ore.txt", b"abc")
+            handle.writestr("inner/folder/", b"")
+
+        assert _sources.member_uri is member_uri
+        assert member_uri(zipfile.Path(archive, at="inner/sc ore.txt")) == (
+            f"jar:{archive.absolute().as_uri()}!/inner/sc%20ore.txt"
+        )
+        assert member_uri(zipfile.Path(archive, at="inner/folder/")) == (
+            f"jar:{archive.absolute().as_uri()}!/inner/folder"
+        )
 
     def test_a_table_carries_its_extractions_to_its_timeline(
         self, tmp_path: Path

@@ -4710,8 +4710,8 @@ every non-null cell (a float mirrored by its exact ratio), followed by the
 ``unit`` (the :class:`TimeUnit` value) and the ``number_type`` (``"int"``,
 ``"float"`` or ``"fraction"``), which says which side is authoritative. It
 is the cell of a table whose rows may lie on different timelines, such as
-the MatchClaim table and the Projections table in memory, where no field
-can record one axis for all rows. A package's files write the number once
+the MatchClaim table and a field of Projections of several timelines in
+memory, where no field can record one axis for all rows. A package's files write the number once
 instead (:data:`PACKAGE_COORDINATE_CELL_TYPE`, :data:`PACKAGE_NUMBER_TYPE`).
 """
 
@@ -4904,8 +4904,8 @@ number type   ``numerator``  ``denominator``  ``value``
 ``float``     null           null             x (finite)
 ============  =============  ===============  =========
 
-The number type is not in the struct: a Projections table states it once
-per row, a MatchClaim table's coordinate cell beside the number
+The number type is not in the struct: a registry row states it once per
+row (its ``number_type``), a MatchClaim table's coordinate cell beside the number
 (:data:`PACKAGE_COORDINATE_CELL_TYPE`). In memory every number keeps both
 sides (:data:`RATIONAL_STRUCT_TYPE`); :func:`package_numbers` and
 :func:`numbers_from_package` convert at the file boundary, and nowhere else.

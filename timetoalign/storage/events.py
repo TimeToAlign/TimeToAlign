@@ -272,8 +272,8 @@ def refuse_shared_projection_ids(
 ) -> None:
     """Refuse a Projection ID that names two Projections.
 
-    A Projection's ID is unique among all Projections of a package's
-    Projections table. A new Projection is minted (or its given ID checked)
+    A Projection's ID is unique among all Projections of a package (the
+    rows of its registry). A new Projection is minted (or its given ID checked)
     against every Projection of the manifest it is added to; timelines that
     joined after creating their Projections may hold one ID each, which the
     package writer refuses.
@@ -2856,7 +2856,10 @@ class EventData(SemanticFieldAccessMixin):
                 types only, resolved from the table's axis (on a table
                 spanning timelines, each row's timeline's), never from a
                 cell. ``None`` keeps every number type.
-            **kwargs: Exact match filters for other fields (e.g. event_category="note").
+            **kwargs: Exact match filters for other fields (e.g.
+                ``event_category="note"``): a column of the table, or a field
+                the class declares, which a table without that column holds
+                no value of (no row is kept).
 
         Coordinate bounds are compared with each event's ``start``
         (:func:`~timetoalign.core.time.compare_number_column`). An exact
@@ -2872,6 +2875,12 @@ class EventData(SemanticFieldAccessMixin):
 
         Returns:
             A new EventData with filtered events.
+
+        Raises:
+            KeyError: If a further field is neither a column of the table
+                nor a field of the class, naming the available ones.
+            ValueError: If a bound is NaN, or in another unit than the
+                table's.
         """
         source = self
         if include_number_types is not None:
@@ -2915,11 +2924,22 @@ class EventData(SemanticFieldAccessMixin):
                 )
             bounds.append((resolved.value, comparison))
 
-        # Generic kwargs filtering
-        for name, val in kwargs.items():
-            # Only if field exists in schema
-            if name in self.field_names():
-                expr = pc.equal(pc.field(name), val)
+        # Exact match on further fields: a column of the table, or a field
+        # the class declares (absent from the table, no row holds a value).
+        if kwargs:
+            columns = self._table.column_names
+            fields = [*columns, *(n for n in self.field_names() if n not in columns)]
+            for name, val in kwargs.items():
+                if name not in fields:
+                    raise KeyError(
+                        f"No field {name!r} to filter events by. Available fields: "
+                        f"{fields}"
+                    )
+                expr = (
+                    pc.equal(pc.field(name), val)
+                    if name in columns
+                    else pc.scalar(False)
+                )
                 mask = expr if mask is None else (mask & expr)
 
         if mask is None and not bounds:

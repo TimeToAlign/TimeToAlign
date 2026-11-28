@@ -27,6 +27,9 @@ from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from typing import IO, TypeAlias
 
+# The loaders name a ZIP member by the one jar: URI the registry records.
+from timetoalign.storage.registry import member_uri  # noqa: F401
+
 SourceLike: TypeAlias = Path | str | zipfile.Path
 """What a loader reads: a filesystem path, as a ``Path`` or a ``str``, or a
 member of a ZIP archive, as a ``zipfile.Path`` (the archive is read in
@@ -179,27 +182,6 @@ def source_record(source: Source, key: str = "path") -> dict[str, str]:
     if isinstance(source, Path):
         return {key: str(source)}
     return {key: str(_archive_path(source)), "member": _member_name(source)}
-
-
-def member_uri(source: zipfile.Path) -> str:
-    """The conventional URI of a member of a ZIP archive.
-
-    ``jar:<archive file URI>!/<member>``, the archive's absolute path and
-    the member's POSIX path both percent-encoded: for instance
-    ``jar:file:///data/melod%20y.zip!/works/1.ttl``.
-
-    Args:
-        source: A member of a ZIP archive.
-
-    Returns:
-        The member's URI.
-
-    Raises:
-        ValueError: If *source*'s archive was opened from a file object.
-    """
-    from urllib.parse import quote
-
-    return f"jar:{_archive_path(source).as_uri()}!/{quote(_member_name(source))}"
 
 
 # endregion

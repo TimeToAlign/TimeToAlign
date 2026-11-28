@@ -1828,6 +1828,48 @@ class TestJoiningKeepsNumberTypes:
         assert _ids_of_type(decimals, NumberType.fraction) == []
 
 
+class TestFilterFields:
+    """A further field is a column or a declared field; any other is refused."""
+
+    @staticmethod
+    def _notes() -> EventData:
+        return EventData.from_dicts(
+            [
+                {"id": "n1", "event_type": "Note", "start": 0, "pitch": 60},
+                {"id": "n2", "event_type": "Note", "start": 1, "pitch": 62},
+            ],
+            TimeUnit.quarters,
+            NumberType.fraction,
+        )
+
+    def test_a_column_is_a_field(self):
+        assert self._notes().filter(pitch=62).column_values("id") == ["n2"]
+
+    def test_a_declared_field_the_table_lacks_keeps_no_row(self):
+        from timetoalign.loader.score.stores.annotations import AnnotationEventData
+
+        held = AnnotationEventData.from_dicts(
+            [{"id": "h1", "event_type": "Harmony", "start": 0, "text": "I"}],
+            TimeUnit.quarters,
+            NumberType.fraction,
+        )
+        data = AnnotationEventData(
+            held.table.drop_columns(["subtype"]), TimeUnit.quarters, NumberType.fraction
+        )
+
+        assert len(data.filter(subtype="Harmony")) == 0
+
+    def test_an_unknown_field_is_refused(self):
+        with pytest.raises(KeyError) as refusal:
+            self._notes().filter(colour="red")
+
+        assert str(refusal.value) == (
+            "\"No field 'colour' to filter events by. Available fields: ['id', "
+            "'name', 'temporal_type', 'event_type', 'start', 'end', 'duration', "
+            "'pitch']\""
+        )
+
+
 class TestFilterBounds:
     """A float bound compares as a key, an exact one exactly; NaN is refused."""
 

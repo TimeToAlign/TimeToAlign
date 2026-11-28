@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
 
@@ -417,18 +418,26 @@ class TestOneCheckEveryPath:
         bundle = AlignmentBundle()
         bundle.add_timeline(seg_2)
         manifest = bundle.to_file(tmp_path / "manifest.yaml")
-        return manifest, tmp_path / "boxes.parquet"
+        return manifest, tmp_path / "registry.parquet"
 
     @staticmethod
     def _with_number(path: Path, column: str, numerator: int) -> None:
-        """The table at *path* with *column* of its one row the int *numerator*."""
+        """The registry at *path* with *column* of the Box's row the int *numerator*.
+
+        The registry holds non-event rows too: only the row of ``rect_h2``
+        changes.
+        """
         table = pq.read_table(path)
         index = table.schema.get_field_index(column)
         cell = pa.array(
-            [{"numerator": numerator, "denominator": None, "value": None}],
+            [{"numerator": numerator, "denominator": None, "value": None}]
+            * table.num_rows,
             type=table.schema.field(index).type,
         )
-        pq.write_table(table.set_column(index, table.schema.field(index), cell), path)
+        new = pc.if_else(
+            pc.equal(table["id"], "rect_h2"), cell, table[column].combine_chunks()
+        )
+        pq.write_table(table.set_column(index, table.schema.field(index), new), path)
 
     def test_a_package_with_another_start(self, tmp_path: Path) -> None:
         manifest, boxes = self._package(tmp_path)

@@ -367,12 +367,14 @@ class TestRoundTrips:
         bundle.add_timeline(page)
         directory = tmp_path / "package"
         directory.mkdir()
-        bundle.to_file(directory / "package.yaml")
+        bundle.to_file(directory / "manifest.yaml")
         assert sorted(path.name for path in directory.iterdir()) == [
             "boxes.parquet",
-            "package.yaml",
+            "extractions.parquet",
+            "manifest.yaml",
+            "registry.parquet",
         ]
-        read_page = AlignmentBundle.from_file(directory / "package.yaml").get_timeline(
+        read_page = AlignmentBundle.from_file(directory / "manifest.yaml").get_timeline(
             page.id
         )
         read = _boxes(read_page)

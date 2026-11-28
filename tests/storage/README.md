@@ -578,6 +578,18 @@ and holds one spelling of each value, whatever way its rows came in.
   `int` tables alike. NaN names no position and is refused (`NaN names no
   position: it compares with no cell`) rather than answering an empty
   table nobody asked for.
+- **Further fields of `filter`** (`TestFilterFields`). A keyword beside the
+  named criteria is an exact match on a field. On a base `EventData` of two
+  Notes `n1` (pitch 60) and `n2` (pitch 62), whose class declares no
+  `pitch`, `filter(pitch=62)` keeps `n2` only: the table's column is a
+  field. A field the class declares that the table lacks holds no value, so
+  no row is kept: an `AnnotationEventData` of one Harmony `h1` without its
+  `subtype` column, `filter(subtype="Harmony")`, keeps none. A field that is
+  neither is refused, never passed over: `filter(colour="red")` raises
+  `KeyError` (`No field 'colour' to filter events by. Available fields:
+  ['id', 'name', 'temporal_type', 'event_type', 'start', 'end', 'duration',
+  'pitch']`). What would show it broken: a criterion that keeps every row
+  because its name was not recognised.
 - **Cells are reduced on entry.** A ratio stated as `2/4` is accepted and
   held as `1/2` at every door that takes whole cells: `EventData(table)`,
   `EventData.from_parquet`; `concat` joins tables that entered
@@ -752,6 +764,27 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   one. A root of no events taking such a child adopts the child's tool
   extraction. Rows added to a child after it joined are shifted likewise
   (`a3` at `2` on `clt_a` is `4` on the root).
+- **The writers' read** (`TestWritten`). `written()` over the family of
+  `_family()` with a user's `Segment` event `s1` (an event of kind
+  `Segment` whose ID names no timeline) added to `clt_b` at 1: its rows are
+  every row of the family but the three recording a child's place (the
+  `Segment` rows `clt_a`, `clt_g`, `clt_b`), in the family's order, `r1`,
+  `a1`, `a2`, `g1`, `b1`, `s1`, each naming the family's tool extraction
+  (`s1` too, which names none in memory) and lying on the root's axis
+  (`1/2`, `7/3`, `2`, `13/4`, `41/10`, `5`); its contents are keyed
+  `(timeline, kind)`, the family's timelines in order and a timeline's
+  kinds sorted: `(clt_root, Beat)`, `(clt_a, Beat)`, `(clt_g, Note)`,
+  `(clt_b, Beat)`, `(clt_b, Segment)`, each `id` first then the columns in
+  which one of its events holds a value, no position, type or name
+  (`(clt_g, Note)` is `id` `g1`, `pitch` 60; `(clt_a, Beat)` the one column
+  `id`, `a1`, `a2`); its extractions the tool extraction alone; its one
+  family `clt_root` on quarters in `fraction`, the timelines `clt_root`,
+  `clt_a`, `clt_g`, `clt_b`, and `family_of("clt_g")` that family (an
+  unknown timeline `KeyError`, naming the available ones).
+  `written("Note")` keeps `g1` and `(clt_g, Note)` only. A view of
+  `clt_a` writes the same rows: a package holds a family whole. A
+  bundle of the root and the seconds timeline writes both families, the
+  seconds one after (`o1`, `audio` on seconds in `float`).
 - **Update by locator** (`TestUpdate`). A timeline holds three events of
   one source file (an `Extraction.of_source` of a file of the bytes `abc`,
   SHA-256 `ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad`)
@@ -767,6 +800,23 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   and is never flagged. `filter(vanished=True)` reads `n2`. Data without a
   `locator` column is refused (`an update matches rows by their locator:
   the rows give none (a column 'locator')`).
+- **Update through a view** (`TestUpdate`). `update(data, extraction,
+  timeline_id=None)` is taken by any view and returns the timeline it
+  updates. A root `clt_root` with the child `clt_u` (at offset 2) whose
+  rows `n1`, `n2`, `n3` the first run made: a second run (`m0` pitch 61,
+  `m2` at `5/2`, the new `m3` at 3) through `root.registry`, naming no
+  timeline, updates `clt_u` (the locators match its rows) and returns
+  `"clt_u"`: `n1`, `n2`, `n3`, `x3` as above, `x3` at 3 on `clt_u`, 5 on the
+  root. `update_target` answers the same without changing anything. The
+  target is the timeline holding most of the matched rows: with a sibling
+  `clt_v` holding rows of the same source under `m0` and `m1` and `clt_u`
+  holding `m2` only, a run giving `m0`, `m1`, `m2` updates `clt_v`. Rows
+  of another source never match: a run of the bytes `xyz` (another file)
+  giving `m0` matches none and, given `timeline_id="clt_u"`, adds its row to
+  `clt_u` under its own ID (the fallback by ID); without a timeline it is
+  refused (`the rows of extraction '<ID>' (<source>) match no timeline of
+  the registry, by locator or by ID (None); nothing is updated`), nothing
+  changed, and `update_target` answers None.
 - **A locator names one event of its source** (`TestUpdate`). A second run
   giving `m0` to two new rows (`x1`, `x2`) is refused (`locator 'm0' is
   given to 2 events of extraction 'extraction_second'; a locator names one
@@ -804,6 +854,51 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
   'extraction_nowhere', which this family does not hold: give it with the
   rows (EventData.with_extractions)`), whether through the factory or
   `add`, nothing added.
+- **Rows read from a package, through a view** (`TestAddRows`).
+  `add_rows` is taken by any view: rows joining a root `clt_p` (length 4)
+  with a child `clt_pc` at 1 (length 2) and a seconds timeline `cpt_s`
+  (length 1.0), through the bundle of both: `p1` (a Note on `clt_pc` at
+  root `5/2`, duration `1/2`, pitch 62) and `o1` (an Onset on `cpt_s` at
+  2.5) join their families, `clt_pc` reading `p1` at `3/2` with its pitch,
+  `cpt_s` `o1` at 2.5. **Lengths are held as for rows a timeline adds**:
+  `clt_pc` (locked, as a child is) holds its row's local end, `3/2 + 1/2 =
+  2`, and stays 2; `cpt_s` (unlocked) grows from 1.0 to 2.5 (the instant's
+  start); a root `clt_l` locked at length 2
+  refuses a row ending at 3 (start `5/2`, duration `1/2`: `Adding content
+  ending at 3 exceeds timeline length 2. Timeline is locked. Use
+  allow_expansion=True to override.`), its registry unchanged. **A row the family states already is
+  passed over**: the same `p1` given again (same timeline, kind, `start`
+  and `duration` cells) leaves the registry as it was (one `p1`), while a
+  `p1` at another start is refused as an ID held (`Event id 'p1' is already
+  held by an event of timeline 'clt_pc'`). **Atomic over families**: rows of
+  `cpt_s` then of `clt_p` where the `clt_p` row names an extraction not
+  given leave `cpt_s` without `o1`. A row naming a timeline no family of
+  the view holds is refused (`KeyError`, naming the available timelines).
+  The extractions given are held by each family taking rows.
+- **A Box read is checked against its shape** (`TestAddRows`). A Box row
+  read for a graphical timeline (`seg_2`, the timeline at x 7 of its image)
+  whose `start` is 1 while its shape's `x_min` is 385 is refused with the
+  Box check's message (`Box 'rect_h2' starts at 1 on timeline 'seg_2', but
+  its shape starts at x 385 and the timeline stands at x 7 of its image
+  (meta["box"]): its start is 378.`), and the registry and the events are
+  as before (no `rect_h2`); with `start` 378 it is read (`seg_2` holds
+  `rect_h2`). A registry standing alone (no host timeline) holds no length
+  and checks no Box.
+- **Extractions given with the rows a timeline adds** (`TestAddEvents`).
+  `Timeline.add_events(rows, extractions=[e1])` with two Notes naming
+  `e1`'s ID and the locators `m0`, `m1`: the timeline's registry lists
+  `e1`, its rows name it and hold the locators, its events hold neither
+  column; a further extraction `e2` given but named by no row is not held.
+  Rows refused (the second call repeating `n1`) hold no extraction given
+  with them: `e3` given with the refused rows is not held after. A row
+  naming an extraction neither given nor held is refused (`the rows name
+  the extraction 'extraction_nowhere', which this family does not hold:
+  give it with the rows (EventData.with_extractions)`).
+- **One `jar:` URI** (`TestExtractions`). `storage.registry.member_uri` is
+  the one function: `loader._sources.member_uri` is the same object, and
+  the URI of `inner/sc ore.txt` in an archive is
+  `jar:<the archive's absolute file URI>!/inner/sc%20ore.txt`, a member
+  named with a closing `/` without it.
 - **Lazy content.** A content given as a callable is not called by
   `add_rows`, is called once when the timeline's events are first read and
   not again on the second read.
@@ -834,8 +929,8 @@ root at offset 2, and a child `clt_b` (length 4) holding the Beat `b1` at
     (`extraction 'extraction_x' is held already, of other content`), the
     child still its own family's root, the parent's rows and extractions
     unchanged;
-  - rows taken in through a view (`TypeError`: rows join the registry of
-    one family, not a view of it);
+  - rows added (`add`) through a view (`TypeError`: rows join the registry
+    of one family, not a view of it; `add_rows` and `update` take a view);
   - event IDs unique among a root and its descendants, one message naming
     the ID, its holder and the timeline it would join: `r1` added to
     `clt_a` (`Event id 'r1' is already held by an event of timeline

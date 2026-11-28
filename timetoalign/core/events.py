@@ -5334,10 +5334,12 @@ class Projection(Event, frozen=True):
     Storage struct (derived): ``{id, start, duration, projection_of}``, the
     two positions as coordinate cells
     (:data:`~timetoalign.core.time.COORDINATE_CELL_TYPE`), each naming its
-    unit and number type, both sides of the number filled. A package's
-    Projections table writes them otherwise: the timeline's unit and number
-    type once per row, each number once, as its number type says
-    (:func:`~timetoalign.timelines.manifest.projection_table`).
+    unit and number type, both sides of the number filled. A package writes
+    them otherwise: the Projection's registry row holds its position on the
+    axis of its timeline's root, the unit and number type once per row and
+    each number once, as its number type says; the pre-parsed Projection
+    table (:func:`~timetoalign.timelines.manifest.pre_parsed_schema`) holds
+    its ``id`` and ``projection_of``, no position.
 
     Examples:
         >>> from timetoalign.core import Coordinate, TimeUnit
@@ -5356,7 +5358,7 @@ class Projection(Event, frozen=True):
 
         Each position is read from its coordinate cell, on the axis the cell
         names, so an exact value stays exact. Keys beside the four of the
-        struct (a Projections table's ``timeline_id``) are not read.
+        struct (a registry row's ``timeline_id``) are not read.
         """
         if row is None:
             return None
@@ -5388,11 +5390,12 @@ class ProjectionField(SemanticField[Projection]):
     """Paired Field for :class:`Projection`.
 
     Every position is a coordinate cell naming its own unit and number type,
-    so one field holds Projections of any timelines. A package's Projections
-    table holds them in another form: a ``timeline_id`` column, the
-    timeline's unit and number type once per row, each number written once
-    (:func:`~timetoalign.timelines.manifest.projection_table`,
-    :func:`~timetoalign.timelines.manifest.read_projection_table`).
+    so one field holds Projections of any timelines. A package holds them in
+    another form: their registry rows (a ``timeline_id`` column, the
+    position on the axis of the timeline's root, the unit and number type
+    once per row, each number written once) and the pre-parsed Projection
+    table of their ``id`` and ``projection_of``
+    (:func:`~timetoalign.timelines.manifest.pre_parsed_schema`).
     """
 
     @classmethod

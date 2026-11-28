@@ -394,7 +394,9 @@ class Timeline(
         # every descendant); this timeline reads its own rows through
         # ``_events``.
         self._registry = EventRegistry(
-            self._id, self._event_data_class.empty(self._unit, self._number_type)
+            self._id,
+            self._event_data_class.empty(self._unit, self._number_type),
+            host=self,
         )
 
         # Incoming external references (annotations pointing at own events)

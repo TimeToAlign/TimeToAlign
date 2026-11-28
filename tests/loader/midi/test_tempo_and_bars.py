@@ -17,7 +17,7 @@ from timetoalign.loader.midi import PerformanceMidiLoader, ScoreMidiLoader
 from timetoalign.loader.midi.base import MidiLoader
 from timetoalign.loader.midi.store import MidiStore
 from timetoalign.maps import TableMap
-from timetoalign.timelines import Timeline
+from timetoalign.timelines import Timeline, TimelineGroup
 
 LOADERS: list[Callable[[], MidiLoader]] = [
     lambda: ScoreMidiLoader(),
@@ -414,3 +414,88 @@ class TestLength:
             Coordinate(480, "ticks"),
             False,
         )
+
+
+@pytest.mark.parametrize("make", LOADERS, ids=LOADER_IDS)
+class TestGroupTable:
+    """Two MIDI timelines in a group head every C-Map column with a name of its own."""
+
+    @staticmethod
+    def _pair(
+        make: Callable[[], MidiLoader], tmp_path: Path
+    ) -> tuple[Timeline, Timeline]:
+        a = _timeline(make, _write(tmp_path / "a.mid", 1920, signatures=((0, 4, 4),)))
+        b = _timeline(
+            make,
+            _write(
+                tmp_path / "b.mid", 3840, tempi=((0, 250_000),), signatures=((0, 4, 4),)
+            ),
+        )
+        return a, b
+
+    def test_each_timeline_alone_keeps_the_plain_names(
+        self, make: Callable[[], MidiLoader], tmp_path: Path
+    ) -> None:
+        for timeline in self._pair(make, tmp_path):
+            assert timeline.measure_map is not None
+            assert timeline.get_timestamp_table().column_names == [
+                timeline.id,
+                "ticks_to_quarters",
+                "ticks_to_seconds",
+            ]
+
+    def test_the_group_table(
+        self, make: Callable[[], MidiLoader], tmp_path: Path
+    ) -> None:
+        a, b = self._pair(make, tmp_path)
+        table = TimelineGroup(id="pair", timelines=[a, b]).get_timestamp_table()
+        assert table.column_names == [
+            a.id,
+            b.id,
+            f"{a.id}:ticks_to_quarters",
+            f"{a.id}:ticks_to_seconds",
+            f"{b.id}:ticks_to_quarters",
+            f"{b.id}:ticks_to_seconds",
+        ]
+        cells = {
+            name: [
+                (c["numerator"], c["denominator"])
+                for c in table.column(name).to_pylist()
+            ]
+            for name in table.column_names
+        }
+        assert cells == {
+            a.id: [(0, 1), (1920, 1)],
+            b.id: [(0, 1), (3840, 1)],
+            f"{a.id}:ticks_to_quarters": [(0, 1), (4, 1)],
+            f"{a.id}:ticks_to_seconds": [(0, 1), (2, 1)],
+            f"{b.id}:ticks_to_quarters": [(0, 1), (8, 1)],
+            f"{b.id}:ticks_to_seconds": [(0, 1), (2, 1)],
+        }
+
+    def test_the_group_frame(
+        self, make: Callable[[], MidiLoader], tmp_path: Path
+    ) -> None:
+        a, b = self._pair(make, tmp_path)
+        group = TimelineGroup(id="pair", timelines=[a, b])
+        frame = group.get_timestamp_table(format="dataframe", units=False)
+        assert {name: list(frame[name]) for name in frame.columns} == {
+            a.id: [0, 1920],
+            b.id: [0, 3840],
+            f"{a.id}:ticks_to_quarters": [F(0), F(4)],
+            f"{a.id}:ticks_to_seconds": [0.0, 2.0],
+            f"{b.id}:ticks_to_quarters": [F(0), F(8)],
+            f"{b.id}:ticks_to_seconds": [0.0, 2.0],
+        }
+        assert list(frame.columns) == [
+            a.id,
+            b.id,
+            f"{a.id}:ticks_to_quarters",
+            f"{a.id}:ticks_to_seconds",
+            f"{b.id}:ticks_to_quarters",
+            f"{b.id}:ticks_to_seconds",
+        ]
+        assert [type(q) for q in frame[f"{b.id}:ticks_to_quarters"]] == [F, F]
+        assert [type(s) for s in frame[f"{b.id}:ticks_to_seconds"]] == [float, float]
+        headed = group.get_timestamp_table(format="dataframe")
+        assert list(headed.columns)[2] == f"{a.id}:ticks_to_quarters (quarters)"

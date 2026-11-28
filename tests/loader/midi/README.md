@@ -17,7 +17,7 @@ contain those three score-only columns.
 | `test_harmonization.py` | Canonical same-file comparisons between performance and score loaders. |
 | `test_score.py` | Beethoven score loading, empty-file failure, the wider score schema, and the end of track of both parsers. |
 | `test_store.py` | Base and score event-data schemas, nullability, construction, and inheritance. |
-| `test_tempo_and_bars.py` | The tempo map, the bars, the timeline's length and the stated facts of synthetic and real files, on all three loaders. |
+| `test_tempo_and_bars.py` | The tempo map, the bars, the timeline's length, the stated facts of synthetic and real files, and the C-Map columns of a group of MIDI timelines, on all three loaders. |
 | `test_bundle.py` | `MidiStore` splitting, empty stores, extension, mapping protocol, summaries, and timelines. |
 | `conftest.py` | Downloaded MIDI specimen paths and synthetic shared event data. |
 
@@ -281,6 +281,27 @@ file is the largest, over its tracks, of the sum of the track's delta times, rea
 last note: its length is 6,960 = 29/2 quarters · 480, the bars' total (1/2 + 3 · 4 + 2 quarters).
 `beethoven_op18.mid` and `rachmaninoff_perf.mid` (11,537, equal to its last note-off) are pinned
 in `tests/loader/test_loaded_timelines_locked.py`, `beethoven_mtd.mid` with its bars here.
+
+## Timestamp tables in a group
+
+Every MIDI timeline carries two C-Maps of the same default names, `ticks_to_quarters` and
+`ticks_to_seconds`, so a group of two MIDI timelines holds each name twice. The group's timestamp
+table must still head every column with a name of its own: the rule (`tests/timelines/README.md`,
+"Every C-Map column has a name of its own") keeps a map's name where the table holds it once and
+qualifies it by its timeline, `<timeline id>:<map name>`, where it holds it twice. The measure map
+is no column: it is read through `Timeline.measure_map`, and its chain (the second ticks→quarters
+`LinearMap` and the `MeasureRecordMap`) is not among the timeline's conversion maps.
+
+What proves it, on all three loaders, with two files written by the test: `a`, 4/4 at 0, the SMF
+default tempo, end of track 1,920 (4 quarters, 1,920 · 500000 / (480 · 10⁶) = 2 seconds); `b`, 4/4
+at 0, `set_tempo` 250000 at 0, end of track 3,840 (8 quarters, 3,840 · 250000 / (480 · 10⁶) = 2
+seconds). Each timeline alone has a measure map and its own table's columns are its id,
+`ticks_to_quarters`, `ticks_to_seconds`. The group of the two, asked for its stored rows, gives
+with `format="table"` and with `format="dataframe"` (`units=False`) the columns `a`, `b`,
+`a:ticks_to_quarters`, `a:ticks_to_seconds`, `b:ticks_to_quarters`, `b:ticks_to_seconds` (`a` and
+`b` standing for the two timelines' ids) and the rows: ticks 0 and 1,920 on `a`, 0 and 3,840 on
+`b`; quarters 0 and 4 on `a`, 0 and 8 on `b`, exact `Fraction`s in the frame; seconds 0.0 and 2.0
+on both. The frame's default headers add the unit, `a:ticks_to_quarters (quarters)`.
 
 ## Score loader and stores
 

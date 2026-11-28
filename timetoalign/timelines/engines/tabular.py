@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Sequence
+from collections import Counter
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from dataclasses import replace
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any
 
@@ -173,6 +175,61 @@ def conversion_map_column(
         number_type=number_type,
         metadata=metadata,
     )
+
+
+def conversion_map_columns(
+    sources: Iterable[tuple[str, ConversionMap[Any], np.ndarray, dict[str, str]]],
+    *,
+    skip_unreached: bool = False,
+) -> list[TimestampColumn]:
+    """Describe the C-Map columns of one timestamp table, each under a name of its own.
+
+    Every column a map gives follows :func:`conversion_map_column`. A column
+    is headed by its map's name, and a map's name defaults to its units, so
+    two timelines converting to one unit (two MIDI timelines in a group, each
+    with its ``ticks_to_quarters``) would head two columns alike. Each column
+    therefore keeps its map's name where no other C-Map column of the table
+    bears it; otherwise it is qualified by the timeline it converts,
+    ``"<timeline id>:<map name>"``; and where one timeline holds two maps of
+    one name, by the map's id, ``"<timeline id>:<map id>"`` (a map id is
+    unique in a manifest). The names depend only on the columns the table
+    holds, so a table holding each name once keeps the plain names.
+
+    Args:
+        sources: ``(timeline id, map, axis values, field metadata)`` per map,
+            in column order: the timeline the map converts, the map, the
+            timeline's axis values as floats (NaN where absent) and the
+            column's extra field-metadata entries.
+        skip_unreached: Give no column, instead of raising, where a map
+            refuses a value with a ``ValueError``.
+
+    Returns:
+        One column per map that gives one, in the order of *sources*.
+
+    Raises:
+        ValueError: As :func:`conversion_map_column`.
+    """
+    built = [
+        (timeline_id, cmap, column)
+        for timeline_id, cmap, values, metadata in sources
+        if (
+            column := conversion_map_column(
+                cmap, values, metadata, skip_unreached=skip_unreached
+            )
+        )
+        is not None
+    ]
+    plain = Counter(cmap.name for _, cmap, _ in built)
+    qualified = Counter((timeline_id, cmap.name) for timeline_id, cmap, _ in built)
+    columns: list[TimestampColumn] = []
+    for timeline_id, cmap, column in built:
+        if plain[cmap.name] == 1:
+            columns.append(column)
+        elif qualified[timeline_id, cmap.name] == 1:
+            columns.append(replace(column, name=f"{timeline_id}:{cmap.name}"))
+        else:
+            columns.append(replace(column, name=f"{timeline_id}:{cmap.id}"))
+    return columns
 
 
 class TabularExportMixin(_Host):
@@ -908,10 +965,12 @@ class TabularExportMixin(_Host):
         if conversion_maps:
             # Allow copy for arrays with nulls (zero_copy_only=False)
             axis_np = axis.field("value").to_numpy(zero_copy_only=False)
-            for cmap in conversion_maps:
-                column = conversion_map_column(cmap, axis_np, {"cmap_id": cmap.id})
-                if column is not None:
-                    columns.append(column)
+            columns.extend(
+                conversion_map_columns(
+                    (self._id, cmap, axis_np, {"cmap_id": cmap.id})
+                    for cmap in conversion_maps
+                )
+            )
 
         return build_timestamp_table(columns)
 

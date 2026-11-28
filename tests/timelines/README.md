@@ -2033,6 +2033,35 @@ with `extrapolate="error"`, the rows `[25.0]` give the columns `clock`,
 `seconds_to_milliseconds`, `seconds_to_frames` (1250 frames), the rows
 `[25.0, 75.0]` only `clock` and `seconds_to_milliseconds` (25000 and 75000).
 
+**Every C-Map column has a name of its own (`TestConversionColumnNames`).**
+A C-Map column is headed by its map's name, and a map's name defaults to its
+units (`seconds_to_milliseconds`), so two members converting to one unit
+would head two columns alike. A table with two fields of one name is not a
+table a reader can address: the frame refuses it (`Field "…" exists 2 times
+in schema`), and a reader of the Arrow table cannot say which member a column
+converts. The rule, one for the timeline's table and the group's: a column
+keeps its map's name where no other C-Map column of the table bears it;
+otherwise it is qualified by the timeline it converts, `<timeline id>:<map
+name>`, the spelling the bundle's match-stamp table qualifies with; where one
+timeline holds two maps of one name, by the map's id, `<timeline id>:<map
+id>` (map ids are unique in a manifest). What proves it, with the names
+derived from that rule:
+
+- two 100-second clocks `a` and `b`, each with a milliseconds map of the
+  default name, and `a` alone with a frames map: the group's stored rows give
+  the columns `a`, `b`, `a:seconds_to_milliseconds`, `seconds_to_frames`,
+  `b:seconds_to_milliseconds`, in that order (each member's maps in the order
+  attached, members in the group's order), and the values 0 and 100000
+  milliseconds on both members' rows, 0 and 5000 frames on `a`'s, so each
+  column still converts its own member; the frame (`format="dataframe"`,
+  `units=False`) has the same headers;
+- the same group with one member gives the plain names: a name is qualified
+  only where the table holds it twice, so no table that was addressable before
+  changes;
+- one clock holding two milliseconds maps of the default name (ids `ms-a` and
+  `ms-b`): its own table's columns are `clock`, `clock:ms-a`, `clock:ms-b`, and
+  the frame builds.
+
 A `TimelineGroup` is an array of member timelines that, by definition, share
 one graphical start and one graphical end: every member's 0 coincides with
 every other member's 0, every member's length with every other member's

@@ -1367,4 +1367,85 @@ class TestConversionColumnErrors:
         ]
 
 
+def _milliseconds(uid: str | None = None) -> TableMap:
+    """A seconds-to-milliseconds map over ``[0, 100]`` under its default name."""
+    return TableMap(
+        x_values=[0.0, 100.0],
+        y_values=[0.0, 100000.0],
+        source_unit=TimeUnit.seconds,
+        target_unit=TimeUnit.milliseconds,
+        uid=uid,
+    )
+
+
+def _clock(uid: str) -> ContinuousPhysicalTimeline:
+    return ContinuousPhysicalTimeline(length=100, unit=TimeUnit.seconds, uid=uid)
+
+
+class TestConversionColumnNames:
+    """Every C-Map column of a timestamp table has a name of its own."""
+
+    @staticmethod
+    def _two_clocks() -> TimelineGroup:
+        a, b = _clock("a"), _clock("b")
+        a.add_conversion_map(_milliseconds())
+        a.add_conversion_map(
+            TableMap(
+                x_values=[0.0, 100.0],
+                y_values=[0.0, 5000.0],
+                source_unit=TimeUnit.seconds,
+                target_unit=TimeUnit.frames,
+            )
+        )
+        b.add_conversion_map(_milliseconds())
+        return TimelineGroup(id="clocks", timelines=[a, b])
+
+    def test_a_name_held_twice_is_qualified_by_its_timeline(self) -> None:
+        group = self._two_clocks()
+        names = [
+            "a",
+            "b",
+            "a:seconds_to_milliseconds",
+            "seconds_to_frames",
+            "b:seconds_to_milliseconds",
+        ]
+        table = group.get_timestamp_table()
+        assert table.column_names == names
+        assert {
+            name: [cell["value"] for cell in table.column(name).to_pylist()]
+            for name in names[2:]
+        } == {
+            "a:seconds_to_milliseconds": [0.0, 100000.0],
+            "seconds_to_frames": [0.0, 5000.0],
+            "b:seconds_to_milliseconds": [0.0, 100000.0],
+        }
+        assert [
+            field_metadata(table.schema.field(name))["source_timeline"]
+            for name in names[2:]
+        ] == ["a", "a", "b"]
+        frame = group.get_timestamp_table(format="dataframe", units=False)
+        assert list(frame.columns) == names
+
+    def test_a_name_held_once_stays_plain(self) -> None:
+        clock = _clock("a")
+        clock.add_conversion_map(_milliseconds())
+        group = TimelineGroup(id="one", timelines=[clock])
+        assert group.get_timestamp_table().column_names == [
+            "a",
+            "seconds_to_milliseconds",
+        ]
+
+    def test_one_timeline_holding_one_name_twice(self) -> None:
+        clock = _clock("clock")
+        clock.add_conversion_map(_milliseconds("ms-a"))
+        clock.add_conversion_map(_milliseconds("ms-b"))
+        assert clock.get_timestamp_table().column_names == [
+            "clock",
+            "clock:ms-a",
+            "clock:ms-b",
+        ]
+        frame = clock.get_timestamp_table(format="dataframe", units=False)
+        assert list(frame.columns) == ["clock", "clock:ms-a", "clock:ms-b"]
+
+
 # endregion

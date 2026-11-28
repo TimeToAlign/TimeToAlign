@@ -81,7 +81,7 @@ from timetoalign.core.timestamp import (
 )
 from timetoalign.storage import EventData
 
-from .engines.tabular import conversion_map_column
+from .engines.tabular import conversion_map_columns
 from .flow.virtual import _member_named
 from .manifest import (
     Manifest,
@@ -1338,24 +1338,27 @@ class TimelineGroup(_IdScope, ManifestFileMixin, _OpenObject):
         values: dict[str, Any],
         conversion_maps: ConversionMapsSpec,
     ) -> list[TimestampColumn]:
-        """Derive one column per (member, numeric C-Map) from member columns."""
+        """Derive one column per (member, numeric C-Map) from member columns.
+
+        Each column is named as :func:`conversion_map_columns` names it, so
+        two members carrying maps of one name head distinct columns.
+        """
         if not conversion_maps:
             return []
-        columns: list[TimestampColumn] = []
-        for timeline_id in timeline_names:
-            timeline = self._timelines.get(timeline_id)
-            if timeline is None:
-                continue
-            for cmap in timeline._conversion_maps.values():
-                column = conversion_map_column(
+        return conversion_map_columns(
+            (
+                (
+                    timeline_id,
                     cmap,
                     values[timeline_id],
                     {"cmap_id": cmap.id, "source_timeline": timeline_id},
-                    skip_unreached=True,
                 )
-                if column is not None:
-                    columns.append(column)
-        return columns
+                for timeline_id in timeline_names
+                if (timeline := self._timelines.get(timeline_id)) is not None
+                for cmap in timeline._conversion_maps.values()
+            ),
+            skip_unreached=True,
+        )
 
     def _queried_timestamp_table(
         self,

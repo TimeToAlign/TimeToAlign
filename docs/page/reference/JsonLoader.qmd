@@ -38,7 +38,7 @@ A row's ``locator`` is the JSON Pointer of the object it was read from
 (``/audio/0``; ``/audio/1/cueData/hotCuePoints/0`` for a nested key),
 followed by ``key:<id>`` where the object states an ``id`` member of its
 own (``/audio/0 key:a1``); a row read from a file names that file's
-extraction (:attr:`extractions`), one read from a dict none.
+parse (:attr:`parses`), one read from a dict none.
 
 Follows the standard two-phase pattern:
 
@@ -84,10 +84,10 @@ timetoalign.loader.base.Loader
 | Name | Description |
 | --- | --- |
 | [events](#timetoalign.loader.format.JsonLoader.events) | The EventData containing all loaded events. |
-| [extractions](#timetoalign.loader.format.JsonLoader.extractions) | One :class:`~timetoalign.storage.Extraction` per source file read, in order. |
 | [file_metadata](#timetoalign.loader.format.JsonLoader.file_metadata) | Scalar top-level metadata from the JSON file. |
 | [metadata](#timetoalign.loader.format.JsonLoader.metadata) | Aggregated metadata from all sources. |
 | [number_type](#timetoalign.loader.format.JsonLoader.number_type) | The number type for coordinates. |
+| [parses](#timetoalign.loader.format.JsonLoader.parses) | One :class:`~timetoalign.storage.Parse` per source file read, in order. |
 | [raw_data](#timetoalign.loader.format.JsonLoader.raw_data) | The raw parsed JSON data from the last loaded file. |
 | [sources](#timetoalign.loader.format.JsonLoader.sources) | The loaded sources: ``Path`` objects and ZIP members (``zipfile.Path``). |
 | [store](#timetoalign.loader.format.JsonLoader.store) | The ``DictStore`` containing all normalised tables. |
@@ -109,7 +109,7 @@ timetoalign.loader.base.Loader
 | [event_summary](#timetoalign.loader.format.JsonLoader.event_summary) | Get a summary of loaded events. |
 | [from_file](#timetoalign.loader.format.JsonLoader.from_file) | Instantiate the loader, load *paths*, and return it. |
 | [from_parquet](#timetoalign.loader.format.JsonLoader.from_parquet) | Load a Loader from a Parquet file. |
-| [from_registry](#timetoalign.loader.format.JsonLoader.from_registry) | A loader set up from *registry*'s extractions, to refresh it with :meth:`update`. |
+| [from_registry](#timetoalign.loader.format.JsonLoader.from_registry) | A loader set up from *registry*'s parses, to refresh it with :meth:`update`. |
 | [get_events](#timetoalign.loader.format.JsonLoader.get_events) | Return an EventData assembled from loaded data. |
 | [get_table](#timetoalign.loader.format.JsonLoader.get_table) | Retrieve a normalised table by key name. |
 | [keys](#timetoalign.loader.format.JsonLoader.keys) | Return the names of the available tables. |
@@ -386,22 +386,22 @@ the file's bytes.
 loader.format.JsonLoader.from_registry(registry, *sources, root=None, **kwargs)
 ```
 
-A loader set up from *registry*'s extractions, to refresh it with :meth:`update`.
+A loader set up from *registry*'s parses, to refresh it with :meth:`update`.
 
 The loader runs with the parameters (and the seed) the registry's
-extractions of this loader's class recorded, and reads their source
+parses of this loader's class recorded, and reads their source
 files, unless *sources* names what to read (a loader reading a
 folder, an archive or a project is given that). Nothing is read
 until :meth:`update`.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type                                                   | Description                                                                                                                              | Default    |
-|----------|--------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| registry | [EventRegistry](`timetoalign.storage.EventRegistry`)   | The registry to refresh, a timeline's, a group's or a bundle's.                                                                          | _required_ |
-| *sources | [SourceLike](`timetoalign.loader._sources.SourceLike`) | What the loader reads, as :meth:`load` takes it; by default the source files of the extractions, in order.                               | `()`       |
-| root     | [Path](`pathlib.Path`) \| [str](`str`) \| None         | The folder a relative source file of an extraction lies in; by default the current one.                                                  | `None`     |
-| **kwargs | [Any](`typing.Any`)                                    | The keyword-only arguments of :meth:`load`, and constructor arguments, which must leave the parameters as the extractions recorded them. | `{}`       |
+| Name     | Type                                                   | Description                                                                                                                         | Default    |
+|----------|--------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|------------|
+| registry | [EventRegistry](`timetoalign.storage.EventRegistry`)   | The registry to refresh, a timeline's, a group's or a bundle's.                                                                     | _required_ |
+| *sources | [SourceLike](`timetoalign.loader._sources.SourceLike`) | What the loader reads, as :meth:`load` takes it; by default the source files of the parses, in order.                               | `()`       |
+| root     | [Path](`pathlib.Path`) \| [str](`str`) \| None         | The folder a relative source file of a parse lies in; by default the current one.                                                   | `None`     |
+| **kwargs | [Any](`typing.Any`)                                    | The keyword-only arguments of :meth:`load`, and constructor arguments, which must leave the parameters as the parses recorded them. | `{}`       |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -411,9 +411,9 @@ until :meth:`update`.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                         |
-|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the extractions of this class record two sets of parameters or seeds, the loader set up runs with other parameters than they record, or neither *sources* nor an extraction names a source file. |
+| Name   | Type                       | Description                                                                                                                                                                               |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the parses of this class record two sets of parameters or seeds, the loader set up runs with other parameters than they record, or neither *sources* nor an parse names a source file. |
 
 ### get_events { #timetoalign.loader.format.JsonLoader.get_events }
 
@@ -541,7 +541,7 @@ loader.format.JsonLoader.to_parquet(path)
 Save the loaded events to a Parquet file.
 
 The metadata (including source info) is preserved in the file, and
-the extractions the events name (:attr:`extractions`), which a
+the parses the events name (:attr:`parses`), which a
 loader read back from it (:meth:`from_parquet`) holds again.
 
 #### Parameters {.doc-section .doc-section-parameters}
@@ -562,13 +562,13 @@ The loader is cleared and its ``load`` calls are run again (those
 :meth:`from_registry` set up, or the loader's own); each timeline
 :meth:`create_timelines` builds from them (and each descendant) then
 updates the registry's timeline that holds the rows its locators
-name (else the one of its ID), one extraction at a time
+name (else the one of its ID), one parse at a time
 (:meth:`EventRegistry.update <timetoalign.storage.EventRegistry.update>`):
 a row found again by its locator keeps its ID and takes the new
-content, position and extraction; a new row is added with the ID
+content, position and parse; a new row is added with the ID
 it was given (minted from the content, as at every ``load``); a
 row of the source no longer found is kept and marked vanished in
-the new extraction. Nothing is deleted. Rows that name no locator
+the new parse. Nothing is deleted. Rows that name no locator
 (a child's place, events made in code) are left as they are.
 
 #### Parameters {.doc-section .doc-section-parameters}

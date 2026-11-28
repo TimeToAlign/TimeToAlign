@@ -158,7 +158,7 @@ website:
       - reference/SingleStore.qmd
       - reference/DictStore.qmd
       - reference/EventRegistry.qmd
-      - reference/Extraction.qmd
+      - reference/Parse.qmd
       - reference/EventLoader.qmd
       - reference/AudioLoader.qmd
       - reference/AudioInfo.qmd

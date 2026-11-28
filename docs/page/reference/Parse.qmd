@@ -1,0 +1,150 @@
+# Parse { #timetoalign.Parse }
+
+```python
+Parse(
+    id,
+    source=None,
+    source_integrity=None,
+    parser,
+    parser_version,
+    parameters=None,
+    minter=ID_MINTER,
+    id_length=ID_LENGTH,
+    seed=None,
+    date=_now(),
+)
+```
+
+One run of a parser over one source file (or of a tool without one) that made events.
+
+A row of the Parse table (CRMdig's D10 Software Execution): the
+source file and its digest, the parser and its version, the parameters
+it ran with, and the ID minter's algorithm, length and seed, so that a
+run again over the same file mints the same IDs. Events made without a
+source file (in code, by a script) name the tool's parse
+(:meth:`of_tool`). Parses sharing an ID hash alike.
+
+## Attributes {.doc-section .doc-section-attributes}
+
+| Name             | Type                                                                              | Description                                                                                       |
+|------------------|-----------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|
+| id               | [str](`str`)                                                                      | The parse's ID (``parse_…``).                                                                     |
+| source           | [str](`str`) \| None                                                              | The source file, a path or URI reference; None for events made without one.                       |
+| source_integrity | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [str](`str`)\] \| None        | ``{"algorithm": "SHA-256", "digest": <hex>}`` of the source file; None exactly where *source* is. |
+| parser           | [str](`str`)                                                                      | The parser's name.                                                                                |
+| parser_version   | [str](`str`)                                                                      | Its version.                                                                                      |
+| parameters       | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None | The parameters it ran with, or None.                                                              |
+| minter           | [str](`str`)                                                                      | The algorithm of the ID minter (:data:`~timetoalign.core.ids.ID_MINTER`).                         |
+| id_length        | [int](`int`)                                                                      | The length of the minted IDs' suffixes.                                                           |
+| seed             | [str](`str`) \| None                                                              | The seed given to the minter, if one was, as text.                                                |
+| date             | [str](`str`)                                                                      | When it ran, ISO 8601 in UTC (``2026-11-27T21:30:00Z``).                                          |
+
+## Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                         |
+|--------|----------------------------|---------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *source* and *source_integrity* are not both given or both None. |
+
+## Methods
+
+| Name | Description |
+| --- | --- |
+| [from_row](#timetoalign.Parse.from_row) | The parse of a row of the Parse table (:meth:`to_row`). |
+| [of_source](#timetoalign.Parse.of_source) | The parse of a parser's run over the file *path*. |
+| [of_tool](#timetoalign.Parse.of_tool) | The parse of events made without a source file. |
+| [to_row](#timetoalign.Parse.to_row) | The parse as a row of the Parse table. |
+
+### from_row { #timetoalign.Parse.from_row }
+
+```python
+Parse.from_row(row)
+```
+
+The parse of a row of the Parse table (:meth:`to_row`).
+
+### of_source { #timetoalign.Parse.of_source }
+
+```python
+Parse.of_source(
+    path,
+    *,
+    source=None,
+    parser,
+    parser_version,
+    parameters=None,
+    minter=ID_MINTER,
+    id_length=ID_LENGTH,
+    seed=None,
+    id=None,
+    date=None,
+)
+```
+
+The parse of a parser's run over the file *path*.
+
+The file's SHA-256 digest is read from its bytes. The ID, when
+minted, is seeded from the digest, the parser and its version, the
+parameters, the minter's algorithm and length and the seed, never
+from where the file lies: a run over the same bytes with the same
+parser and parameters has the same ID on every machine, in every
+run and every process.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name           | Type                                                                                                     | Description                                                                                                                                                                                                                                                        | Default     |
+|----------------|----------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------|
+| path           | [str](`str`) \| [PathLike](`os.PathLike`)\[[str](`str`)\] \| [zipfile](`zipfile`).[Path](`zipfile.Path`) | The source file, read here: a path, or a member of a ZIP archive read in place (a ``zipfile.Path`` of an archive opened from its path).                                                                                                                            | _required_  |
+| source         | [str](`str`) \| None                                                                                     | The reference recorded for it (a path relative to a package's root, a URI); when None, *path* as given (POSIX separators), a member's ``jar:`` URI (``jar:file:///data/set.zip!/notes/1.csv``, the archive's absolute path and the member's path percent-encoded). | `None`      |
+| parser         | [str](`str`)                                                                                             | The parser's name.                                                                                                                                                                                                                                                 | _required_  |
+| parser_version | [str](`str`)                                                                                             | Its version.                                                                                                                                                                                                                                                       | _required_  |
+| parameters     | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [Any](`typing.Any`)\] \| None                        | The parameters it ran with.                                                                                                                                                                                                                                        | `None`      |
+| minter         | [str](`str`)                                                                                             | The algorithm of the ID minter.                                                                                                                                                                                                                                    | `ID_MINTER` |
+| id_length      | [int](`int`)                                                                                             | The length of the IDs it minted.                                                                                                                                                                                                                                   | `ID_LENGTH` |
+| seed           | [int](`int`) \| [str](`str`) \| None                                                                     | The seed given to the minter, if one was.                                                                                                                                                                                                                          | `None`      |
+| id             | [str](`str`) \| None                                                                                     | The parse's ID; minted when None.                                                                                                                                                                                                                                  | `None`      |
+| date           | [str](`str`) \| None                                                                                     | When it ran; now when None.                                                                                                                                                                                                                                        | `None`      |
+
+#### Raises {.doc-section .doc-section-raises}
+
+| Name   | Type                       | Description                                                                                        |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------|
+|        | [OSError](`OSError`)       | If the file cannot be read.                                                                        |
+|        | [ValueError](`ValueError`) | If *path* is a member of an archive opened from a file object and *source* is None: it has no URI. |
+
+### of_tool { #timetoalign.Parse.of_tool }
+
+```python
+Parse.of_tool(
+    parser='timetoalign',
+    parser_version=None,
+    *,
+    scope=None,
+    id=None,
+    date=None,
+)
+```
+
+The parse of events made without a source file.
+
+A registry makes one of its own (for its root timeline) when events
+made in code join it.
+
+#### Parameters {.doc-section .doc-section-parameters}
+
+| Name           | Type                 | Description                                                                                                 | Default         |
+|----------------|----------------------|-------------------------------------------------------------------------------------------------------------|-----------------|
+| parser         | [str](`str`)         | The tool's name; ``"timetoalign"`` by default.                                                              | `'timetoalign'` |
+| parser_version | [str](`str`) \| None | Its version; this library's by default.                                                                     | `None`          |
+| scope          | [str](`str`) \| None | What the parse is one of (a root timeline's ID); a minted ID is seeded from it, the parser and its version. | `None`          |
+| id             | [str](`str`) \| None | The parse's ID; minted when None.                                                                           | `None`          |
+| date           | [str](`str`) \| None | When it ran; now when None.                                                                                 | `None`          |
+
+### to_row { #timetoalign.Parse.to_row }
+
+```python
+Parse.to_row()
+```
+
+The parse as a row of the Parse table.
+
+``parameters`` is canonical JSON text (sorted keys, no spaces).

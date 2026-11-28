@@ -196,7 +196,7 @@ Data ingestion from various file formats.
 | [SingleStore](SingleStore.qmd#timetoalign.SingleStore) | Store wrapper for a single EventData. |
 | [DictStore](DictStore.qmd#timetoalign.DictStore) | Generic EventStore with arbitrary named EventData tables. |
 | [EventRegistry](EventRegistry.qmd#timetoalign.EventRegistry) | The registry rows of the events of one or more families, as a view. |
-| [Extraction](Extraction.qmd#timetoalign.Extraction) | One run of a parser over one source file: what made a set of events. |
+| [Parse](Parse.qmd#timetoalign.Parse) | One run of a parser over one source file (or of a tool without one) that made events. |
 | [EventLoader](EventLoader.qmd#timetoalign.loader.EventLoader) | Abstract base class for event-producing loaders. |
 | [AudioLoader](AudioLoader.qmd#timetoalign.loader.AudioLoader) | Load audio file metadata for creating physical timelines. |
 | [AudioInfo](AudioInfo.qmd#timetoalign.loader.AudioInfo) | Metadata for an audio file. |

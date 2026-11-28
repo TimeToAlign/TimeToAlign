@@ -446,7 +446,7 @@ quartodoc:
         - SingleStore
         - DictStore
         - EventRegistry
-        - Extraction
+        - Parse
         - name: EventLoader
           package: timetoalign.loader
         - name: AudioLoader

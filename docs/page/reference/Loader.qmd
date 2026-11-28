@@ -19,8 +19,8 @@ maps and flow control it builds without an ID of their own included.
 
 | Name | Description |
 | --- | --- |
-| [extractions](#timetoalign.loader.Loader.extractions) | One :class:`~timetoalign.storage.Extraction` per source file read, in order. |
 | [metadata](#timetoalign.loader.Loader.metadata) | Aggregated source metadata. |
+| [parses](#timetoalign.loader.Loader.parses) | One :class:`~timetoalign.storage.Parse` per source file read, in order. |
 | [sources](#timetoalign.loader.Loader.sources) | The loaded sources: ``Path`` objects and ZIP members (``zipfile.Path``). |
 
 ## Methods
@@ -33,7 +33,7 @@ maps and flow control it builds without an ID of their own included.
 | [create_timeline](#timetoalign.loader.Loader.create_timeline) | Create a timeline from the loaded payload. |
 | [create_timelines](#timetoalign.loader.Loader.create_timelines) | Create all timelines, optionally filtered by an implementation. |
 | [from_file](#timetoalign.loader.Loader.from_file) | Instantiate the loader, load *paths*, and return it. |
-| [from_registry](#timetoalign.loader.Loader.from_registry) | A loader set up from *registry*'s extractions, to refresh it with :meth:`update`. |
+| [from_registry](#timetoalign.loader.Loader.from_registry) | A loader set up from *registry*'s parses, to refresh it with :meth:`update`. |
 | [load](#timetoalign.loader.Loader.load) | Load and accept one or more sources through the shared template. |
 | [update](#timetoalign.loader.Loader.update) | Re-read the loader's sources and update *registry* with what they hold now. |
 
@@ -113,22 +113,22 @@ read of a source, as ``performance`` of
 loader.Loader.from_registry(registry, *sources, root=None, **kwargs)
 ```
 
-A loader set up from *registry*'s extractions, to refresh it with :meth:`update`.
+A loader set up from *registry*'s parses, to refresh it with :meth:`update`.
 
 The loader runs with the parameters (and the seed) the registry's
-extractions of this loader's class recorded, and reads their source
+parses of this loader's class recorded, and reads their source
 files, unless *sources* names what to read (a loader reading a
 folder, an archive or a project is given that). Nothing is read
 until :meth:`update`.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name     | Type                                                   | Description                                                                                                                              | Default    |
-|----------|--------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|------------|
-| registry | [EventRegistry](`timetoalign.storage.EventRegistry`)   | The registry to refresh, a timeline's, a group's or a bundle's.                                                                          | _required_ |
-| *sources | [SourceLike](`timetoalign.loader._sources.SourceLike`) | What the loader reads, as :meth:`load` takes it; by default the source files of the extractions, in order.                               | `()`       |
-| root     | [Path](`pathlib.Path`) \| [str](`str`) \| None         | The folder a relative source file of an extraction lies in; by default the current one.                                                  | `None`     |
-| **kwargs | [Any](`typing.Any`)                                    | The keyword-only arguments of :meth:`load`, and constructor arguments, which must leave the parameters as the extractions recorded them. | `{}`       |
+| Name     | Type                                                   | Description                                                                                                                         | Default    |
+|----------|--------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------|------------|
+| registry | [EventRegistry](`timetoalign.storage.EventRegistry`)   | The registry to refresh, a timeline's, a group's or a bundle's.                                                                     | _required_ |
+| *sources | [SourceLike](`timetoalign.loader._sources.SourceLike`) | What the loader reads, as :meth:`load` takes it; by default the source files of the parses, in order.                               | `()`       |
+| root     | [Path](`pathlib.Path`) \| [str](`str`) \| None         | The folder a relative source file of a parse lies in; by default the current one.                                                   | `None`     |
+| **kwargs | [Any](`typing.Any`)                                    | The keyword-only arguments of :meth:`load`, and constructor arguments, which must leave the parameters as the parses recorded them. | `{}`       |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -138,9 +138,9 @@ until :meth:`update`.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                         |
-|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If the extractions of this class record two sets of parameters or seeds, the loader set up runs with other parameters than they record, or neither *sources* nor an extraction names a source file. |
+| Name   | Type                       | Description                                                                                                                                                                               |
+|--------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If the parses of this class record two sets of parameters or seeds, the loader set up runs with other parameters than they record, or neither *sources* nor an parse names a source file. |
 
 ### load { #timetoalign.loader.Loader.load }
 
@@ -188,13 +188,13 @@ The loader is cleared and its ``load`` calls are run again (those
 :meth:`from_registry` set up, or the loader's own); each timeline
 :meth:`create_timelines` builds from them (and each descendant) then
 updates the registry's timeline that holds the rows its locators
-name (else the one of its ID), one extraction at a time
+name (else the one of its ID), one parse at a time
 (:meth:`EventRegistry.update <timetoalign.storage.EventRegistry.update>`):
 a row found again by its locator keeps its ID and takes the new
-content, position and extraction; a new row is added with the ID
+content, position and parse; a new row is added with the ID
 it was given (minted from the content, as at every ``load``); a
 row of the source no longer found is kept and marked vanished in
-the new extraction. Nothing is deleted. Rows that name no locator
+the new parse. Nothing is deleted. Rows that name no locator
 (a child's place, events made in code) are left as they are.
 
 #### Parameters {.doc-section .doc-section-parameters}

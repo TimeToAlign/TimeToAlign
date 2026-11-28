@@ -7,7 +7,7 @@ alignment.resolve(target, id)
 Everything an ID names, through a manifest or a package root.
 
 An ID combined with a manifest's persistent location names an element,
-an event, a MatchClaim or an extraction of its package. *target* is a
+an event, a MatchClaim or a parse of its package. *target* is a
 manifest file or a package root (the folder of ``package.yaml``), as a
 path or a ``file:`` URL; *id* is bare, or written ``#id``. The
 resolutions are TimeToShare's (``timetoshare.tables.resolve``): through
@@ -30,7 +30,7 @@ answered as a library object:
   :class:`~timetoalign.core.Event`), its position on the axis of its
   timeline's root as the registry states it, its content read from its
   pre-parsed table by ID (none for an event only re-parsable);
-- an extraction: the :class:`~timetoalign.storage.Extraction`, its
+- a parse: the :class:`~timetoalign.storage.Parse`, its
   source as the library holds a source (the path of a file the package
   names relative to its root, or by a ``file:`` URI).
 

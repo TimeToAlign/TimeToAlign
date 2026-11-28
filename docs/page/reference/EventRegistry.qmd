@@ -25,14 +25,14 @@ through :meth:`Timeline.add_events
 | Name        | Type                                                                | Description                                                                                                                                                          | Default    |
 |-------------|---------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------|
 | timeline_id | [str](`str`)                                                        | The ID of the root timeline of a new family.                                                                                                                         | _required_ |
-| data        | [EventData](`timetoalign.storage.events.EventData`)                 | The root's events, on its axis; their class is the class of the family's events. The extractions it carries (:attr:`EventData.extractions`) are held with them.      | _required_ |
+| data        | [EventData](`timetoalign.storage.events.EventData`)                 | The root's events, on its axis; their class is the class of the family's events. The parses it carries (:attr:`EventData.parses`) are held with them.                | _required_ |
 | host        | [RegistryHost](`timetoalign.storage.registry.RegistryHost`) \| None | The timeline holding its events here (:class:`RegistryHost`): rows read for it are held within its length and its Boxes checked. None for a registry standing alone. | `None`     |
 
 ## Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                   |
-|--------|----------------------------|-------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If *data* holds one event ID twice, or names an extraction it does not carry. |
+| Name   | Type                       | Description                                                             |
+|--------|----------------------------|-------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If *data* holds one event ID twice, or names a parse it does not carry. |
 
 ## Examples {.doc-section .doc-section-examples}
 
@@ -54,7 +54,7 @@ through :meth:`Timeline.add_events
 
 | Name | Description |
 | --- | --- |
-| [extractions](#timetoalign.EventRegistry.extractions) | The extractions the rows of this view name, in the families' order. |
+| [parses](#timetoalign.EventRegistry.parses) | The parses the rows of this view name, in the families' order. |
 | [table](#timetoalign.EventRegistry.table) | The rows of this view's events in the registry's columns, families in order. |
 
 ## Methods
@@ -74,33 +74,33 @@ through :meth:`Timeline.add_events
 ### add { #timetoalign.EventRegistry.add }
 
 ```python
-EventRegistry.add(timeline_id, data, *, extraction=None)
+EventRegistry.add(timeline_id, data, *, parse=None)
 ```
 
 Add *data*'s rows to the timeline *timeline_id*, after its rows.
 
 *data* is on the timeline's axis, in its own coordinates; the
 registry rows are shifted onto the root's, column-wise. The columns
-``locator`` and ``extraction_id``, where *data* holds them, are moved
-into the registry rows. A row naming no extraction names
-*extraction*, else the family's tool extraction
-(:meth:`Extraction.of_tool`, one per family). The extractions *data*
-carries (:attr:`EventData.extractions`) that the rows name are held
+``locator`` and ``parse_id``, where *data* holds them, are moved
+into the registry rows. A row naming no parse names
+*parse*, else the family's tool parse
+(:meth:`Parse.of_tool`, one per family). The parses *data*
+carries (:attr:`EventData.parses`) that the rows name are held
 with them. Taken by the registry of one family (a timeline's
 ``_registry``), not by a view.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                      |
-|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [KeyError](`KeyError`)     | If the family holds no timeline *timeline_id*.                                                                                                                                                                                                                                                                                                   |
-|        | [TypeError](`TypeError`)   | If this registry is a view.                                                                                                                                                                                                                                                                                                                      |
-|        | [ValueError](`ValueError`) | If *data* lies on another axis than the family's, an event ID of it is held in the family or twice in *data*, a row names an extraction neither held, nor *extraction*, nor carried by *data*, a locator names two events of one extraction, or a column of it holds values of a type the timeline's column does not read; nothing changes then. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                      |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [KeyError](`KeyError`)     | If the family holds no timeline *timeline_id*.                                                                                                                                                                                                                                                                                   |
+|        | [TypeError](`TypeError`)   | If this registry is a view.                                                                                                                                                                                                                                                                                                      |
+|        | [ValueError](`ValueError`) | If *data* lies on another axis than the family's, an event ID of it is held in the family or twice in *data*, a row names a parse neither held, nor *parse*, nor carried by *data*, a locator names two events of one parse, or a column of it holds values of a type the timeline's column does not read; nothing changes then. |
 
 ### add_rows { #timetoalign.EventRegistry.add_rows }
 
 ```python
-EventRegistry.add_rows(rows, contents=None, extractions=(), *, registered=True)
+EventRegistry.add_rows(rows, contents=None, parses=(), *, registered=True)
 ```
 
 Hold registry rows already on the root's axis, as read from a package.
@@ -124,19 +124,19 @@ added is checked.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                                                                                                                                                               | Description                                                                                                              | Default    |
-|-------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|------------|
-| rows        | [pa](`pyarrow`).[Table](`pyarrow.Table`)                                                                                                                                                           | Registry rows (:data:`REGISTRY_SCHEMA`'s columns; a column absent is null), ``start`` and ``duration`` as storage cells. | _required_ |
-| contents    | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [pa](`pyarrow`).[Table](`pyarrow.Table`) \| [Callable](`collections.abc.Callable`)\[\[\], [pa](`pyarrow`).[Table](`pyarrow.Table`)\]\] \| None | The content of each kind, keyed by ``id``; every family taking rows reads it (each its own events' rows).                | `None`     |
-| extractions | [Iterable](`collections.abc.Iterable`)\[[Extraction](`timetoalign.storage.registry.Extraction`)\]                                                                                                  | The extractions the rows name; each family taking rows holds them all.                                                   | `()`       |
-| registered  | [bool](`bool`)                                                                                                                                                                                     | The rows are a package's: a family taking them never joins a parent afterwards.                                          | `True`     |
+| Name       | Type                                                                                                                                                                                               | Description                                                                                                              | Default    |
+|------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|------------|
+| rows       | [pa](`pyarrow`).[Table](`pyarrow.Table`)                                                                                                                                                           | Registry rows (:data:`REGISTRY_SCHEMA`'s columns; a column absent is null), ``start`` and ``duration`` as storage cells. | _required_ |
+| contents   | [Mapping](`collections.abc.Mapping`)\[[str](`str`), [pa](`pyarrow`).[Table](`pyarrow.Table`) \| [Callable](`collections.abc.Callable`)\[\[\], [pa](`pyarrow`).[Table](`pyarrow.Table`)\]\] \| None | The content of each kind, keyed by ``id``; every family taking rows reads it (each its own events' rows).                | `None`     |
+| parses     | [Iterable](`collections.abc.Iterable`)\[[Parse](`timetoalign.storage.registry.Parse`)\]                                                                                                            | The parses the rows name; each family taking rows holds them all.                                                        | `()`       |
+| registered | [bool](`bool`)                                                                                                                                                                                     | The rows are a package's: a family taking them never joins a parent afterwards.                                          | `True`     |
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                           |
-|--------|----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [KeyError](`KeyError`)     | If a row names a timeline no family of this registry holds.                                                                                                                                                                                                                                                                           |
-|        | [ValueError](`ValueError`) | If a row lies on another axis than its family's, names an extraction not given or held, holds an ID held in the family or twice, a locator naming two events of one extraction, ends past the length of a locked timeline, or a Box contradicts its shape. Nothing changes then, but the lengths of timelines grown before a refusal. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [KeyError](`KeyError`)     | If a row names a timeline no family of this registry holds.                                                                                                                                                                                                                                                                |
+|        | [ValueError](`ValueError`) | If a row lies on another axis than its family's, names a parse not given or held, holds an ID held in the family or twice, a locator naming two events of one parse, ends past the length of a locked timeline, or a Box contradicts its shape. Nothing changes then, but the lengths of timelines grown before a refusal. |
 
 ### concat { #timetoalign.EventRegistry.concat }
 
@@ -190,7 +190,7 @@ The number of rows per value of the column *by*, sorted by value.
 EventRegistry.filter(
     within=None,
     kinds=None,
-    extractions=None,
+    parses=None,
     vanished=None,
     min_coord=None,
     max_coord=None,
@@ -201,14 +201,14 @@ A view of the rows of this one meeting every condition given.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                                           | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Default   |
-|-------------|--------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
-| within      | [str](`str`) \| [Iterable](`collections.abc.Iterable`)\[[str](`str`)\] \| None | Keep the rows of these timelines (IDs).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `None`    |
-| kinds       | [str](`str`) \| [Iterable](`collections.abc.Iterable`)\[[str](`str`)\] \| None | Keep the rows of these kinds (event types).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `None`    |
-| extractions | [str](`str`) \| [Iterable](`collections.abc.Iterable`)\[[str](`str`)\] \| None | Keep the rows made by these extractions (IDs).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `None`    |
-| vanished    | [bool](`bool`) \| None                                                         | True keeps the rows an update no longer found, False the others; None keeps both.                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `None`    |
-| min_coord   | [Any](`typing.Any`)                                                            | Keep the rows starting at or after this position (inclusive), compared as :meth:`EventData.filter` compares a bound: exactly where it is exact and the axis ``int`` or ``fraction``, as a key where it is a float. A bare number lies on each family's root axis; a ``Coordinate`` keeps rows of the families in its unit only (no row of a family on another unit lies at it); an ``IdCoordinate`` lies on the timeline it names, moved onto that timeline's root by the offsets of its ancestors, and keeps rows of that family only. | `None`    |
-| max_coord   | [Any](`typing.Any`)                                                            | Keep the rows starting before this position (exclusive), read as *min_coord*.                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `None`    |
+| Name      | Type                                                                           | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Default   |
+|-----------|--------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| within    | [str](`str`) \| [Iterable](`collections.abc.Iterable`)\[[str](`str`)\] \| None | Keep the rows of these timelines (IDs).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `None`    |
+| kinds     | [str](`str`) \| [Iterable](`collections.abc.Iterable`)\[[str](`str`)\] \| None | Keep the rows of these kinds (event types).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `None`    |
+| parses    | [str](`str`) \| [Iterable](`collections.abc.Iterable`)\[[str](`str`)\] \| None | Keep the rows made by these parses (IDs).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `None`    |
+| vanished  | [bool](`bool`) \| None                                                         | True keeps the rows an update no longer found, False the others; None keeps both.                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `None`    |
+| min_coord | [Any](`typing.Any`)                                                            | Keep the rows starting at or after this position (inclusive), compared as :meth:`EventData.filter` compares a bound: exactly where it is exact and the axis ``int`` or ``fraction``, as a key where it is a float. A bare number lies on each family's root axis; a ``Coordinate`` keeps rows of the families in its unit only (no row of a family on another unit lies at it); an ``IdCoordinate`` lies on the timeline it names, moved onto that timeline's root by the offsets of its ancestors, and keeps rows of that family only. | `None`    |
+| max_coord | [Any](`typing.Any`)                                                            | Keep the rows starting before this position (exclusive), read as *min_coord*.                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `None`    |
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -219,29 +219,29 @@ A view of the rows of this one meeting every condition given.
 ### update { #timetoalign.EventRegistry.update }
 
 ```python
-EventRegistry.update(data, extraction, *, timeline_id=None)
+EventRegistry.update(data, parse, *, timeline_id=None)
 ```
 
 Update the rows of a timeline of this registry from *data*, a parser's new run.
 
-*data* holds the rows of one extraction, local to the timeline they
+*data* holds the rows of one parse, local to the timeline they
 were read for, each with its ``locator`` (a column). The timeline
 updated is :meth:`update_target`'s. Its rows are matched by the full
-``locator`` among the rows made by extractions of the same source as
-*extraction*: a matched row keeps its ID and takes the new row's
-content, position and *extraction*; a new row matching none is
+``locator`` among the rows made by parses of the same source as
+*parse*: a matched row keeps its ID and takes the new row's
+content, position and *parse*; a new row matching none is
 added; an old row of that source no longer found is kept, naming
-*extraction* in ``vanished_in``. Nothing is deleted. A view (a
+*parse* in ``vanished_in``. Nothing is deleted. A view (a
 timeline's, a group's, a bundle's) updates the family holding the
 timeline.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name        | Type                                                    | Description                                    | Default    |
-|-------------|---------------------------------------------------------|------------------------------------------------|------------|
-| data        | [EventData](`timetoalign.storage.events.EventData`)     | The rows read again, with their locators.      | _required_ |
-| extraction  | [Extraction](`timetoalign.storage.registry.Extraction`) | The run that read them.                        | _required_ |
-| timeline_id | [str](`str`) \| None                                    | The timeline updated where no locator matches. | `None`     |
+| Name        | Type                                                | Description                                    | Default    |
+|-------------|-----------------------------------------------------|------------------------------------------------|------------|
+| data        | [EventData](`timetoalign.storage.events.EventData`) | The rows read again, with their locators.      | _required_ |
+| parse       | [Parse](`timetoalign.storage.registry.Parse`)       | The run that read them.                        | _required_ |
+| timeline_id | [str](`str`) \| None                                | The timeline updated where no locator matches. | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -258,17 +258,17 @@ timeline.
 ### update_target { #timetoalign.EventRegistry.update_target }
 
 ```python
-EventRegistry.update_target(data, extraction, *, timeline_id=None)
+EventRegistry.update_target(data, parse, *, timeline_id=None)
 ```
 
 The timeline :meth:`update` would update from *data*, or None.
 
 The timeline of this registry holding most of the rows that *data*'s
-locators name among the rows made by extractions of the same source
-file as *extraction* (ties: the timeline met first); where they name
+locators name among the rows made by parses of the same source
+file as *parse* (ties: the timeline met first); where they name
 none, the timeline *timeline_id* (else the one *data* is a table of)
 if a family of this registry holds it. Read column-wise: one table
-of each held extraction's ID and source, and set lookups.
+of each held parse's ID and source, and set lookups.
 
 #### Raises {.doc-section .doc-section-raises}
 
@@ -289,8 +289,8 @@ a child's events lie on its root's axis), its rows and contents read
 when asked. The rows recording where a child lies (a ``Segment`` row
 named by a timeline of the family) are left out; a user's
 ``Segment`` row, an event like any other, is kept, naming the
-family's extraction of events made in code
-(:meth:`Extraction.of_tool`) where it names none.
+family's parse of events made in code
+(:meth:`Parse.of_tool`) where it names none.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -300,8 +300,8 @@ family's extraction of events made in code
 
 #### Returns {.doc-section .doc-section-returns}
 
-| Name   | Type                                                          | Description                                                   |
-|--------|---------------------------------------------------------------|---------------------------------------------------------------|
-|        | [WrittenEvents](`timetoalign.storage.registry.WrittenEvents`) | The rows, the contents per timeline and kind, the extractions |
-|        | [WrittenEvents](`timetoalign.storage.registry.WrittenEvents`) | the rows name and the families                                |
-|        | [WrittenEvents](`timetoalign.storage.registry.WrittenEvents`) | (:class:`WrittenEvents`).                                     |
+| Name   | Type                                                          | Description                                              |
+|--------|---------------------------------------------------------------|----------------------------------------------------------|
+|        | [WrittenEvents](`timetoalign.storage.registry.WrittenEvents`) | The rows, the contents per timeline and kind, the parses |
+|        | [WrittenEvents](`timetoalign.storage.registry.WrittenEvents`) | the rows name and the families                           |
+|        | [WrittenEvents](`timetoalign.storage.registry.WrittenEvents`) | (:class:`WrittenEvents`).                                |

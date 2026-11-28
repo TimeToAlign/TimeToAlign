@@ -21,10 +21,10 @@
 # **MatchClaim table** (`match_claims.parquet`). The events that stand in
 # for an event a timeline does not hold, Projections, are events like any
 # other: each has a row in the **registry** (`registry.parquet`), which
-# holds every event's ID, timeline and position, and its content, the
-# event it stands for, in the pre-parsed **Projection table**
-# (`projections.parquet`); the **Extraction table** (`extractions.parquet`)
-# records what made them. The manifest names the registry and the
+# holds every event's ID, timeline and position, and for a Projection the
+# event it stands for (`projection_of`), all of a Projection there is; the
+# **Parse table** (`parses.parquet`) records the parse that made them. The
+# manifest names the registry and the
 # MatchClaim table in its `resources`; the manifest and the files beside it
 # make a **package**.
 #
@@ -282,15 +282,16 @@ claim_rows(bundle.get_match_claims())
 # %% [markdown]
 # ## Write the package
 #
-# `to_file()` writes the MatchClaim table, the registry, the Extraction
-# table and the Projection table beside the manifest, then the manifest
-# naming the registry and the MatchClaim table. A manifest names no event:
-# the claims name the score's notes and the recording's onsets by their
-# ids, and by default those events stay with the sources they came from,
-# here the score and the onset list. The package holds the events it made
-# itself, the Projections. To keep the notes and onsets in the package as
-# well, `to_file(events=True)` writes them into the registry and a
-# pre-parsed table per event type, never into the manifest itself:
+# `to_file()` writes the MatchClaim table, the registry and the Parse
+# table beside the manifest, then the manifest naming the registry and the
+# MatchClaim table. A manifest names no event: the claims name the score's
+# notes and the recording's onsets by their ids, and by default those
+# events stay with the sources they came from, here the score and the
+# onset list. The package holds the events it made itself, the
+# Projections. To keep the notes and onsets in the package as well,
+# `to_file(events=True)` writes them into the registry, and the content of
+# each event type whose events hold more than their ID and position into a
+# pre-parsed table, never into the manifest itself:
 # see [How to Write the Registry and Share Tables in a Package](how03_registry_and_packages.ipynb).
 
 # %%
@@ -329,42 +330,44 @@ pq.read_table(package / "match_claims.parquet").select(
 # on the axis of the timeline's root (`start`, and `duration` for a span),
 # with that axis's unit and number type once, each number written once, as
 # that number type says: an int as its numerator alone, a fraction as
-# numerator and denominator, a float as its value alone. The registry's
-# other rows, its non-event rows, name the manifest's elements, the
-# MatchClaims and the extraction.
+# numerator and denominator, a float as its value alone. Its
+# `projection_of` names the event it stands for, if any, by its timeline
+# and ID. That is all a Projection holds, so it has no pre-parsed table:
+# its `location` is empty. The registry's other rows, its non-event rows,
+# name the manifest's elements, the MatchClaims and the parse.
 
 # %%
 [
     {
         name: row[name]
-        for name in ("id", "kind", "timeline_id", "unit", "number_type", "start")
+        for name in (
+            "id",
+            "kind",
+            "timeline_id",
+            "unit",
+            "number_type",
+            "start",
+            "location",
+            "projection_of",
+        )
     }
     for row in pq.read_table(package / "registry.parquet").to_pylist()
     if row["kind"] == "Projection"
 ]
 
 # %% [markdown]
-# The Projection table holds the content of each Projection, keyed by its
-# id: the event it stands for, if any.
-
-# %%
-pq.read_table(package / "projections.parquet").to_pylist()
-
-# %% [markdown]
 # An event's id is unique among all the events of the package, whichever
-# timeline holds it, so the registry and the table name each id once. Here
-# they hold one Projection, the recording's for the fourth note (its
-# `projection_of` names the note); the claim between two positions added
-# none. Each id is minted (`projection_…`) and never re-minted, and a
+# timeline holds it, so the registry names each id once. Here it holds one
+# Projection, the recording's for the fourth note; the claim between two
+# positions added none. Each id is minted (`projection_…`) and never re-minted, and a
 # Projection given an id another timeline's Projection holds is refused.
 
 # %% [markdown]
 # ## Read the package
 #
 # `from_file()` reads the manifest, then the tables it names: each
-# Projection's registry row onto its timeline (its content read from the
-# Projection table when the timeline's events are read), then the
-# MatchClaim table. The bundle read
+# Projection's registry row onto its timeline, the event it stands for
+# with it, then the MatchClaim table. The bundle read
 # holds the same claims and the same manifest, and its belief filter gives
 # the same answers. Its timelines hold their Projections but not the notes
 # and onsets, which the manifest does not carry (the score read holds no

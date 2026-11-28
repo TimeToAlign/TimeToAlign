@@ -560,9 +560,9 @@ Package: |
   class writes and opens such a folder: write_bundle(bundle, url) adds a
   bundle as the manifest at url (a new package stages it and to_file(path)
   writes every bundle staged, then package.yaml; a package on disk is
-  written at once). The registry is the folder registry/ and the Extraction
-  table the file tables/extractions.parquet; each write adds one file per
-  pre-parsed table type and one of MatchClaims under tables/<Type>/, holding
+  written at once). The registry is the file registry.parquet at the root
+  and the Parse table the file tables/parses.parquet; each write adds one
+  file per pre-parsed table type and one of MatchClaims under tables/<Type>/, holding
   the rows of every bundle it writes, every event type included, and named
   from its content. from_file(path) opens a package, and
   bundle(url) reads one of its manifests with every table filtered to the
@@ -602,19 +602,33 @@ Parent: |
   its children must share the same measuring unit. Coordinate transfer uses
   exact offset arithmetic.
 
+Parse: |
+  One run of a parser over a source file, or of a tool that made events
+  without one (CRMdig's D10 Software Execution): the source file and its
+  digest, the parser and its version, the parameters it ran with, and the
+  ID minter's algorithm, length and seed, so that a run again over the same
+  file mints the same IDs. Every event names the parse that made it in its
+  registry row (parse_id); events made in code name the library's parse. A
+  row of the Parse table (parses.parquet beside a lone manifest,
+  tables/parses.parquet in a package), and a non-event row of the
+  registry. An update of an event is a new parse of its source. In memory a
+  Parse object, which EventData.parses and EventRegistry.parses hold.
+
 Pre-parsed table: |
   A Parquet table holding what is particular to the events of one type,
-  keyed by their IDs and without positions: a Note's name, a Projection's
-  projection_of, a Box's shape. An event's ID, type, timeline and position
-  are its registry row, whose location names the table holding its content.
-  Beside a lone manifest it is a file (Note.parquet; projections.parquet and
-  boxes.parquet for Projections and Boxes); in a package it is the folder
-  tables/<Type>/, shared by every manifest. An event whose content can be
-  read again from its source file is re-parsed instead and has no row
-  there. An AlignmentBundle's to_file() writes the tables of the Projections
-  and Boxes its timelines hold, to_file(events=True) one for every other
-  event type as well, and from_file() reads each event's content when its
-  timeline's events are first read.
+  keyed by their IDs and without positions: a Note's name or MIDI pitch, a
+  Box's shape. An event's ID, type, timeline and position are its registry
+  row, whose location names the table holding its content. Beside a lone
+  manifest it is a file (Note.parquet; boxes.parquet for Boxes); in a
+  package it is the folder tables/<Type>/, shared by every manifest. A type
+  whose events hold nothing but their ID and position has no pre-parsed
+  table: its events lie in the registry alone, their location empty. So has
+  the Projection, whose projection_of is a column of the registry. An event
+  whose content can be read again from its source file is re-parsed instead
+  and has no row there. An AlignmentBundle's to_file() writes the table of
+  the Boxes its timelines hold, to_file(events=True) one for every other
+  event type with content as well, and from_file() reads each event's
+  content when its timeline's events are first read.
 
 Projection: |
   An event standing on a timeline for an event that timeline does not hold,
@@ -629,12 +643,12 @@ Projection: |
   already holds for the same event and position;
   AlignmentBundle.create_match_claims(), the alignment loaders and
   match_notes_by_attributes() give a Projection to every side stated as a
-  position, except the CHUNK sides. A package holds every timeline's Projections as rows of the registry,
-  which hold their positions, and in the Projection table
-  (projections.parquet), the pre-parsed table of their IDs and
-  projection_of; an AlignmentBundle's to_file() writes both beside the
-  manifest whenever one of its timelines holds Projections, and from_file()
-  reads them back onto the timelines. In memory a Projection's start and
+  position, except the CHUNK sides. A package holds every timeline's
+  Projections as rows of the registry, which hold their positions and
+  their projection_of, all there is of a Projection: it has no pre-parsed
+  table. An AlignmentBundle's to_file() writes them into the registry
+  beside the manifest whenever one of its timelines holds Projections, and
+  from_file() reads them back onto the timelines. In memory a Projection's start and
   duration are coordinate cells, each naming its unit and number type; the
   registry writes them in the package form: the axis's unit and number_type
   once per row, each number once, in the member its number type names (see
@@ -701,15 +715,17 @@ Registry: |
   resolves. An event's row states its ID, its type (kind), its timeline, its
   position on the axis of its timeline's root (start and, for a span,
   duration, with the axis's unit and number_type, each number once in the
-  member its number type names), the extraction that made it with its
-  locator in the source, and the location of the pre-parsed table holding
-  its content. A non-event row names every element of the manifest, every
-  MatchClaim and every extraction, with its kind and location. The registry
-  holds no names. Beside it, the Extraction table has one row per run of a
-  parser over a source file, or of a tool that made events without one. A
-  manifest names the registry among its resources with the type Registry:
-  beside a lone manifest it is registry.parquet, in a package the folder
-  registry/ of non_events.parquet and one part per extraction.
+  member its number type names), the parse that made it with its locator
+  in the source, the location of the pre-parsed table holding its content
+  (empty where the row holds all there is of the event, or where the
+  content is only re-parsable from its parse's source file), and for a
+  Projection projection_of, the event it stands for. A non-event row names
+  every element of the manifest, every MatchClaim and every parse, with its
+  kind and location. The registry holds no names. Beside it, the Parse
+  table has one row per parse. A manifest names the registry among its
+  resources with the type Registry: beside a lone manifest it is
+  registry.parquet, in a package the one file registry.parquet at the
+  package root, holding every row of every manifest.
   resolve(target, id) answers what an ID names, through a manifest or a
   package root, always as a list.
 
@@ -734,10 +750,9 @@ Resource: |
   since the files of a folder may hold the rows of other manifests of a
   package; a table of other rows, and a folder holding no Parquet file, is
   carried as it stands. Its to_file() writes the MatchClaim table when it
-  holds MatchClaims, and the registry, the Extraction table and a
-  pre-parsed table per type for the Projections and Boxes its timelines
-  hold, and with events=True for every other event type its timelines hold
-  as well. It refuses, with a
+  holds MatchClaims, and the registry, the Parse table and the pre-parsed
+  table of the Boxes when its timelines hold Projections or Boxes, and
+  with events=True every other event type its timelines hold as well. It refuses, with a
   NotImplementedError, to write rows of a type whose resource names a
   folder: the files of a folder are shared by a package's manifests, and
   Package.write_bundle() writes into them. A named file or folder that is

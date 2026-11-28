@@ -661,8 +661,9 @@ claim, one column per property of a MatchClaim. A claim given no ID is
 minted one when it is constructed, and joining a bundle renames none. A MatchClaim is addressed by its ID alone,
 so `AlignmentBundle.from_bundles()` refuses two sources holding one ID. On disk the MatchClaim table is
 `match_claims.parquet`, and the Projections of every timeline are rows of
-the {{< glossary Registry >}}, `registry.parquet`, with their content in the
-Projection table, `projections.parquet`. The MatchClaim table and the
+the {{< glossary Registry >}}, `registry.parquet`, each naming the event
+it stands for (`projection_of`), which is all a Projection holds. The
+MatchClaim table and the
 registry write each number once, in
 the member its number type names (a fraction as numerator and
 denominator), where memory keeps the float beside the exact ratio; this **package form** is
@@ -674,8 +675,9 @@ reads. Both lie beside the
 IDs, and by default the events stay with the sources they come from while
 the package holds the events it made itself, the Projections (and the
 Boxes of a page). `to_file(events=True)` writes every other event type as
-well, into the registry and a {{< glossary "Pre-parsed table" >}} per type
-beside the manifest. `to_file()` writes the package and `from_file()` reads it back.
+well, into the registry and, for a type whose events hold more than
+their ID and position, a {{< glossary "Pre-parsed table" >}} beside the
+manifest; every event names the {{< glossary Parse >}} that made it. `to_file()` writes the package and `from_file()` reads it back.
 Several manifests share their tables in a package whose `package.yaml`
 lists them, which the `Package` class writes and opens. Writing over a MatchClaim table
 obeys the **succession rule**: every claim of the old table is in the new

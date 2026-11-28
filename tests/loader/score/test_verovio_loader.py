@@ -809,10 +809,10 @@ class TestMeasureSpaces:
             VerovioLoader.from_file(mei["space_empty"])
 
 
-def _without_extraction(loader: VerovioLoader) -> list[dict]:
-    """The store's measure rows but their ``extraction_id``, a run's own."""
+def _without_parse(loader: VerovioLoader) -> list[dict]:
+    """The store's measure rows but their ``parse_id``, a run's own."""
     return [
-        {key: value for key, value in row.items() if key != "extraction_id"}
+        {key: value for key, value in row.items() if key != "parse_id"}
         for row in loader.store.measures
     ]
 
@@ -884,7 +884,7 @@ class TestMeasureSpaceRepeated:
             ("m3", "3", Fraction(4), Fraction(2), "2/4"),
         ]
         assert _starts(timeline) == {"m1n": Fraction(0), "m3n": Fraction(4)}
-        assert _without_extraction(loader) == _without_extraction(repeat)
+        assert _without_parse(loader) == _without_parse(repeat)
         assert loader.store.measures.table.column("locator").to_pylist() == [
             "m1 key:1",
             "m2 key:2",
@@ -1124,7 +1124,7 @@ class TestRepeats:
             mei["repeat_endings"], options={"expandNever": True}
         )
         assert notated.store.metadata["omitted_measures"] == []
-        assert _without_extraction(notated) == _without_extraction(loader)
+        assert _without_parse(notated) == _without_parse(loader)
         assert notated.store.measures.table.column("locator").to_pylist() == [
             f"m{n} key:{n}" for n in range(1, 6)
         ]

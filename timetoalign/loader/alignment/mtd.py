@@ -839,7 +839,7 @@ class MtdLoader(AlignmentLoader):
         this loader was given a ``seed``, from a seed of it and *member*,
         the file's path below ``MTD/`` (``data_EDM-orig_MID/<stem>.mid``),
         so the IDs do not depend on where the dataset lies. The MIDI
-        loader's extraction of the file is this loader's too.
+        loader's parse of the file is this loader's too.
 
         Raises:
             ValueError: If the file states no ticks per quarter, or holds a
@@ -856,7 +856,7 @@ class MtdLoader(AlignmentLoader):
             raise ValueError(
                 f"{describe_source(midi)} holds a note without onset, end or pitch"
             )
-        self._adopt_extractions(midi_loader)
+        self._adopt_parses(midi_loader)
         return midi_loader
 
     @staticmethod

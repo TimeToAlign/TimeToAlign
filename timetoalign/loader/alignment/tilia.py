@@ -487,7 +487,7 @@ class TiliaJsonLoader(JsonLoader):
         loader.store.marker     # all marker tables concatenated
         loader.store.beat       # all beat tables concatenated
 
-    Every event names its file's extraction and, as its ``locator``, its
+    Every event names its file's parse and, as its ``locator``, its
     place in the file as a JSON Pointer: ``/timelines/<i>/components/<j>``,
     both from 0, in a v1 file listing them; the timeline's and the
     component's keys in a v2 file keying them by ID. Where the component
@@ -966,7 +966,7 @@ class TiliaJsonLoader(JsonLoader):
             )
 
         if events:
-            tl.add_events(events, extractions=self.extractions)
+            tl.add_events(events, parses=self.parses)
 
         return tl
 

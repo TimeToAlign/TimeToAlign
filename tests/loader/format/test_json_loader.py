@@ -375,9 +375,9 @@ class TestLocators:
         loader = JsonLoader(principal_keys=["audio"]).load(located)
         table = loader.get_table("audio")
         assert table.column("locator").to_pylist() == ["/audio/0 key:a1", "/audio/1"]
-        (extraction,) = loader.extractions
-        assert extraction.source == located.as_posix()
-        assert table.column("extraction_id").to_pylist() == [extraction.id] * 2
+        (parse,) = loader.parses
+        assert parse.source == located.as_posix()
+        assert table.column("parse_id").to_pylist() == [parse.id] * 2
 
     @pytest.mark.parametrize("key", ["hotCuePoints", "audio.cueData.hotCuePoints"])
     def test_a_nested_key(self, located: Path, key: str) -> None:
@@ -388,40 +388,40 @@ class TestLocators:
         table = JsonLoader(principal_keys=["a/b"]).load(located).get_table("a/b")
         assert table.column("locator").to_pylist() == ["/a~1b/0"]
 
-    def test_a_dict_names_no_extraction(self) -> None:
+    def test_a_dict_names_no_parse(self) -> None:
         loader = JsonLoader(principal_keys=["audio"]).load_dict(LOCATED)
         table = loader.get_table("audio")
         assert table.column("locator").to_pylist() == ["/audio/0 key:a1", "/audio/1"]
-        assert "extraction_id" not in table.column_names
-        assert loader.extractions == []
+        assert "parse_id" not in table.column_names
+        assert loader.parses == []
 
 
 NAMED_LIKE_THE_REGISTRY = {
-    "events": [{"locator": "bar 3", "extraction_id": "run 1", "t": 1}, {"t": 2}]
+    "events": [{"locator": "bar 3", "parse_id": "run 1", "t": 1}, {"t": 2}]
 }
 
 
 class TestSourceFieldsNamedLikeTheRegistry:
-    """A document's own ``locator`` and ``extraction_id`` are kept beside the registry's."""
+    """A document's own ``locator`` and ``parse_id`` are kept beside the registry's."""
 
     def test_read_from_a_file(self, tmp_path: Path) -> None:
         path = tmp_path / "named.json"
         path.write_text(json.dumps(NAMED_LIKE_THE_REGISTRY), encoding="utf-8")
         loader = JsonLoader(principal_keys=["events"]).load(path)
         table = loader.get_table("events")
-        (extraction,) = loader.extractions
+        (parse,) = loader.parses
         assert table.column("source_locator").to_pylist() == ["bar 3", None]
-        assert table.column("source_extraction_id").to_pylist() == ["run 1", None]
+        assert table.column("source_parse_id").to_pylist() == ["run 1", None]
         assert table.column("locator").to_pylist() == ["/events/0", "/events/1"]
-        assert table.column("extraction_id").to_pylist() == [extraction.id] * 2
+        assert table.column("parse_id").to_pylist() == [parse.id] * 2
 
     def test_read_from_a_dict(self) -> None:
         loader = JsonLoader(principal_keys=["events"]).load_dict(
             NAMED_LIKE_THE_REGISTRY
         )
         table = loader.get_table("events")
-        assert table.column("source_extraction_id").to_pylist() == ["run 1", None]
-        assert "extraction_id" not in table.column_names
+        assert table.column("source_parse_id").to_pylist() == ["run 1", None]
+        assert "parse_id" not in table.column_names
 
     def test_a_name_held_already(self) -> None:
         document = {"events": [{"locator": "a", "source_locator": "b"}]}

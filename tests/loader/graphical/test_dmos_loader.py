@@ -673,8 +673,8 @@ class TestIdentity:
     def test_a_box_names_its_measure_and_the_file(self, scan: Path) -> None:
         loader = DmosLoader.from_file(scan)
         volume = loader.create_timeline(uid="scan", box_ids="m{n}")
-        (extraction,) = loader.extractions
-        assert extraction.source == scan.as_posix()
+        (parse,) = loader.parses
+        assert parse.source == scan.as_posix()
         rows = volume.registry.filter(kinds="Box").table
         assert dict(
             zip(
@@ -688,8 +688,8 @@ class TestIdentity:
             "m3": "/pages/0/systems/1/measures/0",
             "m4": "/pages/1/systems/0/measures/0",
         }
-        assert set(rows.column("extraction_id").to_pylist()) == {extraction.id}
-        assert volume.registry.extractions == [extraction]
+        assert set(rows.column("parse_id").to_pylist()) == {parse.id}
+        assert volume.registry.parses == [parse]
 
     def test_a_template_of_positions(self, scan: Path) -> None:
         pages = DmosLoader.from_file(scan).create_timelines(
@@ -820,8 +820,8 @@ class TestPackageRoundTrip:
         path = bundle.to_file(tmp_path / "package" / "manifest.yaml")
         assert sorted(entry.name for entry in path.parent.iterdir()) == [
             "boxes.parquet",
-            "extractions.parquet",
             "manifest.yaml",
+            "parses.parquet",
             "registry.parquet",
         ]
 

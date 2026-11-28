@@ -144,7 +144,7 @@ from timetoalign.display.html import code
 from timetoalign.loader._ids import give_event_ids
 from timetoalign.loader._sources import Source
 from timetoalign.loader._xml import element_paths
-from timetoalign.loader.base import EXTRACTION_ID, LOCATOR, LoadSourceResult, locate
+from timetoalign.loader.base import LOCATOR, PARSE_ID, LoadSourceResult, locate
 from timetoalign.loader.format.xml import XmlLoader
 from timetoalign.loader.graphical.paths import group_into_accolades
 from timetoalign.maps.interval import IntervalToConstantMap
@@ -461,13 +461,13 @@ class Ieee1599Loader(XmlLoader):
     state gets no table, except that ``spine``, ``los``, ``notational`` and
     ``audio`` are always present with their stable schema, even when empty.
 
-    Every event names the file's extraction and, as its ``locator``, its
+    Every event names the file's parse and, as its ``locator``, its
     element's path in the document
     (``/ieee1599/logic/los/part/measure[2]/voice/chord[3]/notehead``; a
     step's position among same-named siblings, from 1, where there are
     several), followed by ``key:<id>`` where the element states its ``id``.
     A document read with ``load_string`` or ``load_element``
-    names no extraction.
+    names no parse.
 
     Examples:
         >>> loader = Ieee1599Loader.from_file("gymnopedie_01.xml")
@@ -603,17 +603,17 @@ class Ieee1599Loader(XmlLoader):
         self._build_claim_field()
 
     def _place(self, element: ET.Element) -> dict[str, str | None]:
-        """The registry keys of a row read from *element*: where, and by which extraction.
+        """The registry keys of a row read from *element*: where, and by which parse.
 
         The locator is the element's path in the document
         (``/ieee1599/logic/los/part/measure[2]/...``), followed by
-        ``key:<id>`` where the element states its ``id``; the extraction is
+        ``key:<id>`` where the element states its ``id``; the parse is
         the file's, none for a document read from XML in memory.
         """
         reading = self._reading
         return {
             LOCATOR: locate(self._paths[id(element)], element.get("id")),
-            EXTRACTION_ID: None if reading is None else self._extraction_of(reading).id,
+            PARSE_ID: None if reading is None else self._parse_of(reading).id,
         }
 
     def _mint_timeline_uid(self, unit: TimeUnit, role: str) -> str:
@@ -842,7 +842,7 @@ class Ieee1599Loader(XmlLoader):
             "text": None,
             "hyphen": None,
             LOCATOR: None,
-            EXTRACTION_ID: None,
+            PARSE_ID: None,
         }
         row.update({key: values[key] for key in values if key in row})
         return row
@@ -1573,7 +1573,7 @@ class Ieee1599Loader(XmlLoader):
             name=name,
         )
         if rows:
-            timeline.add_events(rows, extractions=self.extractions)
+            timeline.add_events(rows, parses=self.parses)
         return timeline
 
     def _build_graphical(
@@ -1633,7 +1633,7 @@ class Ieee1599Loader(XmlLoader):
                     uid=mint_timeline_id(_GRAPHIC_UNIT, self._id_minter),
                     name=f"accolade_{accolade_index}",
                 )
-                accolade.add_events(segment_spec.rows, extractions=self.extractions)
+                accolade.add_events(segment_spec.rows, parses=self.parses)
                 page.append_segment(accolade)
             # The edition was made with a length, which appending keeps known.
             length = timeline.length
@@ -1686,7 +1686,7 @@ class Ieee1599Loader(XmlLoader):
             meta=meta,
         )
         if spec.rows:
-            timeline.add_events(spec.rows, extractions=self.extractions)
+            timeline.add_events(spec.rows, parses=self.parses)
         return timeline
 
     # endregion

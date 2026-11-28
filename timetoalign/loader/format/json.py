@@ -357,7 +357,7 @@ class JsonLoader(NormalisedTablesLoader):
     (``/audio/0``; ``/audio/1/cueData/hotCuePoints/0`` for a nested key),
     followed by ``key:<id>`` where the object states an ``id`` member of its
     own (``/audio/0 key:a1``); a row read from a file names that file's
-    extraction (:attr:`extractions`), one read from a dict none.
+    parse (:attr:`parses`), one read from a dict none.
 
     Follows the standard two-phase pattern:
 

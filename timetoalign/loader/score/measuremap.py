@@ -70,7 +70,7 @@ class MeasureMapLoader(ScoreLoader):
       leaves it out, while ``expanded_data`` and the measure table keep it
       where the file states it
 
-    Every measure names the file's extraction and, as its ``locator``, its
+    Every measure names the file's parse and, as its ``locator``, its
     place in the expanded map, ``measure:<count>``, followed by
     ``key:<ID>`` where the file states the measure's ``ID``
     (``measure:3 key:m3``); a measure a compressed file leaves out states

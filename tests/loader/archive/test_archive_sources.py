@@ -80,7 +80,7 @@ class TestSameResultAsFilesystem:
         on_disk = CsvLoader.from_file(EVENTS_CSV)
         assert same_rows(archived.events.table, on_disk.events.table)
         same_result(archived, on_disk)
-        (inside,), (outside,) = archived.extractions, on_disk.extractions
+        (inside,), (outside,) = archived.parses, on_disk.parses
         assert inside.source == member_uri(member(archive, "tables/test_events.csv"))
         assert outside.source == Path(EVENTS_CSV).as_posix()
         assert inside.source_integrity == outside.source_integrity

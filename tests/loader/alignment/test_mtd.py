@@ -890,14 +890,14 @@ class TestMidiFilesOnTicks:
         assert rows.column("locator").to_pylist() == [
             f"track:1 message:{j}" for j in range(1, 20, 2)
         ]
-        (extraction,) = corr.registry.extractions
-        assert (extraction.parser, extraction.source) == (
+        (parse,) = corr.registry.parses
+        assert (parse.parser, parse.source) == (
             "ScoreMidiLoader",
             member_uri(member),
         )
-        assert set(rows.column("extraction_id").to_pylist()) == {extraction.id}
-        assert [e.parser for e in loader.extractions] == ["ScoreMidiLoader"] * 4
-        assert [e.source for e in loader.extractions] == [
+        assert set(rows.column("parse_id").to_pylist()) == {parse.id}
+        assert [e.parser for e in loader.parses] == ["ScoreMidiLoader"] * 4
+        assert [e.source for e in loader.parses] == [
             member_uri(zipfile.Path(archive, at=MEMBERS_0807[label]))
             for label in (
                 "EDM-orig MIDI",

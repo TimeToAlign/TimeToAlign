@@ -80,7 +80,7 @@ from timetoalign.loader._sources import (
     on_disk,
     sibling_source,
 )
-from timetoalign.loader.base import EXTRACTION_ID, LOCATOR, AlignmentLoader
+from timetoalign.loader.base import LOCATOR, PARSE_ID, AlignmentLoader
 from timetoalign.loader.tabular.solo import SoloLoader
 from timetoalign.maps.meter import MetricalPositionMap, MetricMap
 from timetoalign.timelines.factory import mint_timeline_id
@@ -144,9 +144,9 @@ class PerformancePrecisionLoader(AlignmentLoader):
             ``TimeUnit.seconds``.
         seed: The seed of the loader's ID minter (see ``Loader.load``).
 
-    Every score note names the ``.solo`` file's extraction and its data
+    Every score note names the ``.solo`` file's parse and its data
     row there with its ``note_id`` (``row:<i> key:<note_id>``,
-    :class:`SoloLoader`'s rule); every performed note the extraction of its
+    :class:`SoloLoader`'s rule); every performed note the parse of its
     performer's note-level alignment CSV and its data row there, counted
     from 0 below the header line, with the row's LABEL
     (``row:<i> key:<LABEL>``).
@@ -384,10 +384,10 @@ class PerformancePrecisionLoader(AlignmentLoader):
         — no per-event scalar materialisation on the hot path.
         """
         solo = SoloLoader.from_file(solo_path)
-        self._adopt_extractions(solo)
+        self._adopt_parses(solo)
         table = solo.events.table
         locators = table.column(LOCATOR).to_pylist()
-        extraction_ids = table.column(EXTRACTION_ID).to_pylist()
+        parse_ids = table.column(PARSE_ID).to_pylist()
 
         measures = [int(r["mn"]) for r in table.column("measure_number").to_pylist()]
         onsets = [
@@ -425,11 +425,11 @@ class PerformancePrecisionLoader(AlignmentLoader):
                     "note_id": note_ids[i],
                     "measure_number": measures[i],
                     LOCATOR: locators[i],
-                    EXTRACTION_ID: extraction_ids[i],
+                    PARSE_ID: parse_ids[i],
                 }
             )
         give_event_ids(rows, self._id_minter)
-        score_tl.add_events(rows, extractions=self.extractions)
+        score_tl.add_events(rows, parses=self.parses)
 
         # Expose the measure/beat conversion on the timeline.  The
         # MetricalPositionMap is a multi-output CombinationMap (no single
@@ -503,7 +503,7 @@ class PerformancePrecisionLoader(AlignmentLoader):
             if time_str != _DANGLING
         ]
         give_event_ids(perf_events, self._id_minter)
-        perf_note_ids = perf_tl.add_events(perf_events, extractions=self.extractions)
+        perf_note_ids = perf_tl.add_events(perf_events, parses=self.parses)
         self._performance_timelines[performer_key] = perf_tl
         self._resolve_rows(
             granularity_rows,

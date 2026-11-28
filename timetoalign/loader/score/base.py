@@ -184,7 +184,7 @@ class ScoreLoader(EventLoader):
     ) -> None:
         """Record one source and extend the loader's store with its data.
 
-        Each table of *payload* carries the extractions its rows name.
+        Each table of *payload* carries the parses its rows name.
         """
         self._sources.append(path)
         self._source_metadata.append(source_meta)
@@ -657,11 +657,7 @@ class ScoreLoader(EventLoader):
         loader._read_back(
             path,
             seed,
-            [
-                extraction
-                for _, data in store.items()
-                for extraction in data.extractions
-            ],
+            [parse for _, data in store.items() for parse in data.parses],
         )
         return loader
 

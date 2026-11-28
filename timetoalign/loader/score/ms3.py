@@ -112,7 +112,7 @@ class Ms3Loader(ScoreLoader):
     - tpc, midi, name, octave: Pitch info
     - tied, gracenote, chord_id: Note attributes
 
-    Every event names the extraction of its facet file and, as its
+    Every event names the parse of its facet file and, as its
     ``locator``, its data row there: ``row:<i>``, counted from 0 below the
     header line; a measure's is followed by its own key in the facet, its
     ``mc`` (``row:0 key:1``).

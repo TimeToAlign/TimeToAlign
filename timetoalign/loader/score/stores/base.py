@@ -9,7 +9,7 @@ from typing_extensions import Self
 
 from timetoalign.core import IntervalPolicy, NumberType, TimeUnit
 from timetoalign.core.ids import IdMinter
-from timetoalign.loader.base import EXTRACTION_ID, LOCATOR
+from timetoalign.loader.base import LOCATOR, PARSE_ID
 from timetoalign.storage.events import EventData
 from timetoalign.storage.schema import make_table_metadata
 
@@ -110,8 +110,8 @@ class ScoreEventData(EventData):
             )
             processed_rows.append(processed)
         # The registry columns a loader's rows carry (their place in the
-        # source and its extraction) stay, after the class's columns.
-        for name in (LOCATOR, EXTRACTION_ID):
+        # source and its parse) stay, after the class's columns.
+        for name in (LOCATOR, PARSE_ID):
             if name in processed_rows[0]:
                 schema = schema.append(pa.field(name, pa.string()))
         return pa.Table.from_pylist(processed_rows, schema=schema)

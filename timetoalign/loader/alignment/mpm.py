@@ -223,7 +223,7 @@ class MpmLoader(AlignmentLoader):
     The loader reads the modelled performance and the observed alignment;
     it never runs an aligner.
 
-    Every event names the extraction of the file stating it (a score note
+    Every event names the parse of the file stating it (a score note
     the ``.msm``, a markup event the ``.mpm``, an observed onset the
     ``.mpr``) and, as its ``locator``, its element's XPath in that file as
     lxml writes it (``/mpr/audios/audio/alignment/part/note[3]``), followed
@@ -853,7 +853,7 @@ class MpmLoader(AlignmentLoader):
                 }
                 for note in score_notes
             ],
-            extractions=self.extractions,
+            parses=self.parses,
         )
         # Markup events carry a heterogeneous schema (tempo / dynamics /
         # articulation / asynchrony / …); add_events with allow_expansion
@@ -861,7 +861,7 @@ class MpmLoader(AlignmentLoader):
         if markup_events:
             give_event_ids(markup_events, self._id_minter)
             score_dlt.add_events(
-                markup_events, allow_expansion=True, extractions=self.extractions
+                markup_events, allow_expansion=True, parses=self.parses
             )
         score_dlt.add_conversion_map(
             TicksToQuarters(ppq=ppq, uid=self._id_minter.mint(CMAP_PREFIX))
@@ -882,7 +882,7 @@ class MpmLoader(AlignmentLoader):
                 }
                 for note in score_notes
             ],
-            extractions=self.extractions,
+            parses=self.parses,
         )
         self._tempo_map = self._build_tempo_table_map(tempo_entries, max_quarter_end)
         if self._tempo_map is not None:
@@ -985,7 +985,7 @@ class MpmLoader(AlignmentLoader):
                 }
                 for note in alignment_notes
             ],
-            extractions=self.extractions,
+            parses=self.parses,
         )
 
         perf_dpt = DiscretePhysicalTimeline(
@@ -1008,7 +1008,7 @@ class MpmLoader(AlignmentLoader):
                 }
                 for note in alignment_notes
             ],
-            extractions=self.extractions,
+            parses=self.parses,
         )
         perf_dpt.add_conversion_map(
             SamplesToSeconds(

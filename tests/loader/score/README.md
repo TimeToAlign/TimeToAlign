@@ -863,8 +863,8 @@ them.
   closing the repeat. The flow control written from it plays MC 1 2 1 2 3, Verovio's order.
 - With `options={"expandNever": True}` nothing is expanded: three events, the printed
   `MeasureMap` on the timeline, the repeat as one jump in its flow control, no FlowMap;
-  the store's measure table is the expanding load's in every column but `extraction_id`
-  (each run its own extraction), its locators `m1 key:1`, `m2 key:2`, `m3 key:3` (the
+  the store's measure table is the expanding load's in every column but `parse_id`
+  (each run its own parse), its locators `m1 key:1`, `m2 key:2`, `m3 key:3` (the
   measure's `xml:id`, then its `@n`).
 
 **`repeat_endings.mei`** (2/4): `m1`–`m2` a plain repeat, then `m3` (`rptstart`), first ending
@@ -874,7 +874,7 @@ loader reads the printed lengths from a second Verovio rendering with `expandNev
 computed by the loader. Expected: one warning naming the two measures; store metadata
 `omitted_measures == ["m4", "m5"]`; the printed table `m1`…`m5` at 0, 2, 4, 6, 8, each 2 long,
 identical to the table of a load with `expandNever` (whose `omitted_measures` is empty) in
-every column but `extraction_id` (two runs with other options are two extractions; the
+every column but `parse_id` (two runs with other options are two parses; the
 locators, `m1 key:1` … `m5 key:5`, are equal); the
 rendered timeline of length 10 with the `MeasureMap` `m1`, `m2`, `m1-rend2`, `m2-rend2`, `m3`
 and the events `m1n`, `m2n`, `m1n-rend2`, `m2n-rend2`, `m3n` (`m4n`, `m5n` are not rendered),

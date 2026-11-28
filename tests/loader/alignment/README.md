@@ -536,8 +536,8 @@ stated all the same.
   key:trompa-align_inserted_Cs4`: 16 distinct locators, so the repeated
   `n7` and the two inserted notes sharing one id are told apart by their
   row, and row 0 (the unperformed `n4`) adds none. Every row names one
-  extraction, the loader's one (`loader.extractions`, parser `MapsLoader`,
-  source the file's path), which `performance.registry.extractions`
+  parse, the loader's one (`loader.parses`, parser `MapsLoader`,
+  source the file's path), which `performance.registry.parses`
   holds. A loader dropping the locator, numbering rows from 1 or giving
   the inserted notes the key in `name` instead fails here.
 * **A single inserted note keeps its id.** Adding one inserted row (2.75 s)
@@ -568,25 +568,23 @@ stated all the same.
   IDs as rows of kind `Projection`, the score's own on the score and the 16
   others on the performance. The registry's 17 Projection rows name where
   each came from: the 16 of the performance their locators of the item
-  above and the MAPS file's extraction, the score's own no locator and the
-  extraction of events made in code (its row of `extractions.parquet` has
-  no `source`; the MAPS extraction's row has the file's `file:` URI and
-  parser `MapsLoader`). The pre-parsed Projection table
-  (`projections.parquet`) holds the 15 Projections that state something
-  beyond their position: the score's own (its extraction names no source
-  file, so the package is its only record) and the 14 of claims 2–15, whose
-  `projection_of` names the score note on the other side of its claim (its
-  `event_id` and the score's `timeline_id`); the score's own names none.
-  The two Projections of the inserted notes (claims 16 and 17, whose other
-  side is `NOMATCH_SENTINEL`) hold no `projection_of` and come from a source
-  file, so they stay re-parsable: the table does not hold them and their
-  registry `location` is null, while the 15 others' is
-  `projections.parquet`.
+  above and the MAPS file's parse, the score's own no locator and the
+  parse of events made in code (its row of `parses.parquet` has
+  no `source`; the MAPS parse's row has the file's `file:` URI and
+  parser `MapsLoader`). A Projection holds nothing but its ID, its
+  position and what it stands for, so its event lives in the registry
+  alone: the package holds no pre-parsed Projection table (no
+  `projections.parquet`), every one of the 17 rows has a null `location`,
+  and the registry's `projection_of` column states what each stands for.
+  The 14 of claims 2–15 name the score note on the other side of their
+  claim (its `event_id` and the score's `timeline_id`); the score's own and
+  the two Projections of the inserted notes (claims 16 and 17, whose other
+  side is `NOMATCH_SENTINEL`) name none (null).
   `AlignmentBundle.from_file` reads it back with the 17 claims stating the
   same events and anchors.
   Read back, the performance's registry holds the same 16 `(id, locator,
-  extraction_id)` triples and `registry.extractions` the loader's
-  extraction, field for field.
+  parse_id)` triples and `registry.parses` the loader's
+  parse, field for field.
 * **A second call reuses every Projection.** The loader makes its claims
   through the library's one projection operation, which keeps one Projection
   per score note and position on the performance timeline. Calling
@@ -595,7 +593,7 @@ stated all the same.
   (the 16 Projections named alike), and the performance
   timeline holds the same 16 rows after the second call as after the first,
   and the same registry rows (each reused Projection keeps its locator and
-  extraction, none is restated).
+  parse, none is restated).
   The same holds with row 11 left out, so that the inserted id is given once
   and kept: 15 rows, and both calls' last claim names
   `trompa-align_inserted_Cs4` (the second time as the event the timeline
@@ -702,11 +700,11 @@ equal length) changes one file in a copy of the extracted archive.
 * **A MIDI file's timeline is the MIDI loader's.** Each MIDI timeline is
   the one `ScoreMidiLoader(parser="mido")` builds of the file: its notes
   hold the IDs that loader mints for the file read alone (equal lists),
-  their registry rows name its extraction (parser `ScoreMidiLoader`, the
+  their registry rows name its parse (parser `ScoreMidiLoader`, the
   file's `jar:` URI and SHA-256 digest) and, as locators, the note-on
   messages (`track:1 message:1`, `track:1 message:3`, … for MTD0807's
   EDM-corr file, whose second track holds the notes); the loader's
-  `extractions` are these four files' extractions. Its maps are the ones
+  `parses` are these four files' parses. Its maps are the ones
   the MIDI loader attaches and no others: quarters reach the timeline
   only through the one ticks → quarters C-Map at the file's 480 ticks per
   quarter (`3840` ticks → `8` quarters; asking for quarters finds one

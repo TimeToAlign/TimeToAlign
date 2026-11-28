@@ -26,7 +26,7 @@ from timetoalign.loader._sources import (
     source_record,
 )
 from timetoalign.loader._xml import XML_ID
-from timetoalign.loader.base import EXTRACTION_ID, LOCATOR, locate
+from timetoalign.loader.base import LOCATOR, PARSE_ID, locate
 
 from .base import ScoreLoader
 from .events import ScoreEventType
@@ -88,12 +88,12 @@ _NOTE_EXTRA_TYPES: dict[str, pa.DataType] = {
     "grace": pa.string(),
     "tie": pa.string(),
     LOCATOR: pa.string(),
-    EXTRACTION_ID: pa.string(),
+    PARSE_ID: pa.string(),
 }
 _TEMPO_EXTRA_TYPES: dict[str, pa.DataType] = {
     "notated_id": pa.string(),
     LOCATOR: pa.string(),
-    EXTRACTION_ID: pa.string(),
+    PARSE_ID: pa.string(),
 }
 _POSITION_COLUMNS = ("start", "end")
 # In-measure offsets are quarters; only the quarters timeline carries them.
@@ -514,7 +514,7 @@ class VerovioLoader(ScoreLoader):
     the printed score: :meth:`create_stated_flow_map` writes it onto the
     timeline that a loader of the same file with ``expandNever`` creates.
 
-    **Locators.** Every event names its file's extraction and, as its
+    **Locators.** Every event names its file's parse and, as its
     ``locator``, its ``id``: the rendered element's ``xml:id`` in Verovio's
     MEI (the file's own where it states one, Verovio's for an element it
     states none of or for a pass of a repeat), followed by the key of the
@@ -1140,7 +1140,7 @@ def _timeline(
 ) -> Timeline:
     """Create a timeline of *length* holding *rows*, positions relative to *origin*.
 
-    *carrying* gives the rows' table the extractions its rows name
+    *carrying* gives the rows' table the parses its rows name
     (:meth:`Loader._carrying <timetoalign.loader.base.Loader._carrying>`).
     """
     notes = [row for row in rows if row["temporal_type"] == "interval"]

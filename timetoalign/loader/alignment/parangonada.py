@@ -166,7 +166,7 @@ class ParangonadaLoader(AlignmentLoader):
 
     The loader reads existing alignments; it never runs an aligner.
 
-    Every event names the extraction of the file stating it (``part.csv``,
+    Every event names the parse of the file stating it (``part.csv``,
     ``ppart.csv``, a ``.beats`` or ``.dyn`` file) and, as its ``locator``,
     its data row there: ``row:<i>``, counted from 0 below the header line,
     followed by ``key:<id>`` for a note of ``part.csv`` or ``ppart.csv``
@@ -346,7 +346,7 @@ class ParangonadaLoader(AlignmentLoader):
                 }
                 for i, row in enumerate(score_rows)
             ],
-            extractions=self.extractions,
+            parses=self.parses,
         )
 
         score_dlt = DiscreteLogicalTimeline(
@@ -367,7 +367,7 @@ class ParangonadaLoader(AlignmentLoader):
                 }
                 for i, row in enumerate(score_rows)
             ],
-            extractions=self.extractions,
+            parses=self.parses,
         )
         # divs → quarters: quarters = div / 32 - 1/2 (the score's anacrusis
         # places div 0 at quarter -1/2; 32 divs per quarter).
@@ -438,7 +438,7 @@ class ParangonadaLoader(AlignmentLoader):
                 }
                 for i, row in enumerate(ppart_rows)
             ],
-            extractions=self.extractions,
+            parses=self.parses,
         )
 
         # Measured per-beat features (variable tempo + dynamics) extend
@@ -465,7 +465,7 @@ class ParangonadaLoader(AlignmentLoader):
                 }
                 for i, row in enumerate(ppart_rows)
             ],
-            extractions=self.extractions,
+            parses=self.parses,
         )
         perf_dpt.add_conversion_map(
             SamplesToSeconds(
@@ -562,12 +562,8 @@ class ParangonadaLoader(AlignmentLoader):
         give_event_ids(beat_events, self._id_minter)
         give_event_ids(dyn_events, self._id_minter)
 
-        perf_cpt.add_events(
-            beat_events, allow_expansion=True, extractions=self.extractions
-        )
-        perf_cpt.add_events(
-            dyn_events, allow_expansion=True, extractions=self.extractions
-        )
+        perf_cpt.add_events(beat_events, allow_expansion=True, parses=self.parses)
+        perf_cpt.add_events(dyn_events, allow_expansion=True, parses=self.parses)
 
     @staticmethod
     def _glob_feature_file(

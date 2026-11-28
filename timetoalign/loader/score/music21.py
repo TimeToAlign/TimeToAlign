@@ -55,7 +55,7 @@ class Music21Loader(ScoreLoader):
     same convention so that score timelines built from either source are
     directly comparable and compatible with ``MatchfileLoader``.
 
-    Every event names its file's extraction and, as its ``locator``, its
+    Every event names its file's parse and, as its ``locator``, its
     place in music21's reading of the file: ``part:<p> element:<k>``, the
     part's index and the element's in the part's flattened stream
     (``note:<n>`` added for a chord's n-th note), and for a measure

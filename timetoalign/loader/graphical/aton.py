@@ -118,7 +118,7 @@ class ATONLoader(Loader[list[ATONHole]]):
         >>> loader.last_hole
         Coordinate(293119, pixels)
 
-    Every hole event names its file's extraction and, as its ``locator``,
+    Every hole event names its file's parse and, as its ``locator``,
     its place, ``hole:<k>`` (the k-th HOLE block of the file, from 0),
     followed by the ID its HOLE block states (``hole:0 key:K0_N1``). The
     event keeps that ID where no other hole loaded states it, and is given
@@ -575,7 +575,7 @@ class ATONLoader(Loader[list[ATONHole]]):
             )
         ]
         give_event_ids(hole_events, self._id_minter)
-        timeline.add_events(hole_events, extractions=self.extractions)
+        timeline.add_events(hole_events, parses=self.parses)
 
         return timeline
 

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from timetoalign.core.ids import CMAP_PREFIX, IdMinter
 from timetoalign.core.time import number_from_json, number_to_json
-from timetoalign.loader.base import read_extractions, write_events
+from timetoalign.loader.base import read_parses, write_events
 from timetoalign.loader.score.stores.annotations import AnnotationEventData
 from timetoalign.loader.score.stores.controls import ControlEventData
 from timetoalign.loader.score.stores.measures import MeasureData
@@ -38,7 +38,7 @@ _FacetT = TypeVar(
 def _read_facet(path: Path, klass: type[_FacetT]) -> _FacetT:
     """Read one facet from *path*, or return it empty when the file is absent."""
     if path.exists():
-        return read_extractions(klass.from_parquet(path))
+        return read_parses(klass.from_parquet(path))
     return klass.empty()
 
 

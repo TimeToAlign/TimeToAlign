@@ -259,7 +259,7 @@ dataset.
 |-------|-------|-------|
 | `TestCatalogueEntry` | 3 | Frozen dataclass for catalogue entries |
 | `TestRepovizzDictStore` | 2 | DictStore subclass with category properties |
-| `TestRepoVizzLoaderXmlMode` | 9 | XML manifest parsing and timeline creation; the notes' extractions and locators |
+| `TestRepoVizzLoaderXmlMode` | 9 | XML manifest parsing and timeline creation; the notes' parses and locators |
 | `TestRepoVizzLoaderCsvMode` | 7 | Legacy CSV backwards compatibility |
 | `TestRepoVizzLoaderErrors` | 4 | Error handling and edge cases |
 | `TestRepoVizzLoaderIntegration` | 2 | Cross-recording content and group iteration |
@@ -283,14 +283,14 @@ Mechanical one.
 
 **The notes keep where they were read.** The four `.notes` files of the
 `Normal` recording are read by `EepNotesLoader`, and `RepoVizzLoader`
-lists their four extractions (`loader.extractions`), their sources the
-four files in sorted order. Each note names its file's extraction and its
-data row there: the rows naming a file's extraction hold the locators
+lists their four parses (`loader.parses`), their sources the
+four files in sorted order. Each note names its file's parse and its
+data row there: the rows naming a file's parse hold the locators
 `row:0` to `row:<n-1>`, in order, *n* the file's line count as the test
 counts it (817 cello, 928 viola, 1266 first violin, 1015 second violin;
 the files have no header). `store.notes_for_instrument("vln1")` holds the
-first violin's 1266 rows only, all naming its file's extraction, and a
-timeline made of them by the timeline factory lists that one extraction.
+first violin's 1266 rows only, all naming its file's parse, and a
+timeline made of them by the timeline factory lists that one parse.
 
 **Test Specimens:**
 

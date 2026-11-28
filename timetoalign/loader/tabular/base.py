@@ -151,7 +151,7 @@ class TabularLoader(EventLoader):
             paired semantic fields.
         coordinate_unit: TimeUnit for coordinate values.
 
-    Every event names its file's extraction and, as its ``locator``, its
+    Every event names its file's parse and, as its ``locator``, its
     data row: ``row:<i>``, counted from 0 in the rows pandas reads (the
     header line and blank lines are not rows), followed by ``key:<key>``
     where the row states its own key in ``key_column`` (``row:2 key:n7``;

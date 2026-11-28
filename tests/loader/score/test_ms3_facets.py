@@ -351,11 +351,9 @@ def test_an_empty_measures_companion_is_passed_over_as_a_missing_one(
         expected = Ms3Loader.from_file(alone, auto_discover=auto_discover)
     loaded = _load(beside_empty, auto_discover=auto_discover)
 
-    # The two files are two extractions; every other column is equal.
-    table = loaded.store.annotations.table.drop_columns(["extraction_id"])
-    assert table.equals(
-        expected.store.annotations.table.drop_columns(["extraction_id"])
-    )
+    # The two files are two parses; every other column is equal.
+    table = loaded.store.annotations.table.drop_columns(["parse_id"])
+    assert table.equals(expected.store.annotations.table.drop_columns(["parse_id"]))
     assert table.column("duration").to_pylist() == [
         {"value": 6.0, "numerator": 6, "denominator": 1},
         None,

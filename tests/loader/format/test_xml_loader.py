@@ -517,14 +517,14 @@ class TestLocators:
         loader = XmlLoader(principal_tags=["item"], propagate_ancestors=propagate)
         table = loader.load(path).get_table("item")
         assert table.column("locator").to_pylist() == ITEM_LOCATORS
-        (extraction,) = loader.extractions
-        assert table.column("extraction_id").to_pylist() == [extraction.id] * 3
+        (parse,) = loader.parses
+        assert table.column("parse_id").to_pylist() == [parse.id] * 3
 
-    def test_a_string_names_no_extraction(self) -> None:
+    def test_a_string_names_no_parse(self) -> None:
         loader = XmlLoader(principal_tags=["item"]).load_string(LOCATED_XML)
         table = loader.get_table("item")
         assert table.column("locator").to_pylist() == ITEM_LOCATORS
-        assert "extraction_id" not in table.column_names
+        assert "parse_id" not in table.column_names
 
     def test_an_attribute_named_locator_is_kept(self) -> None:
         document = '<root><item locator="here" v="1"/><item v="2"/></root>'

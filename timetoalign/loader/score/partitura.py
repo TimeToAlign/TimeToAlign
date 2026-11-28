@@ -68,7 +68,7 @@ class PartituraLoader(ScoreLoader):
     loader's minter. Partitura's own numbering (``n0``, ``P1-s1-v1-el3``)
     is never an ID.
 
-    Every event names its file's extraction and, as its ``locator``, its
+    Every event names its file's parse and, as its ``locator``, its
     place in Partitura's reading of the file: ``part:<p> element:<k>``, the
     part's index and the object's in the part's ``iter_all()``, from 0; a
     repeat's start and end ``part:<p> repeat:<r> start`` / ``end``. Where

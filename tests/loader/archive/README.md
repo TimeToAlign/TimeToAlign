@@ -21,8 +21,8 @@ the very same bytes from the filesystem, and compares the two results with
 exact equality:
 
 - event loaders: the events table (`pa.Table.equals`, every column but
-  `extraction_id`: an extraction names its source file, a path on disk or
-  the member's `jar:` URI, so the two readings are two extractions of the
+  `parse_id`: a parse names its source file, a path on disk or
+  the member's `jar:` URI, so the two readings are two parses of the
   same bytes, and `test_csv_loader` checks that their digests and
   everything else they record but the source agree) and the created
   timeline (`to_dict()`);

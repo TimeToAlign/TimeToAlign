@@ -117,7 +117,7 @@ class MidiLoader(EventLoader):
     ``time_signatures`` (see :func:`_stated_meter_and_tempo`). The timeline
     :meth:`create_timeline` builds stays on ticks and carries them as its
     conversion maps and its measure map (:meth:`MidiStore.create_timeline`).
-    Every event names its file's extraction and, as its ``locator``, the
+    Every event names its file's parse and, as its ``locator``, the
     MIDI message it was read from: ``track:<i> message:<j>``, the track's
     index in the file and the message's in the track, both from 0 (a
     note's note-on message).

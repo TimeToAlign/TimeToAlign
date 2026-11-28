@@ -211,8 +211,8 @@ class MapsLoader(AlignmentLoader):
         Every Projection added names where the file states it: its locator
         is ``row:<i> key:<xml_id>`` (the row counted from 0 in the file's
         list, then the id the row lists;
-        :func:`~timetoalign.loader.base.locate`), and its extraction is this
-        loader's run over the file (:attr:`extractions`), both in the
+        :func:`~timetoalign.loader.base.locate`), and its parse is this
+        loader's run over the file (:attr:`parses`), both in the
         timeline's registry. So the file's id of an inserted note is kept in
         the locator where the Projection's id cannot hold it.
 
@@ -266,7 +266,7 @@ class MapsLoader(AlignmentLoader):
                 else:
                     pairs.append((stated, performance, NOMATCH, score))
         return _claims_between_events(
-            pairs, provenance=provenance, extractions=[self._extraction_of(source)]
+            pairs, provenance=provenance, parses=[self._parse_of(source)]
         )
 
     def create_bundle(

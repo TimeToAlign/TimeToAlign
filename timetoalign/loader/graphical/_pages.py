@@ -50,9 +50,9 @@ Boxes ``box_…``) is drawn from its minter in document order (the volume,
 then each page followed by its accolades, each accolade followed by its
 Boxes); a timeline or Box the call names takes none. A page for which the
 loader can make no path is simply not handed over. The Boxes of a page read
-from a file (``Page.source``) name that file's extraction and their
+from a file (``Page.source``) name that file's parse and their
 ``PageBox.locator``, the loader's place of the area in the file
-(:attr:`Loader.extractions <timetoalign.loader.base.Loader.extractions>`).
+(:attr:`Loader.parses <timetoalign.loader.base.Loader.parses>`).
 
 Identity
 --------
@@ -234,7 +234,7 @@ class Page:
             order; each is placed on the piece it lies on.
         statements: ``(property, value)`` pairs the page's timeline states.
         source: The file the page's areas were read from: its Boxes name
-            that file's extraction. None for areas made in code.
+            that file's parse. None for areas made in code.
     """
 
     name: str | None
@@ -612,7 +612,7 @@ def _build_line(
 ) -> DiscreteGraphicalTimeline:
     """Build the timeline along one piece, with its area and its Boxes.
 
-    The Boxes of a page read from the file *source* name its extraction and
+    The Boxes of a page read from the file *source* name its parse and
     their locators.
     """
     meta: dict[str, Any] = {}
@@ -653,7 +653,7 @@ def _build_line(
                     {**box.to_event_row(), **owner._stamp(source, page_box.locator)}
                     for box, page_box in zip(boxes, plan.boxes, strict=True)
                 ],
-                extractions=owner.extractions,
+                parses=owner.parses,
             )
     return timeline
 

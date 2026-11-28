@@ -75,7 +75,7 @@ from timetoalign.core.ids import (
 )
 from timetoalign.core.time import struct_to_coordinate
 from timetoalign.display.html import affordance_html, code
-from timetoalign.storage import EventData, EventRegistry, Extraction
+from timetoalign.storage import EventData, EventRegistry, Parse
 
 from ._sources import (
     Source,
@@ -96,14 +96,14 @@ LOCATOR = "locator"
 #: own for the event: ``row:3 key:n12``.
 KEY_MARK = " key:"
 
-#: The column naming the extraction (one per source file read) each event
-#: of a loader comes from (:attr:`Loader.extractions`).
-EXTRACTION_ID = "extraction_id"
+#: The column naming the parse (one per source file read) each event
+#: of a loader comes from (:attr:`Loader.parses`).
+PARSE_ID = "parse_id"
 
 #: The key of a Parquet file's schema metadata under which a loader saving
-#: its events (``to_parquet``) keeps the extractions they name: their rows
-#: of the Extraction table, as a JSON array.
-EXTRACTIONS_KEY = b"timetoalign.extractions"
+#: its events (``to_parquet``) keeps the parses they name: their rows
+#: of the Parse table, as a JSON array.
+PARSES_KEY = b"timetoalign.parses"
 
 # Event loaders return source metadata and a vectorized field dictionary. Other
 # payload families return their payload directly and use ``_accept_source``.
@@ -155,31 +155,31 @@ def _canonical(value: object) -> object:
 
 
 def write_events(data: EventData, path: Path | str) -> None:
-    """Write *data*'s table to the Parquet file *path*, with the extractions it carries.
+    """Write *data*'s table to the Parquet file *path*, with the parses it carries.
 
-    The extractions (:attr:`EventData.extractions
-    <timetoalign.storage.EventData.extractions>`) go into the file's schema
-    metadata under :data:`EXTRACTIONS_KEY`; :func:`read_extractions` gives
+    The parses (:attr:`EventData.parses
+    <timetoalign.storage.EventData.parses>`) go into the file's schema
+    metadata under :data:`PARSES_KEY`; :func:`read_parses` gives
     them back to the table read from it.
     """
     table = data.table
-    if data.extractions:
-        rows = [extraction.to_row() for extraction in data.extractions]
+    if data.parses:
+        rows = [parse.to_row() for parse in data.parses]
         table = table.replace_schema_metadata(
             {
                 **(table.schema.metadata or {}),
-                EXTRACTIONS_KEY: json.dumps(rows, sort_keys=True).encode(),
+                PARSES_KEY: json.dumps(rows, sort_keys=True).encode(),
             }
         )
     pq.write_table(table, path)
 
 
-def read_extractions(data: _EventDataT) -> _EventDataT:
-    """*data*, read from a file :func:`write_events` wrote, carrying its extractions."""
-    saved = (data.table.schema.metadata or {}).get(EXTRACTIONS_KEY)
+def read_parses(data: _EventDataT) -> _EventDataT:
+    """*data*, read from a file :func:`write_events` wrote, carrying its parses."""
+    saved = (data.table.schema.metadata or {}).get(PARSES_KEY)
     if saved is None:
         return data
-    return data.with_extractions(*map(Extraction.from_row, json.loads(saved)))
+    return data.with_parses(*map(Parse.from_row, json.loads(saved)))
 
 
 def _key_text(key: object) -> str | None:
@@ -198,7 +198,7 @@ def locate(pointer: str, key: object = None) -> str:
 
     Every loader writes its locators in this one form. The *pointer* is
     the event's structural place in the source file, unique within one
-    extraction (``row:<i>``, ``track:<i> message:<j>``, a JSON Pointer, an
+    parse (``row:<i>``, ``track:<i> message:<j>``, a JSON Pointer, an
     XPath, ``hole:<k>``); where the source states a key of its own for the
     event (an ``id`` column or member, an ``xml:id``, a measure number),
     :data:`KEY_MARK` and the key follow, verbatim and last: everything after
@@ -278,14 +278,14 @@ def _distribution_version(name: str) -> str:
 
 
 def _source_text(source: Source) -> str:
-    """A source file as an extraction names it: its path, a member's ``jar:`` URI."""
+    """A source file as a parse names it: its path, a member's ``jar:`` URI."""
     if isinstance(source, Path):
         return source.as_posix()
     return member_uri(source)
 
 
 def _source_of_text(text: str, root: Path | None) -> Source:
-    """The source an extraction names (:func:`_source_text`), relative ones under *root*."""
+    """The source a parse names (:func:`_source_text`), relative ones under *root*."""
     if text.startswith("jar:"):
         archive, _, member = text.removeprefix("jar:").partition("!/")
         return zipfile.Path(url2pathname(urlparse(archive).path), at=unquote(member))
@@ -315,26 +315,26 @@ def _walk(result: object) -> list[Any]:
     return found
 
 
-def _rows_read_again(built: object) -> list[tuple[str, EventData, Extraction]]:
-    """What :meth:`Loader.update` hands the registry, per timeline *built* and extraction.
+def _rows_read_again(built: object) -> list[tuple[str, EventData, Parse]]:
+    """What :meth:`Loader.update` hands the registry, per timeline *built* and parse.
 
-    For each timeline *built* (and each descendant) and each extraction its
-    located rows name: the timeline's ID, its events of that extraction
+    For each timeline *built* (and each descendant) and each parse its
+    located rows name: the timeline's ID, its events of that parse
     with their locators (a column ``locator``), local to the timeline, and
-    the extraction. Rows that name no locator are left out.
+    the parse. Rows that name no locator are left out.
     """
-    pieces: list[tuple[str, EventData, Extraction]] = []
+    pieces: list[tuple[str, EventData, Parse]] = []
     for timeline in _walk(built):
         own = timeline.registry.filter(within=timeline.id)
         rows = own.table
         rows = rows.filter(rows.column(LOCATOR).is_valid())
         if not rows.num_rows:
             continue
-        extractions = {extraction.id: extraction for extraction in own.extractions}
+        parses = {parse.id: parse for parse in own.parses}
         events = timeline.events
         table = events.table
-        for extraction_id in pc.unique(rows.column(EXTRACTION_ID)).to_pylist():
-            mine = rows.filter(pc.equal(rows.column(EXTRACTION_ID), extraction_id))
+        for parse_id in pc.unique(rows.column(PARSE_ID)).to_pylist():
+            mine = rows.filter(pc.equal(rows.column(PARSE_ID), parse_id))
             ids = mine.column("id")
             picked = table.filter(pc.is_in(table.column("id"), value_set=ids))
             at = pc.index_in(picked.column("id"), value_set=ids)
@@ -345,7 +345,7 @@ def _rows_read_again(built: object) -> list[tuple[str, EventData, Extraction]]:
                 (
                     timeline.id,
                     type(events)(picked, events.unit, events.number_type),
-                    extractions[extraction_id],
+                    parses[parse_id],
                 )
             )
     return pieces
@@ -418,7 +418,7 @@ class Loader(ABC, Generic[PayloadT]):
     #: source, in the same call or a later one, until ``clear()``.
     _single_source: ClassVar[bool] = False
 
-    #: The constructor arguments that are enums, by name: an extraction
+    #: The constructor arguments that are enums, by name: a parse
     #: records their members' names (:meth:`from_registry`).
     _enum_parameters: ClassVar[dict[str, type[Enum]]] = {}
 
@@ -436,7 +436,7 @@ class Loader(ABC, Generic[PayloadT]):
         self._sources: list[Source] = []
         self._source_metadata: list[dict[str, Any]] = []
         self._reset_minter(seed)
-        self._reset_extractions()
+        self._reset_parses()
 
     @abstractmethod
     def _load_source(self, source: Source) -> PayloadT:
@@ -661,11 +661,11 @@ class Loader(ABC, Generic[PayloadT]):
         self,
         path: Path | str,
         seed: int | None,
-        extractions: Iterable[Extraction] = (),
+        parses: Iterable[Parse] = (),
     ) -> None:
         """Set the shared state of a loader made from its own saved events at *path*.
 
-        The loader holds no sources, and the *extractions* its saved events
+        The loader holds no sources, and the *parses* its saved events
         name. The IDs it mints later come from ``IdMinter(seed)``, else
         from a minter seeded with :func:`~timetoalign.core.ids.seed_from` of
         the class name and the digest of *path* (a folder's files).
@@ -675,28 +675,28 @@ class Loader(ABC, Generic[PayloadT]):
         if seed is None:
             seed = seed_from(type(self).__name__, _source_part(Path(path)))
         self._reset_minter(seed)
-        self._reset_extractions()
-        for extraction in extractions:
-            self._extractions.setdefault(extraction.source or extraction.id, extraction)
+        self._reset_parses()
+        for parse in parses:
+            self._parses.setdefault(parse.source or parse.id, parse)
 
     def clear(self) -> None:
         """Clear shared source state; the next ``load`` seeds as the first did."""
         self._sources.clear()
         self._source_metadata.clear()
         self._reset_minter(self._seed)
-        self._reset_extractions()
+        self._reset_parses()
 
-    # region Extractions
+    # region Parses
 
-    def _reset_extractions(self) -> None:
-        """Forget the extractions and the ``load`` calls recorded."""
-        self._extractions: dict[str, Extraction] = {}
+    def _reset_parses(self) -> None:
+        """Forget the parses and the ``load`` calls recorded."""
+        self._parses: dict[str, Parse] = {}
         self._load_calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
         self._loading = False
 
     @property
-    def extractions(self) -> list[Extraction]:
-        """One :class:`~timetoalign.storage.Extraction` per source file read, in order.
+    def parses(self) -> list[Parse]:
+        """One :class:`~timetoalign.storage.Parse` per source file read, in order.
 
         Each records the file and its SHA-256 digest, the parser (the
         loader's class name) and its version (this library's and the
@@ -704,16 +704,16 @@ class Loader(ABC, Generic[PayloadT]):
         ran with (the configuration that shapes its events, as the seed of
         its IDs reads it), the ID minter's algorithm and length, and the
         loader's ``seed`` where one was given. Every event the loader
-        reads from a file names its extraction (``extraction_id``) and its
+        reads from a file names its parse (``parse_id``) and its
         place in the file (``locator``); a timeline the loader creates
         holds both in its registry rows.
         """
-        return list(self._extractions.values())
+        return list(self._parses.values())
 
     def _backends(self) -> tuple[str, ...]:
         """The packages, by distribution name, that parse the loader's sources.
 
-        Their versions follow this library's in an extraction's
+        Their versions follow this library's in a parse's
         ``parser_version``. A loader parsing with a package extends this.
         """
         return ()
@@ -727,15 +727,15 @@ class Loader(ABC, Generic[PayloadT]):
             + [f"{name} {_distribution_version(name)}" for name in self._backends()]
         )
 
-    def _extraction_of(self, source: Source) -> Extraction:
-        """The extraction of this loader's run over the file *source*, made once.
+    def _parse_of(self, source: Source) -> Parse:
+        """The parse of this loader's run over the file *source*, made once.
 
-        A file read twice (two ``load`` calls) has one extraction: its ID
+        A file read twice (two ``load`` calls) has one parse: its ID
         is seeded from the file, its digest, the parser and its version,
         the parameters, the minter and the seed, never from the date.
         """
         text = _source_text(source)
-        held = self._extractions.get(text)
+        held = self._parses.get(text)
         if held is not None:
             return held
         fields: dict[str, Any] = {
@@ -746,14 +746,14 @@ class Loader(ABC, Generic[PayloadT]):
             "id_length": self._id_minter.length,
             "seed": self._seed,
         }
-        extraction = Extraction.of_source(source, source=text, **fields)
-        self._extractions[text] = extraction
-        return extraction
+        parse = Parse.of_source(source, source=text, **fields)
+        self._parses[text] = parse
+        return parse
 
     def _stamps(
         self, source: Source, locators: pa.Array | list[str | None]
     ) -> dict[str, pa.Array]:
-        """The registry columns of rows read from *source*: ``locator``, ``extraction_id``.
+        """The registry columns of rows read from *source*: ``locator``, ``parse_id``.
 
         Args:
             source: The file the rows were read from.
@@ -764,22 +764,22 @@ class Loader(ABC, Generic[PayloadT]):
             if isinstance(locators, pa.Array)
             else pa.array(locators, pa.string())
         )
-        extraction = self._extraction_of(source)
+        parse = self._parse_of(source)
         return {
             LOCATOR: locator,
-            EXTRACTION_ID: pa.array(
-                np.full(len(locator), extraction.id, dtype=object), pa.string()
+            PARSE_ID: pa.array(
+                np.full(len(locator), parse.id, dtype=object), pa.string()
             ),
         }
 
-    def _adopt_extractions(self, loader: Loader[Any]) -> None:
-        """Hold the extractions of *loader*, one this loader composes for a file.
+    def _adopt_parses(self, loader: Loader[Any]) -> None:
+        """Hold the parses of *loader*, one this loader composes for a file.
 
-        Events this loader takes from it keep their ``extraction_id`` and
-        ``locator``; what this loader creates holds those extractions too.
+        Events this loader takes from it keep their ``parse_id`` and
+        ``locator``; what this loader creates holds those parses too.
         """
-        for text, extraction in loader._extractions.items():
-            self._extractions.setdefault(text, extraction)
+        for text, parse in loader._parses.items():
+            self._parses.setdefault(text, parse)
 
     def _stamp(
         self, source: Source, pointer: str | None, key: object = None
@@ -791,7 +791,7 @@ class Loader(ABC, Generic[PayloadT]):
         """
         return {
             LOCATOR: None if pointer is None else locate(pointer, key),
-            EXTRACTION_ID: self._extraction_of(source).id,
+            PARSE_ID: self._parse_of(source).id,
         }
 
     def _stamp_rows(
@@ -799,31 +799,31 @@ class Loader(ABC, Generic[PayloadT]):
     ) -> list[dict[str, Any]]:
         """*rows* (event dictionaries read from *source*) with their registry keys.
 
-        Each row takes its locator and the extraction of *source*, in place.
+        Each row takes its locator and the parse of *source*, in place.
         """
-        extraction_id = self._extraction_of(source).id
+        parse_id = self._parse_of(source).id
         for row, locator in zip(rows, locators, strict=True):
             row[LOCATOR] = locator
-            row[EXTRACTION_ID] = extraction_id
+            row[PARSE_ID] = parse_id
         return rows
 
     def _carrying(self, data: _EventDataT) -> _EventDataT:
-        """*data* carrying the extractions of this loader that its rows name.
+        """*data* carrying the parses of this loader that its rows name.
 
         A timeline made from *data* (by the timeline factory, as
         :meth:`create_timeline` makes it) holds them with the rows
-        (:attr:`EventData.extractions <timetoalign.storage.EventData.extractions>`).
+        (:attr:`EventData.parses <timetoalign.storage.EventData.parses>`).
         """
         table = data.table
-        if EXTRACTION_ID not in table.column_names or not self._extractions:
+        if PARSE_ID not in table.column_names or not self._parses:
             return data
-        named = set(pc.unique(table.column(EXTRACTION_ID)).to_pylist())
-        carried = [e for e in self._extractions.values() if e.id in named]
-        return data.with_extractions(*carried) if carried else data
+        named = set(pc.unique(table.column(PARSE_ID)).to_pylist())
+        carried = [e for e in self._parses.values() if e.id in named]
+        return data.with_parses(*carried) if carried else data
 
     @classmethod
     def _config_of(cls, parameters: Mapping[str, Any]) -> dict[str, Any]:
-        """The constructor arguments an extraction's *parameters* record.
+        """The constructor arguments a parse's *parameters* record.
 
         Each parameter the constructor takes (by name, or through its
         ``**kwargs``), an enum by its member's name (:attr:`_enum_parameters`).
@@ -851,10 +851,10 @@ class Loader(ABC, Generic[PayloadT]):
         root: Path | str | None = None,
         **kwargs: Any,
     ) -> Self:
-        """A loader set up from *registry*'s extractions, to refresh it with :meth:`update`.
+        """A loader set up from *registry*'s parses, to refresh it with :meth:`update`.
 
         The loader runs with the parameters (and the seed) the registry's
-        extractions of this loader's class recorded, and reads their source
+        parses of this loader's class recorded, and reads their source
         files, unless *sources* names what to read (a loader reading a
         folder, an archive or a project is given that). Nothing is read
         until :meth:`update`.
@@ -863,33 +863,33 @@ class Loader(ABC, Generic[PayloadT]):
             registry: The registry to refresh, a timeline's, a group's or a
                 bundle's.
             *sources: What the loader reads, as :meth:`load` takes it; by
-                default the source files of the extractions, in order.
-            root: The folder a relative source file of an extraction lies
+                default the source files of the parses, in order.
+            root: The folder a relative source file of a parse lies
                 in; by default the current one.
             **kwargs: The keyword-only arguments of :meth:`load`, and
                 constructor arguments, which must leave the parameters as
-                the extractions recorded them.
+                the parses recorded them.
 
         Returns:
             The loader, its ``load`` call recorded but not run.
 
         Raises:
-            ValueError: If the extractions of this class record two sets of
+            ValueError: If the parses of this class record two sets of
                 parameters or seeds, the loader set up runs with other
                 parameters than they record, or neither *sources* nor an
-                extraction names a source file.
+                parse names a source file.
         """
-        own = [e for e in registry.extractions if e.parser == cls.__name__]
+        own = [e for e in registry.parses if e.parser == cls.__name__]
         recorded = {json.dumps(e.parameters, sort_keys=True) for e in own}
         if len(recorded) > 1:
             raise ValueError(
-                f"the registry's extractions of {cls.__name__} ran with "
+                f"the registry's parses of {cls.__name__} ran with "
                 f"{len(recorded)} sets of parameters; set up one loader per set"
             )
         seeds = {e.seed for e in own}
         if len(seeds) > 1:
             raise ValueError(
-                f"the registry's extractions of {cls.__name__} name {len(seeds)} seeds: "
+                f"the registry's parses of {cls.__name__} name {len(seeds)} seeds: "
                 f"{sorted(map(str, seeds))}"
             )
         load_keywords = {
@@ -912,7 +912,7 @@ class Loader(ABC, Generic[PayloadT]):
             if differing:
                 raise ValueError(
                     f"{cls.__name__} as set up runs with other parameters than the "
-                    f"registry's extractions record: {differing}"
+                    f"registry's parses record: {differing}"
                 )
         if not sources:
             named = list(dict.fromkeys(e.source for e in own if e.source is not None))
@@ -933,13 +933,13 @@ class Loader(ABC, Generic[PayloadT]):
         :meth:`from_registry` set up, or the loader's own); each timeline
         :meth:`create_timelines` builds from them (and each descendant) then
         updates the registry's timeline that holds the rows its locators
-        name (else the one of its ID), one extraction at a time
+        name (else the one of its ID), one parse at a time
         (:meth:`EventRegistry.update <timetoalign.storage.EventRegistry.update>`):
         a row found again by its locator keeps its ID and takes the new
-        content, position and extraction; a new row is added with the ID
+        content, position and parse; a new row is added with the ID
         it was given (minted from the content, as at every ``load``); a
         row of the source no longer found is kept and marked vanished in
-        the new extraction. Nothing is deleted. Rows that name no locator
+        the new parse. Nothing is deleted. Rows that name no locator
         (a child's place, events made in code) are left as they are.
 
         Args:
@@ -966,23 +966,23 @@ class Loader(ABC, Generic[PayloadT]):
         self.clear()
         for args, keywords in calls:
             self.load(*args, **keywords)
-        planned: list[tuple[str, EventData, Extraction]] = []
+        planned: list[tuple[str, EventData, Parse]] = []
         unmatched: list[str] = []
-        for timeline_id, data, extraction in _rows_read_again(self.create_timelines()):
-            target = registry.update_target(data, extraction, timeline_id=timeline_id)
+        for timeline_id, data, parse in _rows_read_again(self.create_timelines()):
+            target = registry.update_target(data, parse, timeline_id=timeline_id)
             if target is None:
-                unmatched.append(f"{timeline_id} ({extraction.source})")
+                unmatched.append(f"{timeline_id} ({parse.source})")
             else:
-                planned.append((target, data, extraction))
+                planned.append((target, data, parse))
         if unmatched:
             raise ValueError(
                 "rows read again match no timeline of the registry, by locator or by "
                 f"ID: those of {unmatched}; nothing is updated"
             )
-        for target, data, extraction in planned:
+        for target, data, parse in planned:
             # Through the view of the target alone, so that each update goes to
             # the timeline chosen before any of them changed the registry.
-            registry.filter(within=target).update(data, extraction, timeline_id=target)
+            registry.filter(within=target).update(data, parse, timeline_id=target)
         return list(dict.fromkeys(target for target, _, _ in planned))
 
     # endregion
@@ -1369,9 +1369,9 @@ class EventLoader(Loader[LoadSourceResult]):
             return events
 
         filtered_table = table.select(ordered)
-        return EventData(
-            filtered_table, events.unit, events.number_type
-        ).with_extractions(*events.extractions)
+        return EventData(filtered_table, events.unit, events.number_type).with_parses(
+            *events.parses
+        )
 
     # endregion
 
@@ -1401,7 +1401,7 @@ class EventLoader(Loader[LoadSourceResult]):
         if not payload:
             return
 
-        # Every row names the extraction of its file and, by the loader's
+        # Every row names the parse of its file and, by the loader's
         # rule, its place in it (a ``locator`` column of the payload).
         rows = len(next(iter(payload.values())))
         locators = payload.pop(LOCATOR, None)
@@ -1422,7 +1422,7 @@ class EventLoader(Loader[LoadSourceResult]):
             extra_fields=extra_fields,
             interval_policy=self._interval_policy,
             minter=self._id_minter,
-        ).with_extractions(self._extraction_of(path))
+        ).with_parses(self._parse_of(path))
         if len(self._events) == 0:
             self._events = new_data
         else:
@@ -1769,7 +1769,7 @@ class EventLoader(Loader[LoadSourceResult]):
         """Save the loaded events to a Parquet file.
 
         The metadata (including source info) is preserved in the file, and
-        the extractions the events name (:attr:`extractions`), which a
+        the parses the events name (:attr:`parses`), which a
         loader read back from it (:meth:`from_parquet`) holds again.
 
         Args:
@@ -1794,12 +1794,12 @@ class EventLoader(Loader[LoadSourceResult]):
         Returns:
             A new Loader with events loaded from the file.
         """
-        events = read_extractions(cls._event_data_class.from_parquet(path))
+        events = read_parses(cls._event_data_class.from_parquet(path))
         loader = cls.__new__(cls)
         loader._unit = events.unit
         loader._number_type = events.number_type
         loader._events = events
-        loader._read_back(path, seed, events.extractions)
+        loader._read_back(path, seed, events.parses)
         return loader
 
     # endregion

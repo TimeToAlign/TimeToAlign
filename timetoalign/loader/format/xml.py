@@ -310,7 +310,7 @@ class XmlLoader(NormalisedTablesLoader):
     local names, a position among same-named siblings where there are
     several), followed by ``key:<key>`` where the element states a key of
     its own, its ``xml:id``, else its ``id`` (``/root/item[2] key:i2``); a
-    row read from a file names that file's extraction (:attr:`extractions`),
+    row read from a file names that file's parse (:attr:`parses`),
     one read from a string or an element none.
 
     Follows the standard two-phase pattern:

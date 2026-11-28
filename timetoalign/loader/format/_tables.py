@@ -7,7 +7,7 @@ from collections.abc import Sequence
 import pyarrow as pa
 
 from timetoalign.loader._sources import Source
-from timetoalign.loader.base import EXTRACTION_ID, LOCATOR, EventLoader
+from timetoalign.loader.base import LOCATOR, PARSE_ID, EventLoader
 from timetoalign.storage.events import EventData
 from timetoalign.storage.store import DictStore
 
@@ -22,10 +22,10 @@ class NormalisedTablesLoader(EventLoader):
 
     Each row of a table holds its ``locator``, the place in the document it
     was read from (the subclass's rule), and, read from a file, the
-    ``extraction_id`` of that file's extraction (:meth:`_stamped`). The
+    ``parse_id`` of that file's parse (:meth:`_stamped`). The
     names are the registry's, so a field the document itself names
-    ``locator`` or ``extraction_id`` is kept, as it states it, under the
-    name ``source_locator`` / ``source_extraction_id`` (``source_`` once
+    ``locator`` or ``parse_id`` is kept, as it states it, under the
+    name ``source_locator`` / ``source_parse_id`` (``source_`` once
     more for each name the document holds already: a field
     ``source_locator`` beside ``locator`` makes ``locator`` the column
     ``source_source_locator``).
@@ -58,17 +58,17 @@ class NormalisedTablesLoader(EventLoader):
             ) from None
 
     def _stamped(self, table: pa.Table, locators: Sequence[str]) -> pa.Table:
-        """*table* with each row's *locator* and, read from a file, its extraction.
+        """*table* with each row's *locator* and, read from a file, its parse.
 
-        A column of *table* named ``locator`` or ``extraction_id`` (a field
+        A column of *table* named ``locator`` or ``parse_id`` (a field
         of the document) keeps its values under ``source_<name>``, also
-        where the document is read from memory and names no extraction.
+        where the document is read from memory and names no parse.
 
         Args:
             table: The rows read, in document order.
             locators: Row for row, its locator in the document.
         """
-        for name in (LOCATOR, EXTRACTION_ID):
+        for name in (LOCATOR, PARSE_ID):
             at = table.schema.get_field_index(name)
             if at >= 0:
                 kept = f"source_{name}"
@@ -93,7 +93,7 @@ class NormalisedTablesLoader(EventLoader):
     def _wrap_table(self, table: pa.Table) -> EventData:
         """Wrap a raw ``pa.Table`` in an ``EventData`` for store compatibility.
 
-        The ``EventData`` carries the extractions its rows name.
+        The ``EventData`` carries the parses its rows name.
 
         Args:
             table: The normalised PyArrow table.

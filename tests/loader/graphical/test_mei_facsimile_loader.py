@@ -414,15 +414,15 @@ class TestZones:
     def test_a_box_names_its_zone_and_the_file(self, source: Path) -> None:
         loader = MeiFacsimileLoader.from_file(source)
         (page,) = loader.create_timelines()
-        (extraction,) = loader.extractions
+        (parse,) = loader.parses
         rows = page.registry.filter(kinds="Box").table
         # The surface holds a graphic and the nine zones: zone[1] … zone[9].
         assert rows.column("locator").to_pylist() == [
             f"/mei/music/facsimile/surface/zone[{k}] key:{zone_id}"
             for k, zone_id in enumerate(ZONE_IDS, start=1)
         ]
-        assert set(rows.column("extraction_id").to_pylist()) == {extraction.id}
-        assert page.registry.extractions == [extraction]
+        assert set(rows.column("parse_id").to_pylist()) == {parse.id}
+        assert page.registry.parses == [parse]
 
     def test_a_zone_without_an_id_is_located_by_its_path(self, tmp_path: Path) -> None:
         zones = SMALL_ZONE + '<zone ulx="520" uly="390" lrx="874" lry="1019"/>'
@@ -728,8 +728,8 @@ class TestPackageRoundTrip:
         path = bundle.to_file(tmp_path / "package" / "manifest.yaml")
         assert sorted(entry.name for entry in path.parent.iterdir()) == [
             "boxes.parquet",
-            "extractions.parquet",
             "manifest.yaml",
+            "parses.parquet",
             "registry.parquet",
         ]
 

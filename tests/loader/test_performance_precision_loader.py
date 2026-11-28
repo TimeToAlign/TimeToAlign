@@ -373,8 +373,6 @@ def test_the_bundle_s_package_is_written_and_read_back(bundle, tmp_path: Path) -
     assert len(set(ids)) == len(ids) == 3439
     assert set(shapes(ids)) == {"projection"}
     assert first.event_a_id in ids
-    content = pq.read_table(tmp_path / "projections.parquet")
-    assert sorted(content.column("id").to_pylist()) == sorted(ids)
     counts = pc.value_counts(table.column("timeline_id")).to_pylist()
     (score_id,) = [
         timeline_id
@@ -382,6 +380,14 @@ def test_the_bundle_s_package_is_written_and_read_back(bundle, tmp_path: Path) -
         if shape(timeline_id) == "score:clt"
     ]
     assert {row["values"]: row["counts"] for row in counts} == {score_id: 3439}
+    # A Projection lives in the registry alone: no pre-parsed table holds it,
+    # and its registry row states what it stands for, as the event in memory.
+    assert not (tmp_path / "projections.parquet").exists()
+    assert set(table.column("location").to_pylist()) == {None}
+    in_memory = _events_by_id(bundle.get_timeline(score_id))
+    assert {row["id"]: row["projection_of"] for row in table.to_pylist()} == {
+        event_id: in_memory[event_id]["projection_of"] for event_id in ids
+    }
     claims = pq.read_table(tmp_path / "match_claims.parquet")
     sides = list(
         zip(

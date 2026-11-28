@@ -122,7 +122,7 @@ class MatchfileLoader(AlignmentLoader):
     ``Provenance(method="imported", note="vienna_match v1.0.0")`` and
     ``certainty=1.0``.
 
-    Every note names the extraction of the file that first stated it and,
+    Every note names the parse of the file that first stated it and,
     as its ``locator``, its place in that file followed by the ID the file
     gives it: ``snote:<k> key:<id>`` for the k-th ``snote`` of the file,
     ``note:<k> key:<id>`` for its k-th performed ``note``, both from 0, the
@@ -336,7 +336,7 @@ class MatchfileLoader(AlignmentLoader):
             onset_tta: Normalised start coordinate.
             end_tta: Normalised end coordinate.
             source: The file stating the note, named in messages; an event
-                added names its extraction.
+                added names its parse.
             place: The note's place in *source* (``snote:<k>``), its
                 locator's pointer.
 
@@ -371,7 +371,7 @@ class MatchfileLoader(AlignmentLoader):
                     }
                 ],
                 allow_expansion=True,
-                extractions=self.extractions,
+                parses=self.parses,
             )
         return True
 
@@ -491,9 +491,7 @@ class MatchfileLoader(AlignmentLoader):
                 )
                 self._score_events[sid] = (onset_tta, end_tta)
 
-            self._score_timeline.add_events(
-                score_event_dicts, extractions=self.extractions
-            )
+            self._score_timeline.add_events(score_event_dicts, parses=self.parses)
 
             # Attach ShiftMap to convert normalised TTA coordinates back
             # to raw partitura coordinates (for display in timestamps).
@@ -578,7 +576,7 @@ class MatchfileLoader(AlignmentLoader):
             uid=mint_timeline_id(TimeUnit.ticks, self._id_minter, role="perf"),
             name=perf_stem,
         )
-        given = perf_tl.add_events(perf_event_dicts, extractions=self.extractions)
+        given = perf_tl.add_events(perf_event_dicts, parses=self.parses)
         # Partitura's ID of each performed note -> the ID of its event.
         perf_ids = dict(zip((str(n["id"]) for n in perf_notes), given, strict=True))
         self._performed_ids.update(given)

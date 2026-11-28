@@ -64,15 +64,15 @@ def file_members(
 
 
 def same_rows(archived: Any, on_disk: Any) -> bool:
-    """Whether two event tables are equal but for the extraction each row names.
+    """Whether two event tables are equal but for the parse each row names.
 
-    An extraction names its source file (a path, a member's ``jar:`` URI),
-    so a member and the same bytes on disk are two extractions.
+    A parse names its source file (a path, a member's ``jar:`` URI),
+    so a member and the same bytes on disk are two parses.
     """
-    if "extraction_id" in archived.column_names:
-        archived = archived.drop_columns(["extraction_id"])
-    if "extraction_id" in on_disk.column_names:
-        on_disk = on_disk.drop_columns(["extraction_id"])
+    if "parse_id" in archived.column_names:
+        archived = archived.drop_columns(["parse_id"])
+    if "parse_id" in on_disk.column_names:
+        on_disk = on_disk.drop_columns(["parse_id"])
     return archived.equals(on_disk)
 
 

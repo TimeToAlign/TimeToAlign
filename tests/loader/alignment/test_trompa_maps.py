@@ -312,8 +312,8 @@ STATED_LOCATORS = [
 
 
 def _located(timeline: Timeline) -> list[tuple[str, str | None, str | None]]:
-    """``(id, locator, extraction_id)`` of each registry row of *timeline*."""
-    table = timeline.registry.table.select(["id", "locator", "extraction_id"])
+    """``(id, locator, parse_id)`` of each registry row of *timeline*."""
+    table = timeline.registry.table.select(["id", "locator", "parse_id"])
     return [tuple(row.values()) for row in table.to_pylist()]
 
 
@@ -323,17 +323,17 @@ def test_every_projection_names_where_the_file_states_it(
     performance = _seconds_timeline()
     loader = MapsLoader.from_file(stated_path)
     loader.create_match_claims(score, performance)
-    (extraction,) = loader.extractions
-    assert (extraction.parser, extraction.source) == (
+    (parse,) = loader.parses
+    assert (parse.parser, parse.source) == (
         "MapsLoader",
         stated_path.as_posix(),
     )
     ids = performance.events.table.column("id").to_pylist()
     assert _located(performance) == [
-        (event_id, locator, extraction.id)
+        (event_id, locator, parse.id)
         for event_id, locator in zip(ids, STATED_LOCATORS, strict=True)
     ]
-    assert performance.registry.extractions == [extraction]
+    assert performance.registry.parses == [parse]
 
 
 def test_a_single_inserted_note_keeps_its_id(score: Timeline, tmp_path: Path) -> None:
@@ -470,21 +470,20 @@ def test_the_bundle_s_package_is_written_and_read_back(
     assert own not in projected
     assert set(shapes([own, *projected])) == {"projection"}
 
-    (maps,) = loader.extractions
+    (maps,) = loader.parses
     package = tmp_path / "package"
     bundle.to_file(package / "package.yaml")
     registry = pq.read_table(package / "registry.parquet")
     rows = registry.filter(pc.equal(registry.column("kind"), "Projection"))
-    extractions = {
-        row["id"]: row
-        for row in pq.read_table(package / "extractions.parquet").to_pylist()
+    parses = {
+        row["id"]: row for row in pq.read_table(package / "parses.parquet").to_pylist()
     }
-    tool = next(row["extraction_id"] for row in rows.to_pylist() if row["id"] == own)
-    assert (extractions[tool]["source"], extractions[maps.id]["source"]) == (
+    tool = next(row["parse_id"] for row in rows.to_pylist() if row["id"] == own)
+    assert (parses[tool]["source"], parses[maps.id]["source"]) == (
         None,
         stated_path.as_uri(),
     )
-    assert extractions[maps.id]["parser"] == "MapsLoader"
+    assert parses[maps.id]["parser"] == "MapsLoader"
     # Where each of the 17 came from: the 16 of the performance located in
     # the MAPS file, in the order they were added; the score's own made in
     # code, without a locator.
@@ -494,38 +493,36 @@ def test_the_bundle_s_package_is_written_and_read_back(
             row["timeline_id"],
             row["id"],
             row["locator"],
-            row["extraction_id"],
+            row["parse_id"],
             row["location"],
         )
         for row in rows.to_pylist()
     ) == sorted(
         [
-            (
-                performance.id,
-                event_id,
-                locator,
-                maps.id,
-                None if event_id in inserted else "projections.parquet",
-            )
+            (performance.id, event_id, locator, maps.id, None)
             for event_id, locator in zip(projected, STATED_LOCATORS, strict=True)
         ]
-        + [(score.id, own, None, tool, "projections.parquet")]
+        + [(score.id, own, None, tool, None)]
     )
-    content = pq.read_table(package / "projections.parquet")
+    # A Projection lives in the registry alone: no pre-parsed table holds it.
+    assert not (package / "projections.parquet").exists()
     # A Projection of claims 2-15 stands for the score note on the other side
-    # of its claim; the score's own stands for none. Those of the NOMATCH
-    # claims of the inserted notes stand for none and come from the MAPS
-    # file: nothing beyond their position to store, they stay re-parsable.
-    stands_for = {own: None} | {
-        claim.event_b_id: {"event_id": claim.event_a_id, "timeline_id": score.id}
-        for claim in claims[1:15]
-    }
+    # of its claim; the score's own and those of the NOMATCH claims of the
+    # inserted notes stand for none.
+    stands_for = (
+        {own: None}
+        | {event_id: None for event_id in inserted}
+        | {
+            claim.event_b_id: {"event_id": claim.event_a_id, "timeline_id": score.id}
+            for claim in claims[1:15]
+        }
+    )
     assert {claim.event_b_id for claim in claims[15:]} == {NOMATCH}
     assert (
         dict(
             zip(
-                content.column("id").to_pylist(),
-                content.column("projection_of").to_pylist(),
+                rows.column("id").to_pylist(),
+                rows.column("projection_of").to_pylist(),
                 strict=True,
             )
         )
@@ -537,7 +534,7 @@ def test_the_bundle_s_package_is_written_and_read_back(
     ]
     read_performance = read.get_timeline(performance.id)
     assert sorted(_located(read_performance)) == sorted(_located(performance))
-    assert read_performance.registry.extractions == [maps]
+    assert read_performance.registry.parses == [maps]
 
 
 # endregion

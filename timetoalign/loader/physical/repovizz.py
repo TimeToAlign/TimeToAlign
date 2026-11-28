@@ -390,10 +390,10 @@ class RepoVizzLoader(ManifestLoader):
             return
 
         # Load all notes via EepNotesLoader: each row names its file's
-        # extraction and its data row there, which this loader holds too.
+        # parse and its data row there, which this loader holds too.
         loader = EepNotesLoader()
         loader.load(*sort_sources(notes_files))
-        self._adopt_extractions(loader)
+        self._adopt_parses(loader)
 
         # Store combined notes
         combined_notes = loader.events

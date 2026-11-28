@@ -96,17 +96,17 @@ per seed kind:
     run first in a fresh set of process minters, give disjoint flow-control
     IDs, so the two timelines can join one manifest.
 
-## Extractions and locators (`test_extractions.py`)
+## Parses and locators (`test_parses.py`)
 
 What a loader read is recorded where the event lives: every event a loader
-reads from a file names that file's extraction (`extraction_id`) and its
+reads from a file names that file's parse (`parse_id`) and its
 place in the file (`locator`), and a timeline the loader creates holds both
-in its registry rows and the extraction itself in its registry. What would
+in its registry rows and the parse itself in its registry. What would
 prove it, on a small MIDI file the test writes with mido into `tmp_path`
 (every value read off the file with mido by the test, never by the loader):
 
-* **One extraction per file read.** `PerformanceMidiLoader` over one file
-  records one extraction: source the path as given, the SHA-256 digest of
+* **One parse per file read.** `PerformanceMidiLoader` over one file
+  records one parse: source the path as given, the SHA-256 digest of
   the bytes (computed by the test with `hashlib`), parser
   `PerformanceMidiLoader`, version `timetoalign <version>; mido
   <version>` (the installed ones), parameters its configuration as the ID
@@ -114,38 +114,38 @@ prove it, on a small MIDI file the test writes with mido into `tmp_path`
   `warn`, `parse_durations`, `on0_means_off`, `include_controls`,
   `include_program_changes` all `true`), minter `splitmix64-base36-1`,
   length 13, no seed; with `seed=7` the seed `"7"`. Two files in one call
-  give two extractions in order, each file's events naming its own. The
-  same file loaded twice (two calls) has one extraction.
+  give two parses in order, each file's events naming its own. The
+  same file loaded twice (two calls) has one parse.
 * **The locator is the message.** Each event's locator is `track:<i>
   message:<j>` of the message it was read from (the note-on of a note),
   counted by the test over `mido.MidiFile(path).tracks`; locators are
   unique within the file.
 * **The rows reach the timeline.** `create_timeline()`'s registry rows of
-  the notes carry the same locators and the extraction ID, and the
-  timeline's registry lists the extraction (equal to the loader's); the
+  the notes carry the same locators and the parse ID, and the
+  timeline's registry lists the parse (equal to the loader's); the
   events of the timeline hold neither column (they are registry columns).
-* **The table carries its extractions, whoever makes the timeline.** The
-  events a loader holds (`loader.events`) carry its extractions
-  (`EventData.extractions`, equal to `loader.extractions`), so a timeline
+* **The table carries its parses, whoever makes the timeline.** The
+  events a loader holds (`loader.events`) carry its parses
+  (`EventData.parses`, equal to `loader.parses`), so a timeline
   made from them by the timeline factory, not by a loader door
-  (`create_timeline_from_event_data(loader.events)`), lists the extraction
+  (`create_timeline_from_event_data(loader.events)`), lists the parse
   in its registry and its rows name it. A loader's events saved with
-  `to_parquet` and read back with `from_parquet` keep the extraction (the
-  read-back loader lists the one extraction, equal to the original, and
-  its timeline's registry lists it): no row names an extraction its
+  `to_parquet` and read back with `from_parquet` keep the parse (the
+  read-back loader lists the one parse, equal to the original, and
+  its timeline's registry lists it): no row names a parse its
   timeline does not hold.
-* **Rows added through `add_events` bring their extractions.** A
+* **Rows added through `add_events` bring their parses.** A
   `MatchfileLoader` over `Chopin_op10_no3_p01.match` (vienna_1x22), whose
-  loaders add their rows as event dictionaries: the extraction of the
+  loaders add their rows as event dictionaries: the parse of the
   file is the only one of every timeline of its bundle, and every row of
   those timelines names it (the timelines' registries list exactly the
-  loader's extraction).
+  loader's parse).
 * **A CSV's locator is its data row.** `CsvLoader` over a three-row CSV in
   `tmp_path` gives `row:0`, `row:1`, `row:2`, the parser `CsvLoader`, the
   version naming pandas.
 * **The one text of a locator: the pointer, then the source's own key.**
   Every loader writes `<pointer>` (the event's structural place, unique in
-  one extraction) and, where the source states a key of its own for the
+  one parse) and, where the source states a key of its own for the
   event, ` key:<key>` after it, verbatim and last. One function writes it
   for every loader (`locate`, row for row `locators` and `row_locators`),
   and the two forms agree: `locate("row:3")` is `row:3`, `locate("row:3",
@@ -176,7 +176,7 @@ prove it, on a small MIDI file the test writes with mido into `tmp_path`
   * `MeasureMapLoader` over a compressed map of three rows, the first
     stating `"ID": "m1"`, the others none (counts 1 to 3): `measure:1
     key:m1`, `measure:2`, `measure:3`; every row names the file's one
-    extraction.
+    parse.
   * `TiliaJsonLoader` over a v2 file keying its timeline `t7` and its
     components `c1`, `c2`: `/timelines/t7/components/c1 key:c1` and
     `/timelines/t7/components/c2 key:c2`, the JSON Pointers of the members
@@ -191,7 +191,7 @@ prove it, on a small MIDI file the test writes with mido into `tmp_path`
   the file's `snote(` lines, from 0; the first `snote:0 key:n1`) and every
   performed note's `note:<k> key:<id>` (`k` its index among the file's
   `note(` statements, from 0; the first `note:0 key:n0`), so the
-  `(extraction_id, locator)` pairs of the bundle are unique (454 + 451).
+  `(parse_id, locator)` pairs of the bundle are unique (454 + 451).
   A performed note keeps the ID it states unless a score note holds it:
   `n0`, held by no score note, is the first performed note's ID; the
   performed `n2`, which the score's `n2` holds, is a minted `event_…` ID,
@@ -214,10 +214,10 @@ prove it, on a small MIDI file the test writes with mido into `tmp_path`
   messages removed, one note's velocity changed), then
   `PerformanceMidiLoader.from_registry(timeline.registry).update(...)`:
   every note found again by its locator keeps its ID and takes the new
-  extraction (the new digest), the changed velocity reaches the events,
-  the removed note's row is kept with `vanished_in` the new extraction's
+  parse (the new digest), the changed velocity reaches the events,
+  the removed note's row is kept with `vanished_in` the new parse's
   ID, and nothing is deleted (the row count is unchanged); the registry
-  then lists both extractions. A note added in the file is added with a
+  then lists both parses. A note added in the file is added with a
   new ID. Updating from an unchanged file changes no ID and marks nothing.
 * **`update` updates every timeline of a bundle, or nothing.** The
   `MatchfileLoader` bundle of `Chopin_op10_no3_p01.match` (vienna_1x22),
@@ -233,7 +233,7 @@ prove it, on a small MIDI file the test writes with mido into `tmp_path`
   a registry of `PerformanceMidiLoader(include_controls=False)` runs with
   `include_controls=False` (its configuration equals the recorded
   parameters); asking it for `include_controls=True` is refused naming
-  the parameter; a registry whose extractions are another class's and no
+  the parameter; a registry whose parses are another class's and no
   source given is refused; a loader with nothing to read again refuses
   `update`.
 
@@ -336,7 +336,7 @@ is `float`, so an explicit choice is stated as given.
 |---------------------|-------------------|
 | `test_loader.py` | Generic loader smoke tests and contract checks |
 | `test_loader_ids.py` | The IDs a loader mints: one seeded minter per load (see "IDs a loader mints") |
-| `test_extractions.py` | The extraction of every file a loader reads, the locator of every event, their way into a timeline's registry, `Loader.update` and `Loader.from_registry` (see "Extractions and locators") |
+| `test_parses.py` | The parse of every file a loader reads, the locator of every event, their way into a timeline's registry, `Loader.update` and `Loader.from_registry` (see "Parses and locators") |
 | `test_base_loaders.py` | The `EventLoader` / `ManifestLoader` / `AlignmentLoader` ABCs; `AlignmentStore` holds events, C-Maps and metadata only (exact `event_count`, `cmap_count`, the whole `summary()` dict): MatchClaims live in the MatchClaim table, never in a store; `Loader.from_file` hands a keyword that `load` declares keyword-only to `load` and every other keyword to the constructor (a loader taking `option` in its constructor and `choice` in `load` holds both as given; an unknown keyword is the constructor's `TypeError`) |
 | `test_bundle.py` | `AlignmentBundle` produced by alignment loaders |
 | `test_error_handling.py` | Faulty-input behaviour across loaders |
@@ -574,9 +574,12 @@ from the files alone (after `create_bundle`):
 Projection's ID is unique among all Projections of a package, and the
 loader adds every Projection while its timeline is in the bundle, so each
 is minted by the bundle: the package's registry holds 3439 rows of kind
-`Projection`, all on the score, and its pre-parsed Projection table
-(`projections.parquet`) the same 3439 IDs, all distinct and each a minted
-`projection_…` (checked by its shape). Ashkenazy's first note-level claim (the first claim stated)
+`Projection`, all on the score, their 3439 IDs all distinct and each a
+minted `projection_…` (checked by its shape). A Projection lives in the
+registry alone: the package holds no pre-parsed Projection table (no
+`projections.parquet`), every Projection row's `location` is null, and its
+`projection_of` is the one the score timeline's event holds in memory, row
+for row. Ashkenazy's first note-level claim (the first claim stated)
 names one of them. The written MatchClaim table names `CHUNK_SENTINEL` on
 both sides in `7 × (32 + 376) = 2856` rows and `NOMATCH_SENTINEL` as
 `event_b_id` in `7 × 79 = 553`. `AlignmentBundle.from_file` reads the

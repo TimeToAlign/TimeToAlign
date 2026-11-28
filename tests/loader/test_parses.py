@@ -1,7 +1,7 @@
-"""Extractions and locators: what a loader read, where each event lives in it.
+"""Parses and locators: what a loader read, where each event lives in it.
 
 The validation logic is written down in ``tests/loader/README.md``
-("Extractions and locators"); every expected value is read off the file
+("Parses and locators"); every expected value is read off the file
 with mido or ``hashlib`` by the test, never by the loader.
 """
 
@@ -86,23 +86,23 @@ PARAMETERS = {
 }
 
 
-class TestOneExtractionPerFile:
-    """One extraction per file read, its fields the run's."""
+class TestOneParsePerFile:
+    """One parse per file read, its fields the run's."""
 
     def test_the_fields(self, tmp_path: Path) -> None:
         path = write_midi(tmp_path / "a.mid", NOTES)
-        (extraction,) = PerformanceMidiLoader().load(path).extractions
-        assert extraction.source == path.as_posix()
-        assert extraction.source_integrity == {
+        (parse,) = PerformanceMidiLoader().load(path).parses
+        assert parse.source == path.as_posix()
+        assert parse.source_integrity == {
             "algorithm": "SHA-256",
             "digest": digest(path),
         }
-        assert extraction.parser == "PerformanceMidiLoader"
-        assert extraction.parser_version == (
+        assert parse.parser == "PerformanceMidiLoader"
+        assert parse.parser_version == (
             f"timetoalign {__version__}; mido {importlib.metadata.version('mido')}"
         )
-        assert extraction.parameters == PARAMETERS
-        assert (extraction.minter, extraction.id_length, extraction.seed) == (
+        assert parse.parameters == PARAMETERS
+        assert (parse.minter, parse.id_length, parse.seed) == (
             "splitmix64-base36-1",
             13,
             None,
@@ -110,24 +110,24 @@ class TestOneExtractionPerFile:
 
     def test_a_given_seed(self, tmp_path: Path) -> None:
         path = write_midi(tmp_path / "a.mid", NOTES)
-        (extraction,) = PerformanceMidiLoader(seed=7).load(path).extractions
-        assert extraction.seed == "7"
+        (parse,) = PerformanceMidiLoader(seed=7).load(path).parses
+        assert parse.seed == "7"
 
-    def test_two_files_two_extractions(self, tmp_path: Path) -> None:
+    def test_two_files_two_parses(self, tmp_path: Path) -> None:
         first = write_midi(tmp_path / "a.mid", NOTES)
         second = write_midi(tmp_path / "b.mid", NOTES[:1])
         loader = PerformanceMidiLoader().load(first, second)
-        assert [e.source for e in loader.extractions] == [
+        assert [e.source for e in loader.parses] == [
             first.as_posix(),
             second.as_posix(),
         ]
-        named = loader.events.table.column("extraction_id").to_pylist()
-        assert named == [loader.extractions[0].id] * 4 + [loader.extractions[1].id] * 2
+        named = loader.events.table.column("parse_id").to_pylist()
+        assert named == [loader.parses[0].id] * 4 + [loader.parses[1].id] * 2
 
     def test_one_file_read_twice(self, tmp_path: Path) -> None:
         path = write_midi(tmp_path / "a.mid", NOTES)
         loader = PerformanceMidiLoader().load(path).load(path)
-        assert len(loader.extractions) == 1
+        assert len(loader.parses) == 1
 
 
 class TestLocators:
@@ -152,48 +152,46 @@ class TestLocators:
         path = write_midi(tmp_path / "a.mid", NOTES)
         loader = PerformanceMidiLoader().load(path)
         timeline = loader.create_timeline()
-        (extraction,) = loader.extractions
+        (parse,) = loader.parses
         rows = rows_by_locator(timeline)
         assert set(rows) == set(message_locators(path).values())
-        assert {row["extraction_id"] for row in rows.values()} == {extraction.id}
-        assert extraction in timeline.registry.extractions
+        assert {row["parse_id"] for row in rows.values()} == {parse.id}
+        assert parse in timeline.registry.parses
         for uid in [timeline.id, *timeline.list_children()]:
             events = (
                 timeline if uid == timeline.id else timeline.get_child(uid)
             ).events.table
             assert "locator" not in events.column_names
-            assert "extraction_id" not in events.column_names
+            assert "parse_id" not in events.column_names
 
     def test_the_table_carries_them_to_any_timeline(self, tmp_path: Path) -> None:
         path = write_midi(tmp_path / "a.mid", NOTES)
         loader = PerformanceMidiLoader().load(path)
-        (extraction,) = loader.extractions
-        assert loader.events.extractions == (extraction,)
+        (parse,) = loader.parses
+        assert loader.events.parses == (parse,)
         timeline = create_timeline_from_event_data(loader.events, uid="dpt_store")
-        assert timeline.registry.extractions == [extraction]
-        assert set(timeline.registry.table.column("extraction_id").to_pylist()) == {
-            extraction.id
-        }
+        assert timeline.registry.parses == [parse]
+        assert set(timeline.registry.table.column("parse_id").to_pylist()) == {parse.id}
 
     def test_saved_events_keep_them(self, tmp_path: Path) -> None:
         path = write_midi(tmp_path / "a.mid", NOTES)
         loader = PerformanceMidiLoader().load(path)
-        (extraction,) = loader.extractions
+        (parse,) = loader.parses
         saved = tmp_path / "events.parquet"
         loader.to_parquet(saved)
         back = PerformanceMidiLoader.from_parquet(saved)
-        assert back.extractions == [extraction]
-        assert back.create_timeline().registry.extractions == [extraction]
+        assert back.parses == [parse]
+        assert back.create_timeline().registry.parses == [parse]
 
     def test_rows_added_as_dictionaries_bring_them(self) -> None:
         loader = MatchfileLoader().load(VIENNA_DATA_DIR / "Chopin_op10_no3_p01.match")
-        (extraction,) = loader.extractions
+        (parse,) = loader.parses
         timelines = loader.create_timelines()
         assert timelines
         for timeline in timelines:
-            assert timeline.registry.extractions == [extraction]
-            named = timeline.registry.table.column("extraction_id").to_pylist()
-            assert set(named) == {extraction.id}
+            assert timeline.registry.parses == [parse]
+            named = timeline.registry.table.column("parse_id").to_pylist()
+            assert set(named) == {parse.id}
 
     def test_csv_data_rows(self, tmp_path: Path) -> None:
         path = tmp_path / "events.csv"
@@ -204,9 +202,9 @@ class TestLocators:
             "row:1",
             "row:2",
         ]
-        (extraction,) = loader.extractions
-        assert extraction.parser == "CsvLoader"
-        assert extraction.parser_version == (
+        (parse,) = loader.parses
+        assert parse.parser == "CsvLoader"
+        assert parse.parser_version == (
             f"timetoalign {__version__}; pandas {importlib.metadata.version('pandas')}"
         )
 
@@ -324,13 +322,13 @@ class TestLocatorsOfTheLoaders:
         path.write_text(json.dumps(rows), encoding="utf-8")
         loader = MeasureMapLoader().load(path)
         table = loader.store.measures.table
-        (extraction,) = loader.extractions
+        (parse,) = loader.parses
         assert table.column("locator").to_pylist() == [
             "measure:1 key:m1",
             "measure:2",
             "measure:3",
         ]
-        assert table.column("extraction_id").to_pylist() == [extraction.id] * 3
+        assert table.column("parse_id").to_pylist() == [parse.id] * 3
 
     @pytest.mark.parametrize(
         ("document", "expected"),
@@ -497,13 +495,13 @@ class TestUpdate:
         path = write_midi(tmp_path / "a.mid", NOTES)
         timeline = PerformanceMidiLoader().load(path).create_timeline()
         before = rows_by_locator(timeline)
-        old_extraction = next(iter(before.values()))["extraction_id"]
+        old_parse = next(iter(before.values()))["parse_id"]
         changed = [NOTES[0], (480, 720, 64, 99)]
         write_midi(path, changed)
         loader = PerformanceMidiLoader.from_registry(timeline.registry)
         loader.update(timeline.registry)
-        (new_extraction,) = loader.extractions
-        assert new_extraction.source_integrity == {
+        (new_parse,) = loader.parses
+        assert new_parse.source_integrity == {
             "algorithm": "SHA-256",
             "digest": digest(path),
         }
@@ -517,15 +515,11 @@ class TestUpdate:
             locator for locator, row in after.items() if row["vanished_in"] is not None
         }
         assert vanished == set(before) - set(gone.values())
-        assert {after[locator]["vanished_in"] for locator in vanished} == {
-            new_extraction.id
+        assert {after[locator]["vanished_in"] for locator in vanished} == {new_parse.id}
+        assert {after[locator]["parse_id"] for locator in gone.values()} == {
+            new_parse.id
         }
-        assert {after[locator]["extraction_id"] for locator in gone.values()} == {
-            new_extraction.id
-        }
-        assert {after[locator]["extraction_id"] for locator in vanished} == {
-            old_extraction
-        }
+        assert {after[locator]["parse_id"] for locator in vanished} == {old_parse}
         notes = timeline.get_events(event_type="Note").table
         by_pitch = dict(
             zip(
@@ -535,9 +529,9 @@ class TestUpdate:
             )
         )
         assert by_pitch[64] == 99
-        assert {e.id for e in timeline.registry.extractions} >= {
-            old_extraction,
-            new_extraction.id,
+        assert {e.id for e in timeline.registry.parses} >= {
+            old_parse,
+            new_parse.id,
         }
 
     def test_an_added_note(self, tmp_path: Path) -> None:
@@ -581,7 +575,7 @@ class TestUpdate:
 
 
 class TestFromRegistry:
-    """A loader set up from a registry runs as its extractions record."""
+    """A loader set up from a registry runs as its parses record."""
 
     def test_the_recorded_parameters(self, tmp_path: Path) -> None:
         path = write_midi(tmp_path / "a.mid", NOTES)

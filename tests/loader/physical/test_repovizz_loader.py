@@ -187,24 +187,24 @@ class TestRepoVizzLoaderXmlMode:
 
         loader = RepoVizzLoader.from_file(xml_manifest_path)
         files = sorted(normal_recording_dir.glob("*.notes"))
-        assert [e.source for e in loader.extractions] == [f.as_posix() for f in files]
+        assert [e.source for e in loader.parses] == [f.as_posix() for f in files]
         table = loader.store.notes.table
-        named = table.column("extraction_id").to_pylist()
+        named = table.column("parse_id").to_pylist()
         locators = table.column("locator").to_pylist()
-        for extraction, path in zip(loader.extractions, files, strict=True):
+        for parse, path in zip(loader.parses, files, strict=True):
             lines = len(path.read_text(encoding="utf-8").splitlines())
             assert [
                 locator
                 for locator, name in zip(locators, named, strict=True)
-                if name == extraction.id
+                if name == parse.id
             ] == [f"row:{i}" for i in range(lines)]
         violin = loader.store.notes_for_instrument("vln1")
         assert violin is not None
-        (vln1,) = [e for e in loader.extractions if e.source.endswith("vln1.notes")]
+        (vln1,) = [e for e in loader.parses if e.source.endswith("vln1.notes")]
         assert len(violin) == 1266
-        assert set(violin.table.column("extraction_id").to_pylist()) == {vln1.id}
+        assert set(violin.table.column("parse_id").to_pylist()) == {vln1.id}
         timeline = create_timeline_from_event_data(violin, uid="cpt_vln1")
-        assert timeline.registry.extractions == [vln1]
+        assert timeline.registry.parses == [vln1]
 
     def test_xml_groups(self, xml_manifest_path: Path) -> None:
         """XML manifest has expected groups."""

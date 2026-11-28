@@ -56,7 +56,7 @@ the loader returns, not on its internals:
 4. **The Boxes survive a package.** A manifest file holds no event, so a
    volume written alone comes back with empty accolades; the Boxes live in
    the registry beside the manifest (`registry.parquet`, one row per Box
-   with its position, `extractions.parquet` the extraction those rows
+   with its position, `parses.parquet` the parse those rows
    name) and their content in the pre-parsed `boxes.parquet`. For each
    reader of Boxes one volume is put
    in an `AlignmentBundle`, written to `tmp_path` and read back, and the
@@ -243,7 +243,7 @@ warning names that one (`page 1, system 2`) alone.
 `uid="scan"` and `box_ids="m{n}"`, is written in a bundle to
 `package/manifest.yaml` (a lone manifest: `package.yaml` is the name a
 package's descriptor takes); the directory then holds exactly
-`boxes.parquet`, `extractions.parquet`, `manifest.yaml` and
+`boxes.parquet`, `parses.parquet`, `manifest.yaml` and
 `registry.parquet`. Read back, every value is one derived above: the volume
 `scan` is a locked segment line of length 53123 stating the
 `score_image_url`; its pages `dgt_…`, `dgt_…`, `dgt_…`, `dgt_…` (each
@@ -259,14 +259,14 @@ corners): `m1` [0, 940) and `m2` [930, 1554) on `dgt_…`, `m3` [0, 974) on
 accolades hold four Boxes together, volume and pages none, and the
 image-space invariant holds over the tree read.
 
-**Locators and the extraction.** Each Box names the one extraction of the
-file read (`loader.extractions`, source the scan's path) and, as its
+**Locators and the parse.** Each Box names the one parse of the
+file read (`loader.parses`, source the scan's path) and, as its
 `locator`, the JSON Pointer of its measure in the document the test
 writes, each index from 0: `m1` `/pages/0/systems/0/measures/0`, `m2`
 `/pages/0/systems/0/measures/1`, `m3` `/pages/0/systems/1/measures/0`,
 `m4` `/pages/1/systems/0/measures/0` (the scan excerpt keeps measures of
 page 0's systems 0 and 1 and of page 1's system 0); the volume's registry
-lists that extraction only.
+lists that parse only.
 
 ## `MeiFacsimileLoader`
 
@@ -325,7 +325,7 @@ other numbers.
   zone without `xml:id`, the second of its surface's zones in a file the
   test writes: `/mei/music/facsimile/surface/zone[2]`, the first
   `/mei/music/facsimile/surface/zone[1] key:z1`). Every Box names the
-  file's one extraction, which the page's registry lists alone.
+  file's one parse, which the page's registry lists alone.
 - **Zones are Boxes of their accolade** with the zone's `xml:id`, shape as
   written (MEI corners are points, so a width is `lrx - ulx`), start =
   `ulx` less the accolade's left edge. All nine are asserted literally:
@@ -425,7 +425,7 @@ other numbers.
 - **The package round trip** (principle 4). The excerpt's volume, created
   with `uid="chorale"`, is written in a bundle to `package/manifest.yaml`
   (a lone manifest; the directory then holds exactly `boxes.parquet`,
-  `extractions.parquet`, `manifest.yaml` and `registry.parquet`) and read
+  `parses.parquet`, `manifest.yaml` and `registry.parquet`) and read
   back. Every value is one derived above: the volume `chorale` is a
   locked segment line of length 5610 with empty `meta`; its one page has the
   surface's `xml:id`, name `"15"`, length 5610, `meta` the image alone and

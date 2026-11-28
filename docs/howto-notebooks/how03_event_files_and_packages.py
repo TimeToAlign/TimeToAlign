@@ -14,24 +14,37 @@
 # ---
 
 # %% [markdown]
-# # How to Write Event Files and Share Tables in a Package
+# # How to Write the Registry and Share Tables in a Package
 #
 # A TimeToShare manifest holds the structure of its timelines and names no
-# event. What lies on the timelines lies in Parquet tables beside it: the
-# MatchClaims in the MatchClaim table, the Projections in the Projections
-# table, and the events of every other type in **event files**, one table
-# per event type. The manifest names each table in its `resources`, a
-# **table resource** stating the table's type and the timelines it holds
-# rows for.
+# event. What lies on the timelines lies in Parquet tables beside it:
 #
-# Several manifests can share their tables in a **package**: a folder whose
-# `package.yaml` lists the manifests and the tables, each table a folder
-# `tables/<Type>/` holding the rows of that type of every manifest.
+# - the **registry**, one row per ID the package can resolve: for every
+#   event its ID, its type, its timeline, its position on the axis of its
+#   timeline's root and the extraction that made it; and an index row for
+#   every element of the manifest, every MatchClaim and every extraction;
+# - the **Extraction table**, one row per run of a parser over a source
+#   file, or of a tool that made events without one (here the library,
+#   since the events are made in code);
+# - one **pre-parsed table** per event type, holding what is particular to
+#   events of that type, keyed by their IDs and without positions (the
+#   Projection table, a Note table); an event whose content can be read
+#   again from its source file is **re-parsed** instead and has no row
+#   there;
+# - the **MatchClaim table**.
 #
-# This guide writes a bundle with its event files, builds a package of two
-# bundles with `Package`, opens one of its manifests, checks the package
-# with TimeToShare's package check, and writes one bundle into the package
-# again.
+# The manifest names the registry and the MatchClaim table in its
+# `resources`. Several manifests can share their tables in a **package**: a
+# folder whose `package.yaml` lists the manifests and the tables, the
+# registry a folder of parts (an index part and one part per extraction)
+# and every other table a folder `tables/<Type>/` of the rows of every
+# manifest. An ID combined with the location of a manifest, or of the
+# package, resolves to what it names.
+#
+# This guide writes a bundle with its tables, resolves IDs through its
+# manifest, builds a package of two bundles with `Package`, opens one of its
+# manifests, checks the package with TimeToShare's package check, and
+# writes one bundle into the package again.
 
 # %% [markdown]
 # ## Setup
@@ -46,8 +59,8 @@
 # recording, where it gets a Projection. Every ID starts with the piece's
 # key, so that the IDs of two pieces differ. `tree` lists a directory's files
 # and folders, `show` prints one key of a YAML file as the file holds it,
-# and `timelines_per_file` names the timelines whose rows each file of a
-# table folder holds.
+# `values_per_file` names the values of one column in each file of a table
+# folder, and `event_rows` reads the event rows of a registry file.
 
 # %%
 import tempfile
@@ -65,6 +78,7 @@ from timetoalign import (
     ContinuousPhysicalTimeline,
     Package,
     Provenance,
+    resolve,
 )
 
 FILES = Path(tempfile.mkdtemp())
@@ -122,14 +136,28 @@ def show(path, key):
     print(dumps({key: loads(path.read_text(encoding="utf-8"))[key]}), end="")
 
 
-def timelines_per_file(folder, column="timeline_id"):
-    """For each Parquet file of a table folder, the timelines its rows lie on."""
+def values_per_file(folder, column):
+    """For each Parquet file of a table folder, the values of one column."""
     return {
         file.name: sorted(
-            pc.unique(pq.read_table(file, columns=[column])[column]).to_pylist()
+            value
+            for value in pc.unique(
+                pq.read_table(file, columns=[column])[column]
+            ).to_pylist()
+            if value is not None
         )
         for file in sorted(folder.glob("*.parquet"))
     }
+
+
+def event_rows(path, columns=("id", "kind", "timeline_id", "start", "location")):
+    """The event rows of a registry file: the rows with a position."""
+    table = pq.read_table(path)
+    return [
+        {name: row[name] for name in columns}
+        for row in table.to_pylist()
+        if row["start"] is not None
+    ]
 
 
 # %% [markdown]
@@ -144,13 +172,13 @@ handel = piece("handel", [0.1, 1.1, 2.0])
 bach
 
 # %% [markdown]
-# ## Write a bundle with its event files
+# ## Write a bundle with its tables
 #
-# `to_file()` always writes the MatchClaim table and the tables of
-# Projections and Boxes the bundle holds. With `events=True` it also writes
-# every other event type its timelines hold, one event file per type beside
-# the manifest: `Note.parquet` for the notes, `Onset.parquet` for the
-# onsets. The manifest itself still names no event.
+# `to_file()` always writes the Projections and Boxes the bundle holds,
+# with the MatchClaim table. With `events=True` it also writes every other
+# event type its timelines hold: the registry gets a row for each note and
+# onset, and each type its pre-parsed table, `Note.parquet` and
+# `Onset.parquet`. The manifest itself still names no event.
 
 # %%
 single = FILES / "bach"
@@ -159,34 +187,67 @@ manifest_path = bach.to_file(single / "bach.yaml", events=True)
 tree(single)
 
 # %% [markdown]
-# The manifest names every table in its `resources`. An event file is
-# named like the MatchClaim and Projections tables: its `type` is the type
-# of its events, `timelines` lists the timelines whose rows it holds, and
-# `url` is its location relative to the manifest, here a file beside it,
-# with its size and SHA-256 digest.
+# The manifest names the registry and the MatchClaim table in its
+# `resources`: their `type`, the timelines whose rows they hold for it, and
+# their location relative to the manifest, here files beside it, with their
+# size and SHA-256 digest. The pre-parsed tables and the Extraction table
+# are not named: the registry's rows point to them.
 
 # %%
 show(manifest_path, "resources")
 
 # %% [markdown]
-# An event file holds one row per event: its `id`, its `timeline_id`, the
-# unit and number type of the timeline's axis, and its position, each number
-# written once in the member its number type names (the score's quarters as
-# a fraction's numerator and denominator). The file's metadata states its
-# type and the format version.
+# Each event row states the event's ID, its type (`kind`), its timeline and
+# its position, each number written once in the member its number type
+# names (the score's quarters as a fraction's numerator and denominator,
+# the recording's seconds as a float's `value`), and the `location` of the
+# pre-parsed table holding its content. The rows are sorted by extraction,
+# timeline, exact start and ID.
 
 # %%
-notes = pq.read_table(single / "Note.parquet")
-notes.slice(0, 2).to_pylist()
-
-# %%
-{key.decode(): value.decode() for key, value in notes.schema.metadata.items()}
+event_rows(single / "registry.parquet")[:6]
 
 # %% [markdown]
-# `from_file()` reads the manifest and every table it names, so the bundle
-# read holds the notes and onsets again, beside the recording's Projection
-# and the MatchClaims. Written again, without `events=` (a manifest read with
-# event files is written with them), it gives the same bytes, file by file.
+# The other rows of the registry are its index: one per element of the
+# manifest (its timelines, groups and resources, the manifest itself), per
+# MatchClaim and per extraction, each with its kind and its location, so
+# that an ID found in the registry leads to the file holding it.
+
+# %%
+sorted(
+    (row["kind"], row["location"])
+    for row in pq.read_table(single / "registry.parquet").to_pylist()
+    if row["start"] is None
+)[:8]
+
+# %% [markdown]
+# Every event names the extraction that made it. These events were made in
+# code, so each timeline family (a root and its children) names one
+# extraction of the library itself: no source file, the parser
+# `timetoalign` and its version, and the ID minter. A loader records the
+# source file it read and its digest instead.
+
+# %%
+pq.read_table(single / "extractions.parquet").select(
+    ["id", "source", "parser", "minter", "id_length"]
+).to_pylist()
+
+# %% [markdown]
+# A pre-parsed table holds the content of each event, keyed by ID, without
+# its position: the Projection table states which event each Projection
+# stands for, here the last note, whose position on the recording the claim
+# states.
+
+# %%
+pq.read_table(single / "projections.parquet").to_pylist()
+
+# %% [markdown]
+# `from_file()` reads the manifest and its tables, so the bundle read holds
+# the notes and onsets again, beside the recording's Projection and the
+# MatchClaims; each event's content is read from its pre-parsed table when
+# its timeline's events are first read. Written again, without `events=` (a
+# manifest read with notes and onsets is written with them), it gives the
+# same bytes, file by file.
 
 # %%
 read = AlignmentBundle.from_file(manifest_path)
@@ -207,13 +268,29 @@ read.to_file(copy / "bach.yaml")
 }
 
 # %% [markdown]
+# ## Resolve an ID
+#
+# `resolve(target, id)` answers what an ID names, through a manifest (a
+# path or a `file:` URL) or a package root, always as a list: a timeline,
+# an event as its scalar, a MatchClaim, an extraction. An event's position
+# is the registry's, on the axis of its timeline's root. An ID nothing
+# holds gives the empty list.
+
+# %%
+{
+    "bach_n3": resolve(manifest_path, "bach_n3"),
+    "bach_recording": resolve(manifest_path.as_uri(), "bach_recording"),
+    "nothing": resolve(manifest_path, "bach_n9"),
+}
+
+# %% [markdown]
 # ## Build a package of two bundles
 #
 # A `Package` takes a `name` (and an `id`, its IRI where it is published).
 # `write_bundle(bundle, url)` adds a bundle as the manifest at `url`,
 # relative to the package's root. A new package only stages the bundles;
-# `to_file()` writes them all at once, then `package.yaml`, into a folder
-# that holds no package yet.
+# `to_file()` writes them all at once, then `package.yaml`, then the
+# registry's index part, into a folder that holds no package yet.
 
 # %%
 package = Package(name="Two pieces")
@@ -226,29 +303,34 @@ tree(root)
 
 # %% [markdown]
 # A package writes every event type of its bundles, with no `events=`
-# needed. Each type has one folder under `tables/`, and each write adds one
-# file per type, named from its content, holding the rows of every bundle it
-# writes. `package.yaml` lists the manifests and the table folders.
+# needed. The registry is the folder `registry/`: `index.parquet` and one
+# part per extraction, named after it. Every other table has one folder
+# under `tables/` but the Extraction table, one file; each write adds one
+# file per pre-parsed type and one of MatchClaims, named from its content,
+# holding the rows of every bundle it writes. `package.yaml` lists the
+# manifests and the tables.
 
 # %%
 print(package_path.read_text(encoding="utf-8"), end="")
 
 # %% [markdown]
-# Each manifest names the folders, relative to itself, with the timelines
-# whose rows it keeps. A folder has no size and no digest: the rows of
-# other manifests share its files.
+# Each manifest names the registry and the MatchClaim folder, relative to
+# itself, with the timelines whose rows it keeps. A folder has no size and
+# no digest: the rows of other manifests share its files.
 
 # %%
 show(root / "bach" / "manifest.yaml", "resources")
 
 # %% [markdown]
-# The one file of notes holds the notes of both scores, and the one file of
-# MatchClaims the claims of both pieces, sorted by timeline.
+# Each registry part holds the rows of one extraction, here one per score
+# and recording; the one file of notes holds the notes of both scores, and
+# the one file of MatchClaims the claims of both pieces.
 
 # %%
 {
-    "Note": timelines_per_file(root / "tables" / "Note"),
-    "MatchClaim": timelines_per_file(root / "tables" / "MatchClaim", "timeline_a_id"),
+    "registry": values_per_file(root / "registry", "timeline_id"),
+    "Note": values_per_file(root / "tables" / "Note", "id"),
+    "MatchClaim": values_per_file(root / "tables" / "MatchClaim", "timeline_a_id"),
 }
 
 # %% [markdown]
@@ -286,14 +368,27 @@ from_package = opened.bundle("bach/manifest.yaml")
 from_package.get_matchstamp_at(Fraction(2), "bach_score")
 
 # %% [markdown]
+# Through the package root, `resolve` finds every row of an ID in the
+# registry: Handel's first onset, and the manifest itself, with no manifest
+# named.
+
+# %%
+{
+    "handel_o1": resolve(root, "handel_o1"),
+    "bach": resolve(root, "bach"),
+}
+
+# %% [markdown]
 # ## Check the package
 #
 # `timetoshare.tables.package_problems()` checks a package whole from its
 # `package.yaml`: every manifest valid, every table file of its type and
 # version, every resource naming a table of the package, every ID held once,
-# and the rows of each manifest checked against it. It returns the list of
-# problems, here none. `Package` runs the same check after every write and
-# raises its first problem, with every file restored.
+# every event row naming an extraction and a table holding its content, the
+# index agreeing with the manifests, and the rows of each manifest checked
+# against it. It returns the list of problems, here none. `Package` runs the
+# same check after every write and raises its first problem, with every
+# file restored.
 
 # %%
 package_problems(package_path)
@@ -301,11 +396,12 @@ package_problems(package_path)
 # %% [markdown]
 # ## IDs are the package's
 #
-# Within a package, a timeline ID is held by one manifest, an event ID once
-# among all events of every type, and a MatchClaim ID once among its
-# MatchClaims. A bundle colliding with what the package holds is refused
-# before anything is written, naming the ID and both holders. Writing the
-# Bach piece a second time, under another URL, collides at its timelines.
+# Within a package, an event ID is held once among all events of every
+# type, and a MatchClaim ID once among its MatchClaims; as `Package` writes
+# a package, a timeline ID is held by one manifest. A bundle colliding with
+# what the package holds is refused before anything is written, naming the
+# ID and both holders. Writing the Bach piece a second time, under another
+# URL, collides at its timelines.
 
 # %%
 try:
@@ -320,10 +416,11 @@ except ValueError as refusal:
 # package: the last note, which the detector missed, relates to the third
 # onset. `write_bundle()` on a package lying on disk writes at once and
 # replaces the manifest at that URL. The rows of its timelines leave the
-# files holding them, which are rewritten with the other manifests' rows
-# alone, and one new file per type holds the bundle's rows. As with a
-# single MatchClaim table, every claim the package held for the manifest
-# must still be in the bundle, and the bundle may add claims.
+# files holding them: its registry parts are rewritten with its rows, the
+# pre-parsed and MatchClaim files keep the other manifests' rows alone, and
+# one new file per type holds the bundle's rows. As with a single
+# MatchClaim table, every claim the package held for the manifest must
+# still be in the bundle, and the bundle may add claims.
 
 # %%
 from_package.create_match_claims(
@@ -333,8 +430,8 @@ from_package.create_match_claims(
 )
 opened.write_bundle(from_package, "bach/manifest.yaml")
 {
-    "Note": timelines_per_file(root / "tables" / "Note"),
-    "MatchClaim": timelines_per_file(root / "tables" / "MatchClaim", "timeline_a_id"),
+    "Note": values_per_file(root / "tables" / "Note", "id"),
+    "MatchClaim": values_per_file(root / "tables" / "MatchClaim", "timeline_a_id"),
 }
 
 # %% [markdown]
@@ -371,6 +468,6 @@ except NotImplementedError as refusal:
 #   [How to Keep MatchClaims, Projections and Beliefs in a Package](how03_match_claims_package.ipynb).
 # - Manifests in depth (minimal and complete form, serializations, editing
 #   a file): [How to Save and Load Timelines, Groups and Bundles](how02_group_and_bundle_files.ipynb).
-# - The format of resources, tables and packages, and every rule the
-#   package check applies:
+# - The format of the registry, the Extraction table, pre-parsed tables and
+#   packages, and every rule the package check applies:
 #   [TimeToShare's README, "Resources and tables"](https://github.com/TimeToAlign/TimeToShare#resources-and-tables).

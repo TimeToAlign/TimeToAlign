@@ -802,11 +802,14 @@ pages
 # %% [markdown]
 # ## Boxes in a package
 #
-# A bundle keeps its timelines in a TimeToShare manifest; the Boxes are data
-# and live beside it in a table, `boxes.parquet`, one row per Box with its
-# timeline's ID, which the manifest names among its `resources` with the
-# type `Box`. The bundle below holds the page built by hand, with its two
-# accolades and their three measures, and a logical timeline beside it.
+# A bundle keeps its timelines in a TimeToShare manifest; the Boxes are
+# events and live beside it. The registry (`registry.parquet`) holds one
+# row per Box with its timeline's ID and its position on the axis of the
+# timeline's root (a measure of an accolade at its place on the page), and
+# the Box table (`boxes.parquet`) its shape, keyed by its ID; the manifest
+# names the registry among its `resources` with the type `Registry`. The
+# bundle below holds the page built by hand, with its two accolades and
+# their three measures, and a logical timeline beside it.
 
 # %%
 score = ContinuousLogicalTimeline(length=Fraction(8), uid="score", name="Score")
@@ -818,15 +821,16 @@ manifest_path = bundle.to_file(FILES / "package" / "page.yaml")
 sorted(path.name for path in manifest_path.parent.iterdir())
 
 # %% [markdown]
-# The manifest holds the timelines and their `meta`, and names the table:
+# The manifest holds the timelines and their `meta`, and names the
+# registry:
 
 # %%
 show(manifest_path, "resources")
 
 # %% [markdown]
-# `from_file()` reads the manifest and the table. Every Box comes back on
-# its timeline with the same ID, interval and shape, and is checked against
-# its shape on the way in.
+# `from_file()` reads the manifest and the tables. Every Box comes back on
+# its timeline with the same ID, interval (on the timeline's own axis) and
+# shape, and is checked against its shape on the way in.
 
 # %%
 read = AlignmentBundle.from_file(manifest_path)

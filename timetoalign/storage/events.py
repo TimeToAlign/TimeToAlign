@@ -1475,7 +1475,11 @@ class EventData(SemanticFieldAccessMixin):
 
     @classmethod
     def _of_reduced(
-        cls, table: pa.Table, unit: TimeUnit, number_type: NumberType | None = None
+        cls,
+        table: pa.Table,
+        unit: TimeUnit,
+        number_type: NumberType | None = None,
+        extractions: Iterable[Extraction] = (),
     ) -> Self:
         """An instance over *table*, whose coordinate cells are in lowest terms.
 
@@ -1485,9 +1489,19 @@ class EventData(SemanticFieldAccessMixin):
         outside is not run again. It sets the base's state only, so it serves
         classes whose ``__init__`` adds none; an instance of any class derives
         a table through :meth:`_derived`.
+
+        Of *extractions* (those of the tables the rows were taken from), the
+        instance carries the ones its rows name in their ``extraction_id``
+        (:attr:`extractions`), each once, in the order given: rows selected
+        from a loaded table keep the extractions that made them, so a
+        timeline made of them records them with the rows.
         """
         data = cls.__new__(cls)
         data._hold(table, unit, number_type)
+        given = _united(extractions)
+        if given and "extraction_id" in table.column_names:
+            named = set(pc.unique(table.column("extraction_id")).to_pylist())
+            data._extractions = tuple(item for item in given if item.id in named)
         return data
 
     def _derived(self, table: pa.Table) -> Self:

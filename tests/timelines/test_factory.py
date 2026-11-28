@@ -12,9 +12,11 @@ Behavior tested:
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Iterator
 from dataclasses import dataclass
 from fractions import Fraction
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -22,6 +24,7 @@ import pytest
 from timetoalign.core import NumberType, TimeUnit
 from timetoalign.core.ids import IdMinter, reset_content_minters
 from timetoalign.loader.score.stores.notes import NoteEventData
+from timetoalign.loader.tabular import CsvLoader
 from timetoalign.storage import EventData, SingleStore
 from timetoalign.storage.store import EventStore
 from timetoalign.timelines import (
@@ -54,6 +57,11 @@ def _child_named(timeline: Timeline, name: str) -> Timeline:
         if timeline.get_child(child_id).name == name
     ]
     return child
+
+
+def _digest(path: Path) -> str:
+    """The SHA-256 digest of the file's bytes."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 # region Test Helper: DictStore
@@ -814,3 +822,67 @@ class TestTimelinesHoldTheirOwnEvents:
         for events in (timeline.events, source.filter(event_type="Note")):
             assert type(events) is NoteEventData
             assert events.has_rests is True
+
+
+class TestGroupedTimelinesKeepTheirExtractions:
+    """A timeline split by ``group_by`` keeps each loaded row's extraction and locator.
+
+    The expected values are read off the files the test writes: the
+    extraction's source is the file's path and its digest the SHA-256 of
+    its bytes; the CSV row ``i`` stands at ``row:i``.
+    """
+
+    @staticmethod
+    def _write(path: Path, images: list[str]) -> Path:
+        rows = "".join(
+            f"{i}.0,{i}.5,{image}\n" for i, image in enumerate(images, start=1)
+        )
+        path.write_text(f"start,end,image\n{rows}", encoding="utf-8")
+        return path
+
+    @staticmethod
+    def _rows_of(timeline: Timeline, child: Timeline) -> list[tuple[str, str]]:
+        """The (source, locator) of each registry row of *child*, in row order."""
+        sources = {item.id: item.source for item in timeline.registry.extractions}
+        table = timeline.registry.table
+        return [
+            (sources[row["extraction_id"]], row["locator"])
+            for row in table.to_pylist()
+            if row["timeline_id"] == child.id
+        ]
+
+    @staticmethod
+    def _identity(timeline: Timeline) -> list[tuple[str, str]]:
+        """The family's extractions, each by its source and its digest."""
+        return [
+            (item.source, item.source_integrity["digest"])
+            for item in timeline.registry.extractions
+        ]
+
+    def test_one_file(self, tmp_path: Path) -> None:
+        path = self._write(tmp_path / "events.csv", ["a.png", "b.png", "a.png"])
+        timeline = create_timeline(CsvLoader().load(path), group_by="image")
+
+        assert _child_names(timeline) == ["a.png", "b.png"]
+        source = str(path)
+        assert self._rows_of(timeline, _child_named(timeline, "a.png")) == [
+            (source, "row:0"),
+            (source, "row:2"),
+        ]
+        assert self._rows_of(timeline, _child_named(timeline, "b.png")) == [
+            (source, "row:1")
+        ]
+        assert self._identity(timeline) == [(source, _digest(path))]
+
+    def test_two_files(self, tmp_path: Path) -> None:
+        one = self._write(tmp_path / "one.csv", ["a.png", "b.png"])
+        two = self._write(tmp_path / "two.csv", ["a.png"])
+        timeline = create_timeline(CsvLoader().load(one, two), group_by="image")
+
+        a, b = _child_named(timeline, "a.png"), _child_named(timeline, "b.png")
+        assert self._rows_of(timeline, a) == [(str(one), "row:0"), (str(two), "row:0")]
+        assert self._rows_of(timeline, b) == [(str(one), "row:1")]
+        assert self._identity(timeline) == [
+            (str(one), _digest(one)),
+            (str(two), _digest(two)),
+        ]

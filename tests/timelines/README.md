@@ -5679,6 +5679,26 @@ source both ways and asserts `type(events) is NoteEventData` and
 `events.has_rests is True` on each, and the same of `source.filter(...)`,
 since a filter derives its table through the same copy.
 
+A timeline split by `group_by` from a loaded source keeps what the loader
+recorded of each row (`TestGroupedTimelinesKeepTheirExtractions`): which
+source file made it (its extraction) and where in that file it stands (its
+locator). Each group's rows are a selection of the loaded table, so the
+proof is that every registry row of every child names the extraction and
+the locator its source row had, and that the family holds exactly the
+extractions the rows name. Before, a group's rows were rebuilt without the
+loader's extractions, and the family refused them for naming an
+extraction it did not hold. The expected values are read off the files the
+test writes, never off the loader: the extraction's `source` is the file's
+path and its digest the SHA-256 of the file's bytes, and the locator of
+the CSV row `i` is `row:i`. One file of three rows (images `a`, `b`, `a`)
+gives the children `a.png` holding `row:0` and `row:2` and `b.png`
+holding `row:1`, all naming the one extraction, which is the family's
+only one. Two files (`one.csv`: `a`, `b`; `two.csv`: `a`) give `a.png`
+holding `row:0` of each file, each naming its own file's extraction, and
+`b.png` holding `row:1` of `one.csv` alone: a child's rows name only
+the extractions of the files they come from, and the family holds both,
+in file order.
+
 `test_types.py` resolves continuous, discrete, string-unit, and unmatched-unit
 inputs to the most specific matching classes. Further-derived classes also
 participate in resolution. The unmatched input verifies the documented base

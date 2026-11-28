@@ -50,13 +50,13 @@ new package where it is told.
 >>> bundle = AlignmentBundle(id="piece")
 >>> _ = bundle.add_timeline(score)
 >>> package = Package(name="Pieces")
->>> package.write_bundle(bundle, "piece/manifest.yaml")
+>>> package.write_bundle(bundle, "piece.tts.yaml")
 >>> path = package.to_file(Path(tempfile.mkdtemp()) / "package.yaml")
 >>> package.manifests
-['piece/manifest.yaml']
+['piece.tts.yaml']
 >>> [(table["type"], table["url"]) for table in package.tables]
 [('Registry', 'registry.parquet'), ('Parse', 'tables/parses.parquet'), ('Note', 'tables/Note/')]
->>> read = Package.from_file(path).bundle("piece/manifest.yaml")
+>>> read = Package.from_file(path).bundle("piece.tts.yaml")
 >>> read.get_timeline("score").events.table.column("id").to_pylist()
 ['n1']
 ```
@@ -267,10 +267,10 @@ removes the new files left hidden).
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name   | Type                                                              | Description                                                                             | Default    |
-|--------|-------------------------------------------------------------------|-----------------------------------------------------------------------------------------|------------|
-| bundle | [AlignmentBundle](`timetoalign.alignment.bundle.AlignmentBundle`) | The bundle.                                                                             | _required_ |
-| url    | [str](`str`)                                                      | The manifest's location relative to the package's root, such as ``bach/manifest.yaml``. | _required_ |
+| Name   | Type                                                              | Description                                                                        | Default    |
+|--------|-------------------------------------------------------------------|------------------------------------------------------------------------------------|------------|
+| bundle | [AlignmentBundle](`timetoalign.alignment.bundle.AlignmentBundle`) | The bundle.                                                                        | _required_ |
+| url    | [str](`str`)                                                      | The manifest's location relative to the package's root, such as ``bach.tts.yaml``. | _required_ |
 
 #### Raises {.doc-section .doc-section-raises}
 

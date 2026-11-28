@@ -366,7 +366,13 @@ itself), a given one raises.
 ### add_events { #timetoalign.timelines.Timeline.add_events }
 
 ```python
-timelines.Timeline.add_events(rows, allow_expansion=False, *, seed=None)
+timelines.Timeline.add_events(
+    rows,
+    allow_expansion=False,
+    *,
+    seed=None,
+    parses=(),
+)
 ```
 
 Add events to the timeline.
@@ -396,7 +402,9 @@ A Projection (``event_type`` ``"Projection"``) holds ``id``, its
 position and ``projection_of``, the event of another timeline it
 stands for, as a dict ``{"timeline_id": ..., "event_id": ...}`` or an
 :class:`~timetoalign.core.EventReference` (``None`` where none is
-known); it repeats nothing else of that event.
+known); it repeats nothing else of that event. Read from a source
+file, it names its ``locator`` and ``parse_id`` as every row
+does (below).
 
 A Box (``event_type`` ``"Box"``) is an area of the image the
 timeline runs along: its shape, in the image's space, and the
@@ -407,13 +415,21 @@ at which the timeline stands in its image: the ``x_min`` of the
 shape ``meta["box"]`` states, 0 where it states none. A shape given
 as the memory cell of its column is read through the shape's
 constructor, as every shape's numbers are (never rounded). A Box row
-may state ``unit``, ``number_type`` and ``timeline_id``, as a
-package's Box table does: they must name this timeline and its axis,
-and are not stored.
+may state ``unit``, ``number_type`` and ``timeline_id``: they must
+name this timeline and its axis, and are not stored.
 
 An :class:`~timetoalign.core.Event` object (a
 :class:`~timetoalign.core.Projection`, a :class:`~timetoalign.core.Box`)
 may be given in place of its row, alone or in the list.
+
+Rows read from a source file name what read them: a row's
+``parse_id`` names an :class:`~timetoalign.storage.Parse`
+given in *parses* (or held by the timeline's family already)
+and its ``locator`` the event's place in the source. Both go into
+the event's registry row (:attr:`registry`), not into
+:attr:`events`. The parses the rows name are held with them;
+if the rows are refused, none of them is held. A row naming no
+parse names the family's parse of events made in code.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
@@ -422,6 +438,7 @@ may be given in place of its row, alone or in the list.
 | rows            | [Event](`timetoalign.core.Event`) \| [Sequence](`collections.abc.Sequence`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| [Event](`timetoalign.core.Event`)\] | Event dictionaries or events (one or a list). Required keys of a dictionary: - event_type: class name (e.g. ``"Beat"``, ``"Note"``,   ``"Projection"``) - instant: coordinate (for instant events), **or** - start, end: coordinates (for interval events) | _required_ |
 | allow_expansion | [bool](`bool`)                                                                                                                                                          | If True, expand timeline if events exceed length.                                                                                                                                                                                                          | `False`    |
 | seed            | [int](`int`) \| None                                                                                                                                                    | The seed of the minter of the missing IDs.                                                                                                                                                                                                                 | `None`     |
+| parses          | [Iterable](`collections.abc.Iterable`)\[[Parse](`timetoalign.storage.registry.Parse`)\]                                                                                 | The parses the rows' ``parse_id`` names; one the rows do not name is not held.                                                                                                                                                                             | `()`       |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -431,9 +448,9 @@ may be given in place of its row, alone or in the list.
 
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-|--------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-|        | [ValueError](`ValueError`) | If an ID, given or minted, is already held by an event of this timeline or given twice, a Projection row holds a key a Projection does not have or names an event of this timeline, a Box's shape is off the timeline's axis (or its row's ``unit``, ``number_type`` or ``timeline_id`` names another), a number of its shape is one the axis cannot hold exactly, or its start contradicts its shape, a position cannot be converted, or the events exceed the length and expansion is not allowed. Nothing is added then. |
+| Name   | Type                       | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+|--------|----------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [ValueError](`ValueError`) | If an ID, given or minted, is already held by an event of this timeline's family or given twice, a Projection row holds a key a Projection does not have or names an event of this timeline, a Box's shape is off the timeline's axis (or its row's ``unit``, ``number_type`` or ``timeline_id`` names another), a number of its shape is one the axis cannot hold exactly, or its start contradicts its shape, a position cannot be converted, the events exceed the length and expansion is not allowed, a row names a parse neither given nor held, a parse given is held under its ID with other content, or a locator names two events of one parse. Nothing is added then. |
 
 #### Examples {.doc-section .doc-section-examples}
 
@@ -616,6 +633,7 @@ timelines.Timeline.add_projections(
     allow_expansion=False,
     *,
     seed=None,
+    parses=(),
 )
 ```
 
@@ -632,13 +650,22 @@ alike, so two rows standing for one thing give one Projection.
 Everything else is added, its id kept or minted (``projection_…``,
 by :meth:`add_events`).
 
+A row read from a source file may name its ``locator`` and its
+``parse_id`` (a parse given in *parses* or held by
+the timeline's family), as :meth:`add_events` takes them: they go
+into the added Projection's registry row. They do not tell
+Projections apart: a Projection the timeline holds already is
+returned as it is, its own locator and parse kept, and of rows
+of one call standing for one thing the first row's are kept.
+
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name            | Type                                                                                                                                                                                        | Description                                                                        | Default    |
-|-----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------|------------|
-| projections     | [Projection](`timetoalign.core.Projection`) \| [Sequence](`collections.abc.Sequence`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| [Projection](`timetoalign.core.Projection`)\] | :class:`~timetoalign.core.Projection` objects or their event rows (one or a list). | _required_ |
-| allow_expansion | [bool](`bool`)                                                                                                                                                                              | If True, expand the timeline if a Projection added exceeds its length.             | `False`    |
-| seed            | [int](`int`) \| None                                                                                                                                                                        | The seed of the minter of the missing IDs, as :meth:`add_events` takes it.         | `None`     |
+| Name            | Type                                                                                                                                                                                        | Description                                                                                                    | Default    |
+|-----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------|------------|
+| projections     | [Projection](`timetoalign.core.Projection`) \| [Sequence](`collections.abc.Sequence`)\[[dict](`dict`)\[[str](`str`), [Any](`typing.Any`)\] \| [Projection](`timetoalign.core.Projection`)\] | :class:`~timetoalign.core.Projection` objects or their event rows (one or a list).                             | _required_ |
+| allow_expansion | [bool](`bool`)                                                                                                                                                                              | If True, expand the timeline if a Projection added exceeds its length.                                         | `False`    |
+| seed            | [int](`int`) \| None                                                                                                                                                                        | The seed of the minter of the missing IDs, as :meth:`add_events` takes it.                                     | `None`     |
+| parses          | [Iterable](`collections.abc.Iterable`)\[[Parse](`timetoalign.storage.registry.Parse`)\]                                                                                                     | The parses the rows' ``parse_id`` names, as :meth:`add_events` takes them; one no added row names is not held. | `()`       |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -2727,6 +2754,7 @@ timelines.Timeline.get_events(
     include_children=True,
     min_coord=None,
     max_coord=None,
+    include_number_types=None,
     **field_filters,
 )
 ```
@@ -2751,14 +2779,15 @@ exactly on an ``int`` or ``fraction`` axis, never rounded.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name             | Type                                                             | Description                                                                                                                                 | Default   |
-|------------------|------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|-----------|
-| temporal_type    | [Literal](`typing.Literal`)\[\'instant\', \'interval\'\] \| None | Filter by "instant" or "interval".                                                                                                          | `None`    |
-| event_type       | [str](`str`) \| None                                             | Filter by event type name.                                                                                                                  | `None`    |
-| include_children | [bool](`bool`)                                                   | If True (default), include events from all children with root-relative coordinates.                                                         | `True`    |
-| min_coord        | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) \| None      | Minimum coordinate (inclusive). Can be a number in native units or a `Coordinate` with a different unit (converted via inverse C-Map).      | `None`    |
-| max_coord        | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) \| None      | Maximum coordinate (exclusive). Same conversion rules as min_coord.                                                                         | `None`    |
-| **field_filters  | [Any](`typing.Any`)                                              | Additional field equality filters. Each kwarg name is a field name, and the value is the required value (or a list of values for OR logic). | `{}`      |
+| Name                 | Type                                                                                                              | Description                                                                                                                                                                                         | Default   |
+|----------------------|-------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------|
+| temporal_type        | [Literal](`typing.Literal`)\[\'instant\', \'interval\'\] \| None                                                  | Filter by "instant" or "interval".                                                                                                                                                                  | `None`    |
+| event_type           | [str](`str`) \| None                                                                                              | Filter by event type name.                                                                                                                                                                          | `None`    |
+| include_children     | [bool](`bool`)                                                                                                    | If True (default), include events from all children with root-relative coordinates.                                                                                                                 | `True`    |
+| min_coord            | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) \| None                                                       | Minimum coordinate (inclusive). Can be a number in native units or a `Coordinate` with a different unit (converted via inverse C-Map).                                                              | `None`    |
+| max_coord            | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) \| None                                                       | Maximum coordinate (exclusive). Same conversion rules as min_coord.                                                                                                                                 | `None`    |
+| include_number_types | [Collection](`collections.abc.Collection`)\[[NumberType](`timetoalign.core.NumberType`) \| [str](`str`)\] \| None | Keep the events read in one of these number types only (``EventData.filter``). A timeline and its descendants lie on one axis, so this keeps every event or none. ``None`` keeps every number type. | `None`    |
+| **field_filters      | [Any](`typing.Any`)                                                                                               | Additional field equality filters. Each kwarg name is a field name, and the value is the required value (or a list of values for OR logic).                                                         | `{}`      |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -3969,25 +3998,28 @@ lines it touches. Each argument left None takes the value the file
 the object was read from had (see :meth:`from_file`); for an object
 not read from a file, the minimal form, the styling included, in
 canonical YAML, without event rows or external references. An
-:class:`~timetoalign.alignment.AlignmentBundle` holding MatchClaims
-or Projections writes its tables beside the manifest and names them
-in its ``resources``: its manifest is written (validated and
-serialized) once before any table, and once more naming the tables
-written. The manifest validated is the one the file holds: without
-its styling where ``styling=False`` leaves the styling out, so a
-manifest whose styling the format refuses (a named timestamp beyond
-the length its timeline was given since) is written without it.
+:class:`~timetoalign.alignment.AlignmentBundle` holding MatchClaims,
+Projections or Boxes, or with ``events`` any events, writes its
+tables beside the manifest (its registry, Parse table,
+pre-parsed tables and MatchClaim table) and names the registry and
+the MatchClaim table in its ``resources``, its events never in the
+manifest: its manifest is written (validated and serialized) once
+before any table, and once more naming the tables written. The
+manifest validated is the one the file holds: without its styling
+where ``styling=False`` leaves the styling out, so a manifest whose
+styling the format refuses (a named timestamp beyond the length its
+timeline was given since) is written without it.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name                | Type                                                               | Description                                                                                | Default    |
-|---------------------|--------------------------------------------------------------------|--------------------------------------------------------------------------------------------|------------|
-| path                | [str](`str`) \| [PathLike](`os.PathLike`)\[[str](`str`)\]          | The file to write, UTF-8 with line feeds; it is overwritten.                               | _required_ |
-| minimal             | [bool](`bool`) \| None                                             | Write the minimal form (True) or the complete form (False).                                | `None`     |
-| styling             | [bool](`bool`) \| None                                             | Write the ``graphical`` object, when the manifest has one (True), or leave it out (False). | `None`     |
-| serialization       | [Serialization](`timetoshare.serialization.Serialization`) \| None | ``"yaml"`` (canonical YAML), ``"json"`` (pretty JSON) or ``"jcs"`` (RFC 8785 JSON).        | `None`     |
-| events              | [bool](`bool`) \| None                                             | Write every timeline's event rows (``events``).                                            | `None`     |
-| external_references | [bool](`bool`) \| None                                             | Write every timeline's external reference table (``external_references``).                 | `None`     |
+| Name                | Type                                                               | Description                                                                                                           | Default    |
+|---------------------|--------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|------------|
+| path                | [str](`str`) \| [PathLike](`os.PathLike`)\[[str](`str`)\]          | The file to write, UTF-8 with line feeds; it is overwritten.                                                          | _required_ |
+| minimal             | [bool](`bool`) \| None                                             | Write the minimal form (True) or the complete form (False).                                                           | `None`     |
+| styling             | [bool](`bool`) \| None                                             | Write the ``graphical`` object, when the manifest has one (True), or leave it out (False).                            | `None`     |
+| serialization       | [Serialization](`timetoshare.serialization.Serialization`) \| None | ``"yaml"`` (canonical YAML), ``"json"`` (pretty JSON) or ``"jcs"`` (RFC 8785 JSON).                                   | `None`     |
+| events              | [bool](`bool`) \| None                                             | Write every timeline's event rows (``events``); a bundle writes them into its registry and pre-parsed tables instead. | `None`     |
+| external_references | [bool](`bool`) \| None                                             | Write every timeline's external reference table (``external_references``).                                            | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -4009,7 +4041,7 @@ the length its timeline was given since) is written without it.
 >>> from pathlib import Path
 >>> from timetoalign.timelines import ContinuousLogicalTimeline, Timeline
 >>> score = ContinuousLogicalTimeline(length=Fraction(32), uid="piece")
->>> path = score.to_file(Path(tempfile.mkdtemp()) / "piece.yaml")
+>>> path = score.to_file(Path(tempfile.mkdtemp()) / "piece.tts.yaml")
 >>> text = path.read_text(encoding="utf-8")
 >>> text.startswith('"@context":')
 True
@@ -4092,9 +4124,12 @@ TimelineGroup instead of parent-child nesting.
 | child  | [Timeline](`timetoalign.timelines.base.Timeline`)   | The timeline to validate.      | _required_ |
 | offset | [CoordinateSpec](`timetoalign.core.CoordinateSpec`) | The proposed start coordinate. | _required_ |
 
+A child has its parent's number type too, and one parent: its
+events lie on its root's axis, which a second parent would change.
+
 #### Raises {.doc-section .doc-section-raises}
 
-| Name   | Type                       | Description                                                                                                                    |
-|--------|----------------------------|--------------------------------------------------------------------------------------------------------------------------------|
-|        | [TypeError](`TypeError`)   | If child is not a Timeline.                                                                                                    |
-|        | [ValueError](`ValueError`) | If units don't match, the timeline already is a child of this timeline, or the offset is negative, which is not supported yet. |
+| Name   | Type                       | Description                                                                                                                                                      |
+|--------|----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|        | [TypeError](`TypeError`)   | If child is not a Timeline.                                                                                                                                      |
+|        | [ValueError](`ValueError`) | If units or number types don't match, the timeline already is a child of this timeline or of another one, or the offset is negative, which is not supported yet. |

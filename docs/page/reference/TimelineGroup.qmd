@@ -1052,25 +1052,28 @@ lines it touches. Each argument left None takes the value the file
 the object was read from had (see :meth:`from_file`); for an object
 not read from a file, the minimal form, the styling included, in
 canonical YAML, without event rows or external references. An
-:class:`~timetoalign.alignment.AlignmentBundle` holding MatchClaims
-or Projections writes its tables beside the manifest and names them
-in its ``resources``: its manifest is written (validated and
-serialized) once before any table, and once more naming the tables
-written. The manifest validated is the one the file holds: without
-its styling where ``styling=False`` leaves the styling out, so a
-manifest whose styling the format refuses (a named timestamp beyond
-the length its timeline was given since) is written without it.
+:class:`~timetoalign.alignment.AlignmentBundle` holding MatchClaims,
+Projections or Boxes, or with ``events`` any events, writes its
+tables beside the manifest (its registry, Parse table,
+pre-parsed tables and MatchClaim table) and names the registry and
+the MatchClaim table in its ``resources``, its events never in the
+manifest: its manifest is written (validated and serialized) once
+before any table, and once more naming the tables written. The
+manifest validated is the one the file holds: without its styling
+where ``styling=False`` leaves the styling out, so a manifest whose
+styling the format refuses (a named timestamp beyond the length its
+timeline was given since) is written without it.
 
 #### Parameters {.doc-section .doc-section-parameters}
 
-| Name                | Type                                                               | Description                                                                                | Default    |
-|---------------------|--------------------------------------------------------------------|--------------------------------------------------------------------------------------------|------------|
-| path                | [str](`str`) \| [PathLike](`os.PathLike`)\[[str](`str`)\]          | The file to write, UTF-8 with line feeds; it is overwritten.                               | _required_ |
-| minimal             | [bool](`bool`) \| None                                             | Write the minimal form (True) or the complete form (False).                                | `None`     |
-| styling             | [bool](`bool`) \| None                                             | Write the ``graphical`` object, when the manifest has one (True), or leave it out (False). | `None`     |
-| serialization       | [Serialization](`timetoshare.serialization.Serialization`) \| None | ``"yaml"`` (canonical YAML), ``"json"`` (pretty JSON) or ``"jcs"`` (RFC 8785 JSON).        | `None`     |
-| events              | [bool](`bool`) \| None                                             | Write every timeline's event rows (``events``).                                            | `None`     |
-| external_references | [bool](`bool`) \| None                                             | Write every timeline's external reference table (``external_references``).                 | `None`     |
+| Name                | Type                                                               | Description                                                                                                           | Default    |
+|---------------------|--------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|------------|
+| path                | [str](`str`) \| [PathLike](`os.PathLike`)\[[str](`str`)\]          | The file to write, UTF-8 with line feeds; it is overwritten.                                                          | _required_ |
+| minimal             | [bool](`bool`) \| None                                             | Write the minimal form (True) or the complete form (False).                                                           | `None`     |
+| styling             | [bool](`bool`) \| None                                             | Write the ``graphical`` object, when the manifest has one (True), or leave it out (False).                            | `None`     |
+| serialization       | [Serialization](`timetoshare.serialization.Serialization`) \| None | ``"yaml"`` (canonical YAML), ``"json"`` (pretty JSON) or ``"jcs"`` (RFC 8785 JSON).                                   | `None`     |
+| events              | [bool](`bool`) \| None                                             | Write every timeline's event rows (``events``); a bundle writes them into its registry and pre-parsed tables instead. | `None`     |
+| external_references | [bool](`bool`) \| None                                             | Write every timeline's external reference table (``external_references``).                                            | `None`     |
 
 #### Returns {.doc-section .doc-section-returns}
 
@@ -1092,7 +1095,7 @@ the length its timeline was given since) is written without it.
 >>> from pathlib import Path
 >>> from timetoalign.timelines import ContinuousLogicalTimeline, Timeline
 >>> score = ContinuousLogicalTimeline(length=Fraction(32), uid="piece")
->>> path = score.to_file(Path(tempfile.mkdtemp()) / "piece.yaml")
+>>> path = score.to_file(Path(tempfile.mkdtemp()) / "piece.tts.yaml")
 >>> text = path.read_text(encoding="utf-8")
 >>> text.startswith('"@context":')
 True
